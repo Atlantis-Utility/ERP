@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "atlantisutility",
+      "rules": "firestore.rules"
+    }
+  ]
+}
