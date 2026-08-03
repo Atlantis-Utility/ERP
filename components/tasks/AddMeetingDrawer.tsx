@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Drawer from "@/components/ui/Drawer";
-import FormField, { inputClass, selectClass } from "@/components/ui/FormField";
+import FormField, { inputClass } from "@/components/ui/FormField";
+import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
 import { getAvatarColor, getInitials } from "@/lib/utils";
 import type { KanbanCard, KanbanColumn, MeetingPlatform } from "./AddTaskDrawer";
@@ -220,32 +221,26 @@ export default function AddMeetingDrawer({ open, onClose, onAdd }: Props) {
             />
           </FormField>
           <FormField label="Duration">
-            <select
-              className={selectClass}
-              value={form.duration}
-              onChange={(e) => set("duration", Number(e.target.value))}
-            >
-              {DURATIONS.map((d) => (
-                <option key={d.value} value={d.value}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={String(form.duration)}
+              onChange={(v) => set("duration", Number(v))}
+              options={DURATIONS.map((d) => ({ value: String(d.value), label: d.label }))}
+            />
           </FormField>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Add to Column">
-            <select
-              className={selectClass}
+            <Select
               value={form.column}
-              onChange={(e) => set("column", e.target.value as KanbanColumn)}
-            >
-              <option value="backlog">Backlog</option>
-              <option value="in-progress">In Progress</option>
-              <option value="review">In Review</option>
-              <option value="done">Done</option>
-            </select>
+              onChange={(v) => set("column", v as KanbanColumn)}
+              options={[
+                { value: "backlog", label: "Backlog" },
+                { value: "in-progress", label: "In Progress" },
+                { value: "review", label: "In Review" },
+                { value: "done", label: "Done" },
+              ]}
+            />
           </FormField>
           <FormField label="Tags" hint="Comma-separated">
             <input

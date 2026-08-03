@@ -12,10 +12,14 @@ export interface AppNotification {
   timestamp: string;
   read: boolean;
   href?: string;
+  ticketId?: string;
 }
 
 const STORAGE_KEY = "app_notifications";
 const MAX_ENTRIES = 200;
+
+// prefId used for auto-generated "new ticket arrived" notifications
+export const TICKET_NOTIF_PREF_ID = "new-ticket";
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -26,7 +30,13 @@ function readAll(): AppNotification[] {
 }
 
 function writeAll(all: AppNotification[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all.slice(0, MAX_ENTRIES)));
+  // Same reasoning as activity-log's writeAll: a full localStorage quota here
+  // must never bubble up into whatever caller just finished a real save.
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all.slice(0, MAX_ENTRIES)));
+  } catch (err) {
+    console.error("[notifications] Failed to persist entry:", err);
+  }
 }
 
 function isPrefEnabled(prefId: string): boolean {
@@ -51,6 +61,7 @@ export function addNotification(params: {
   title: string;
   body: string;
   href?: string;
+  ticketId?: string;
 }): void {
   if (!isPrefEnabled(params.prefId)) return;
 
@@ -64,6 +75,7 @@ export function addNotification(params: {
     timestamp: new Date().toISOString(),
     read: false,
     href: params.href,
+    ticketId: params.ticketId,
   };
 
   writeAll([entry, ...readAll()]);
@@ -89,6 +101,49 @@ export function getNotifications(): AppNotification[] {
 
 export function getUnreadCount(): number {
   return getNotifications().filter((n) => !n.read).length;
+}
+
+export function getUnreadCountByPrefId(prefId: string): number {
+  return getNotifications().filter((n) => !n.read && n.prefId === prefId).length;
+}
+
+/** Whether the current user has an unread "new ticket" notification for this specific ticket. */
+export function isTicketUnread(ticketId: string): boolean {
+  return getNotifications().some((n) => !n.read && n.prefId === TICKET_NOTIF_PREF_ID && n.ticketId === ticketId);
+}
+
+/** Marks the current user's "new ticket" notification(s) for this specific ticket as read. */
+export function markTicketRead(ticketId: string): void {
+  const uid = currentUserId();
+  writeAll(readAll().map((n) =>
+    n.userId === uid && n.prefId === TICKET_NOTIF_PREF_ID && n.ticketId === ticketId ? { ...n, read: true } : n
+  ));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("app-notification"));
+  }
+}
+
+/**
+ * One-time cleanup for ticket notifications created before per-ticket tracking
+ * existed (no ticketId, so markTicketRead can never reach them) — otherwise
+ * they'd sit unread forever and permanently inflate the sidebar badge.
+ */
+export function markLegacyTicketNotificationsRead(): void {
+  const uid = currentUserId();
+  writeAll(readAll().map((n) =>
+    n.userId === uid && n.prefId === TICKET_NOTIF_PREF_ID && !n.ticketId ? { ...n, read: true } : n
+  ));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("app-notification"));
+  }
+}
+
+export function markAllReadByPrefId(prefId: string): void {
+  const uid = currentUserId();
+  writeAll(readAll().map((n) => (n.userId === uid && n.prefId === prefId ? { ...n, read: true } : n)));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("app-notification"));
+  }
 }
 
 export function markRead(id: string): void {

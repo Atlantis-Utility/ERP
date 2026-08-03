@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { getUnreadCountByPrefId, TICKET_NOTIF_PREF_ID } from "@/lib/notifications";
 import {
   LayoutDashboard,
   Building2,
@@ -30,6 +32,10 @@ import {
   AlarmClock,
   GitBranch,
   Cpu,
+  KeyRound,
+  Zap,
+  CalendarDays,
+  StickyNote,
 } from "lucide-react";
 
 interface NavItem {
@@ -54,28 +60,30 @@ const navSections: { label: string; items: NavItem[] }[] = [
     label: "",
     items: [
       { label: "Dashboard", href: "/",          icon: LayoutDashboard },
-      { label: "Customers", href: "/customers", icon: Building2 },
-      { label: "Tickets",   href: "/tickets",   icon: TicketCheck    },
+      { label: "Customers", href: "/customers", icon: Building2       },
+      { label: "Tickets",      href: "/tickets",      icon: TicketCheck },
+      { label: "Quick Access", href: "/quick-access", icon: Zap        },
     ],
   },
-  {
-    label: "RingLogix",
-    items: [
-      { label: "Subscribers",   href: "/subscribers",   icon: UserCircle  },
-      { label: "Phone Numbers", href: "/phone-numbers", icon: Phone       },
-      { label: "Call Records",  href: "/call-records",  icon: PhoneCall   },
-      { label: "Recordings",    href: "/recordings",    icon: Mic         },
-      { label: "Devices",       href: "/devices",       icon: Laptop      },
-      { label: "Queues",        href: "/queues",        icon: Headphones  },
-      { label: "Conferences",   href: "/conferences",   icon: Video       },
-      { label: "Billing",       href: "/billing",       icon: DollarSign  },
-      { label: "Contacts",      href: "/contacts",      icon: BookUser   },
-      { label: "Departments",   href: "/departments",   icon: Building   },
-      { label: "Wake-Up Calls", href: "/wake-up-calls", icon: AlarmClock },
-      { label: "Dial Rules",    href: "/dial-rules",    icon: GitBranch  },
-      { label: "Device Models", href: "/device-models", icon: Cpu        },
-    ],
-  },
+  // RingLogix section: temporarily disabled
+  // {
+  //   label: "RingLogix",
+  //   items: [
+  //     { label: "Subscribers",   href: "/subscribers",   icon: UserCircle  },
+  //     { label: "Phone Numbers", href: "/phone-numbers", icon: Phone       },
+  //     { label: "Call Records",  href: "/call-records",  icon: PhoneCall   },
+  //     { label: "Recordings",    href: "/recordings",    icon: Mic         },
+  //     { label: "Devices",       href: "/devices",       icon: Laptop      },
+  //     { label: "Queues",        href: "/queues",        icon: Headphones  },
+  //     { label: "Conferences",   href: "/conferences",   icon: Video       },
+  //     { label: "Billing",       href: "/billing",       icon: DollarSign  },
+  //     { label: "Contacts",      href: "/contacts",      icon: BookUser   },
+  //     { label: "Departments",   href: "/departments",   icon: Building   },
+  //     { label: "Wake-Up Calls", href: "/wake-up-calls", icon: AlarmClock },
+  //     { label: "Dial Rules",    href: "/dial-rules",    icon: GitBranch  },
+  //     { label: "Device Models", href: "/device-models", icon: Cpu        },
+  //   ],
+  // },
   {
     label: "UniFi",
     items: [
@@ -87,6 +95,8 @@ const navSections: { label: string; items: NavItem[] }[] = [
     label: "Operations",
     items: [
       { label: "Tasks",    href: "/tasks",    icon: KanbanSquare },
+      { label: "Notes",    href: "/notes",    icon: StickyNote   },
+      { label: "Calendar", href: "/calendar", icon: CalendarDays },
       { label: "Projects", href: "/projects", icon: FolderKanban },
       { label: "Reports",  href: "/reports",  icon: FileBarChart },
       { label: "Logs",     href: "/logs",     icon: ScrollText   },
@@ -98,10 +108,24 @@ const navSections: { label: string; items: NavItem[] }[] = [
       { label: "Employees", href: "/employees", icon: Users },
     ],
   },
+  {
+    label: "Security",
+    items: [
+      { label: "Vault", href: "/vault", icon: KeyRound },
+    ],
+  },
 ];
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMobileClose, allowedHrefs, userDisplayName = "Yash Harale", userInitials = "YH", userSubtext = "Admin" }: SidebarProps) {
   const pathname = usePathname();
+  const [unseenTickets, setUnseenTickets] = useState(0);
+
+  useEffect(() => {
+    setUnseenTickets(getUnreadCountByPrefId(TICKET_NOTIF_PREF_ID));
+    function onNotif() { setUnseenTickets(getUnreadCountByPrefId(TICKET_NOTIF_PREF_ID)); }
+    window.addEventListener("app-notification", onNotif as EventListener);
+    return () => window.removeEventListener("app-notification", onNotif as EventListener);
+  }, []);
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
@@ -215,9 +239,19 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
                         <item.icon className={`shrink-0 ${collapsed ? "w-4 h-4" : "w-4 h-4"}`} />
 
                         {!collapsed && (
-                          <span className="text-sm font-medium leading-none whitespace-nowrap">
+                          <span className="text-sm font-medium leading-none whitespace-nowrap flex-1">
                             {item.label}
                           </span>
+                        )}
+
+                        {!collapsed && item.href === "/tickets" && unseenTickets > 0 && (
+                          <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#dc2626] text-white text-[10px] font-bold leading-none">
+                            {unseenTickets > 99 ? "99+" : unseenTickets}
+                          </span>
+                        )}
+
+                        {collapsed && item.href === "/tickets" && unseenTickets > 0 && (
+                          <span className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-[#dc2626] ring-2 ring-white" />
                         )}
 
                         {collapsed && (

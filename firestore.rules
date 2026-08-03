@@ -1,6 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Password vault: client SDK access is denied outright. All reads/writes
+    // go through /api/vault (Firebase Admin SDK, which bypasses these rules
+    // entirely), gated by an admin-only server-side check. This keeps the
+    // encrypted vault data unreachable from the browser even though the
+    // rest of this project intentionally leaves rules open below.
+    match /vault_entries/{entryId} {
+      allow read, write: if false;
+    }
+    match /vault_audit_log/{entryId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if true;
     }

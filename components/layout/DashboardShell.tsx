@@ -3,9 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import Sidebar from "./Sidebar";
+import GlobalSearch from "./GlobalSearch";
 import { Menu, Bell, LogOut, User, ChevronDown } from "lucide-react";
 import { getUnreadCount } from "@/lib/notifications";
 import { useAuth } from "@/lib/auth-context";
@@ -17,55 +16,26 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 
   const [collapsed, setCollapsed]       = useState(false);
   const [mobileOpen, setMobileOpen]     = useState(false);
-  const [allowedHrefs, setAllowedHrefs] = useState<string[] | undefined>(undefined);
   const [unreadCount, setUnreadCount]   = useState(0);
-  const [employeeRole, setEmployeeRole]   = useState("");
-  const [employeeAccess, setEmployeeAccess] = useState("");
+
+  // Page-access permissions come live from auth-context (backed by a Supabase
+  // realtime subscription on the employee row) — not a localStorage snapshot,
+  // so changes an admin makes elsewhere take effect immediately.
+  const allowedHrefs = authUser?.access;
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved === "true") setCollapsed(true);
 
-    // Load access for the current logged-in employee (if not admin)
-    const userId = localStorage.getItem("current_user_id");
-    if (userId) {
-      const raw = localStorage.getItem(`emp_access_${userId}`);
-      if (raw) {
-        try { setAllowedHrefs(JSON.parse(raw)); } catch {}
-      }
-    }
-
     setUnreadCount(getUnreadCount());
-
-    function onStorage(e: StorageEvent) {
-      const uid = localStorage.getItem("current_user_id");
-      if (uid && e.key === `emp_access_${uid}`) {
-        try { setAllowedHrefs(JSON.parse(e.newValue ?? "null") ?? undefined); } catch {}
-      }
-    }
-    window.addEventListener("storage", onStorage);
 
     function onNotif() { setUnreadCount(getUnreadCount()); }
     window.addEventListener("app-notification", onNotif as EventListener);
 
     return () => {
-      window.removeEventListener("storage", onStorage);
       window.removeEventListener("app-notification", onNotif as EventListener);
     };
   }, []);
-
-  useEffect(() => {
-    if (!authUser?.email) return;
-    getDocs(query(collection(db, "employees"), where("email", "==", authUser.email)))
-      .then((snap) => {
-        if (!snap.empty) {
-          const emp = snap.docs[0].data();
-          if (emp.role)       setEmployeeRole(emp.role as string);
-          if (emp.accessRole) setEmployeeAccess(emp.accessRole as string);
-        }
-      })
-      .catch(() => {});
-  }, [authUser?.email]);
 
   const toggle = () => {
     setCollapsed((c) => {
@@ -114,7 +84,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         allowedHrefs={allowedHrefs}
         userDisplayName={displayName}
         userInitials={getInitials(displayName)}
-        userSubtext={employeeAccess || (authUser?.isAdmin ? "Administrator" : "Contributor")}
+        userSubtext={authUser?.employeeAccessRole || (authUser?.isAdmin ? "Administrator" : "Contributor")}
       />
 
       <main
@@ -158,8 +128,10 @@ export default function DashboardShell({ children }: { children: React.ReactNode
           </div>
         </div>
 
-        {/* Desktop user bar at top right (visible in desktop when sidebar is shown) */}
-        <div className="hidden md:flex items-center justify-end gap-3 px-8 h-14 border-b border-[#f5f5f5]">
+        {/* Desktop user bar at top (visible in desktop when sidebar is shown) */}
+        <div className="hidden md:flex items-center justify-between gap-4 px-8 h-14 border-b border-[#f5f5f5]">
+          <GlobalSearch allowedHrefs={allowedHrefs} />
+          <div className="flex items-center gap-3 shrink-0">
           <Link href="/logs?filter=notifications" className="relative p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors" aria-label="Notifications">
             <Bell className="w-4 h-4 text-[#666]" />
             {unreadCount > 0 && (
@@ -210,6 +182,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
                 </div>
               </div>
             )}
+          </div>
           </div>
         </div>
 

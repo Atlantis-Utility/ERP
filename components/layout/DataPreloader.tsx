@@ -9,26 +9,27 @@ const PRELOAD: {
   key: string;
   extract: (json: unknown) => unknown;
 }[] = [
-  {
-    url: "/api/ringlogix/customers",
-    key: "sc:customers",
-    extract: (d) => (Array.isArray(d) ? d : (d as Record<string, unknown>)?.data ?? []),
-  },
-  {
-    url: "/api/ringlogix/billing",
-    key: "sc:billing",
-    extract: (d) => (Array.isArray(d) ? d : (d as Record<string, unknown>)?.data ?? []),
-  },
-  {
-    url: "/api/ringlogix/dids",
-    key: "sc:dids",
-    extract: (d) => (Array.isArray(d) ? d : (d as Record<string, unknown>)?.data ?? []),
-  },
-  {
-    url: "/api/ringlogix/cdr?limit=200",
-    key: "sc:cdr",
-    extract: (d) => (Array.isArray(d) ? d : (d as Record<string, unknown>)?.data ?? []),
-  },
+  // RingLogix preloads: temporarily disabled
+  // {
+  //   url: "/api/ringlogix/customers",
+  //   key: "sc:customers",
+  //   extract: (d) => (Array.isArray(d) ? d : (d as Record<string, unknown>)?.data ?? []),
+  // },
+  // {
+  //   url: "/api/ringlogix/billing",
+  //   key: "sc:billing",
+  //   extract: (d) => (Array.isArray(d) ? d : (d as Record<string, unknown>)?.data ?? []),
+  // },
+  // {
+  //   url: "/api/ringlogix/dids",
+  //   key: "sc:dids",
+  //   extract: (d) => (Array.isArray(d) ? d : (d as Record<string, unknown>)?.data ?? []),
+  // },
+  // {
+  //   url: "/api/ringlogix/cdr?limit=200",
+  //   key: "sc:cdr",
+  //   extract: (d) => (Array.isArray(d) ? d : (d as Record<string, unknown>)?.data ?? []),
+  // },
   {
     url: "/api/unifi/sites",
     key: "sc:sites",
@@ -74,6 +75,25 @@ export default function DataPreloader() {
     }, 800); // after initial render settles
 
     return () => clearTimeout(timer);
+  }, []);
+
+  // Silently connect Outlook Calendar right after a Microsoft OAuth login
+  // completes. That flow exchanges its code server-side (app/auth/callback),
+  // so the client never sees a "SIGNED_IN" event — auth-context.tsx's handler
+  // only catches client-driven sign-ins (e.g. email/password). The callback
+  // route flags its redirect with ?post_login=1 so we can detect it here.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("post_login") !== "1") return;
+
+      url.searchParams.delete("post_login");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+
+      if (!document.cookie.includes("outlook_connected=1")) {
+        setTimeout(() => { window.location.href = "/api/outlook-calendar/connect"; }, 600);
+      }
+    } catch {}
   }, []);
 
   return null;

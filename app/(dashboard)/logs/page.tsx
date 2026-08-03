@@ -3,8 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   Search, Trash2, Download, Users, FolderKanban, Settings,
-  Shield, Wifi, Layers, LogIn, ChevronDown, Filter, Bell, BellRing,
+  Shield, Wifi, Layers, LogIn, Filter, Bell, BellRing,
 } from "lucide-react";
+import Select from "@/components/ui/Select";
 import { getLogs, clearLogs, type ActivityLogEntry, type LogCategory } from "@/lib/activity-log";
 import { getInitials } from "@/lib/utils";
 
@@ -260,17 +261,12 @@ export default function LogsPage() {
           </div>
 
           {/* Date filter */}
-          <div className="relative">
-            <select
+          <div className="w-36">
+            <Select
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value as DateFilter)}
-              className="appearance-none border border-[#eaeaea] rounded-lg pl-3 pr-7 py-2 text-sm text-[#0a0a0a] bg-white focus:outline-none focus:border-[#999] transition-colors cursor-pointer"
-            >
-              {DATE_FILTERS.map((f) => (
-                <option key={f.value} value={f.value}>{f.label}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[#bbb] pointer-events-none" />
+              onChange={(v) => setDateFilter(v as DateFilter)}
+              options={DATE_FILTERS.map((f) => ({ value: f.value, label: f.label }))}
+            />
           </div>
 
           {filtered.length !== logs.length && (

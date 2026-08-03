@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { getAvatarColor, getInitials } from "@/lib/utils";
 import {
-  Plus, CalendarDays, LayoutGrid, Clock, ChevronLeft, ChevronRight,
-  ExternalLink, CheckCircle2, Video, MapPin, FolderKanban,
+  Plus, CalendarDays, LayoutGrid, Clock,
+  ExternalLink, CheckCircle2, Video, FolderKanban, Flag,
+  LifeBuoy,
 } from "lucide-react";
 import AddTaskDrawer, {
   type KanbanCard,
@@ -14,19 +16,21 @@ import AddTaskDrawer, {
 } from "@/components/tasks/AddTaskDrawer";
 import AddMeetingDrawer from "@/components/tasks/AddMeetingDrawer";
 import { subscribeTasks, addTask, updateTask, removeTask } from "@/lib/db/tasks";
-import { subscribeProjects } from "@/lib/db/projects";
+import { subscribeProjects, updateProject } from "@/lib/db/projects";
 import type { Project } from "@/lib/mock-projects";
-import { addNotification } from "@/lib/notifications";
+import { useUnifiedTickets } from "@/lib/tickets/useUnifiedTickets";
+import { addNotification, isTicketUnread } from "@/lib/notifications";
 import { useAuth } from "@/lib/auth-context";
 import TaskDetailDrawer from "@/components/tasks/TaskDetailDrawer";
+import { PHASE_DEFS } from "@/components/projects/ProjectPhases";
 
 /* ─── constants ─────────────────────────────────────────────────────── */
 
+// "done" is intentionally excluded: completed items live in the Completed tab, not the board.
 const COLUMNS: { id: KanbanColumn; label: string; dot: string }[] = [
   { id: "backlog",     label: "Backlog",     dot: "#999"    },
   { id: "in-progress", label: "In Progress", dot: "#0070f3" },
   { id: "review",      label: "In Review",   dot: "#f59e0b" },
-  { id: "done",        label: "Done",        dot: "#22c55e" },
 ];
 
 const PLATFORM_CONFIG: Record<string, { label: string; color: string; bg: string; letter: string }> = {
@@ -47,11 +51,8 @@ const TYPE_BADGE: Record<string, string> = {
   task:    "bg-[#f5f5f5] text-[#666]",
   meeting: "bg-[#eff6ff] text-[#2563eb]",
   project: "bg-[#f0fdf4] text-[#16a34a]",
+  ticket:  "bg-[#fef3c7] text-[#b45309]",
 };
-
-const MONTHS   = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const WEEKDAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-
 
 /* ─── helpers ────────────────────────────────────────────────────────── */
 
@@ -71,14 +72,23 @@ function formatTime(timeStr: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
 }
 
-function getCalDays(year: number, month: number): (string | null)[] {
-  const firstDOW   = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const result: (string | null)[] = Array(firstDOW).fill(null);
-  for (let d = 1; d <= daysInMonth; d++) {
-    result.push(`${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+// Mirrors the phase bucketing in ProjectPhases.tsx, reads the same localStorage
+// entry so the "Follow Up" tab reflects the phases shown on the project page.
+function getCurrentPhaseId(project: Project): string | null {
+  let phases: Record<string, { status: string }> | null = null;
+  try {
+    const stored = localStorage.getItem(`project_phases_${project.id}`);
+    if (stored) phases = JSON.parse(stored);
+  } catch {}
+
+  if (phases) {
+    const active = PHASE_DEFS.find((d) => (phases![d.id]?.status ?? "not-started") !== "completed");
+    return active ? active.id : null;
   }
-  return result;
+
+  const total = PHASE_DEFS.length;
+  const active = PHASE_DEFS.find((d, i) => project.progress < ((i + 1) / total) * 100);
+  return active ? active.id : null;
 }
 
 /* ─── sub-components ─────────────────────────────────────────────────── */
@@ -119,6 +129,8 @@ function Card({
 }) {
   const TODAY = todayString();
   const isOverdue = !card.dueDateTbd && card.dueDate && card.dueDate < TODAY && card.column !== "done";
+  const ticketId = card.id.startsWith("ticket-") ? card.id.slice("ticket-".length) : null;
+  const isNewTicket = ticketId !== null && isTicketUnread(ticketId);
 
   return (
     <div
@@ -140,9 +152,16 @@ function Card({
     >
       {/* Type badge + priority dot */}
       <div className="flex items-center justify-between mb-2.5">
-        <span className={`text-[9px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${TYPE_BADGE[card.type] ?? TYPE_BADGE.task}`}>
-          {card.type}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={`text-[9px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${TYPE_BADGE[card.type] ?? TYPE_BADGE.task}`}>
+            {card.type}
+          </span>
+          {isNewTicket && (
+            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#dcfce7] text-[#16a34a]">
+              New
+            </span>
+          )}
+        </div>
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[card.priority]}`}
           title={`${card.priority} priority`}
@@ -235,6 +254,16 @@ function Card({
               <FolderKanban className="w-3 h-3" />
             </Link>
           )}
+          {card.type === "ticket" && card.ticketId && (
+            <Link
+              href={`/tickets/${card.ticketId}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-[10px] text-[#999] hover:text-[#0070f3] transition-colors flex items-center gap-0.5"
+              title="View ticket"
+            >
+              <LifeBuoy className="w-3 h-3" />
+            </Link>
+          )}
           <div className="flex -space-x-1">
             {card.assignees.slice(0, 3).map((name) => {
               const c = getAvatarColor(name);
@@ -262,15 +291,24 @@ function Card({
 
 /* ─── main page ──────────────────────────────────────────────────────── */
 
-type View   = "board" | "calendar";
+type View   = "board" | "completed" | "followup";
 type Filter = "all" | "task" | "meeting" | "project" | "high" | "mine";
+
+const VIEW_CONFIG: Record<View, { label: string; icon: typeof LayoutGrid }> = {
+  board:     { label: "Board",     icon: LayoutGrid   },
+  completed: { label: "Completed", icon: CheckCircle2 },
+  followup:  { label: "Follow Up", icon: Flag         },
+};
 
 export default function TasksPage() {
   const TODAY = todayString();
   const { authUser } = useAuth();
+  const searchParams = useSearchParams();
+  const router       = useRouter();
 
   const [cards, setCards]             = useState<KanbanCard[]>([]);
   const [projects, setProjects]       = useState<Project[]>([]);
+  const { tickets } = useUnifiedTickets();
   const notifiedDeadlines             = useRef<Set<string>>(new Set());
   const [view, setView]               = useState<View>("board");
   const [filter, setFilter]           = useState<Filter>("all");
@@ -283,12 +321,16 @@ export default function TasksPage() {
   const [selectedCard, setSelectedCard] = useState<KanbanCard | null>(null);
   const [detailOpen, setDetailOpen]     = useState(false);
 
-  const today    = new Date();
   const todayStr = TODAY;
 
-  const [calYear, setCalYear]       = useState(today.getFullYear());
-  const [calMonth, setCalMonth]     = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [, forceNotifTick] = useState(0);
+
+  // Re-render ticket-derived cards' "New" tag live as tickets get opened/marked read
+  useEffect(() => {
+    function onNotif() { forceNotifTick((n) => n + 1); }
+    window.addEventListener("app-notification", onNotif);
+    return () => window.removeEventListener("app-notification", onNotif);
+  }, []);
 
   useEffect(() => {
     try {
@@ -301,6 +343,19 @@ export default function TasksPage() {
     });
     return unsub;
   }, []);
+
+  // Deep link from the navbar's global search (?task=<id>): open that card's
+  // detail drawer once it's actually present in the loaded set, then clean the URL.
+  useEffect(() => {
+    const taskId = searchParams.get("task");
+    if (!taskId) return;
+    const card = cards.find((c) => c.id === taskId);
+    if (card) {
+      setSelectedCard(card);
+      setDetailOpen(true);
+      router.replace("/tasks");
+    }
+  }, [cards, searchParams, router]);
 
   useEffect(() => {
     // projects already cached by projects/page.tsx under "sc:projects"
@@ -315,7 +370,7 @@ export default function TasksPage() {
     return unsub;
   }, []);
 
-  // Deadline notifications — fires once per project per deadline, deduped via localStorage
+  // Deadline notifications: fires once per project per deadline, deduped via localStorage
   useEffect(() => {
     if (!projects.length) return;
     const now = new Date();
@@ -353,9 +408,10 @@ export default function TasksPage() {
   const projectCards: KanbanCard[] = projects.map((p) => {
     const colMap: Record<Project["status"], KanbanColumn> = {
       active:    "in-progress",
-      overdue:   "in-progress",
+      overdue:   "review",
       "on-hold": "backlog",
       completed: "done",
+      cancelled: "done",
     };
     return {
       id:          `proj-${p.id}`,
@@ -372,8 +428,42 @@ export default function TasksPage() {
     };
   });
 
-  // All cards: user-created kanban cards + live project cards
-  const allCards = [...cards, ...projectCards];
+  // Ticket-derived cards (live from useUnifiedTickets — email + manual tickets;
+  // the hook itself already omits email tickets when Microsoft mail isn't connected).
+  // Skip tickets TicketWatcher has already synced into a persisted task card
+  // (same `ticket-<id>` id scheme) — otherwise both would render with the same key.
+  const persistedCardIds = new Set(cards.map((c) => c.id));
+  const ticketCards: KanbanCard[] = tickets
+    .filter((t) => !persistedCardIds.has(`ticket-${t.id}`))
+    .map(ticketToCard);
+
+  function ticketToCard(t: (typeof tickets)[number]): KanbanCard {
+    const colMap: Record<typeof t.status, KanbanColumn> = {
+      open:          "backlog",
+      "in-progress": "in-progress",
+      resolved:      "done",
+      closed:        "done",
+    };
+    return {
+      id:          `ticket-${t.id}`,
+      type:        "ticket" as const,
+      title:       t.subject,
+      description: t.description ?? t.snippet ?? "",
+      column:      colMap[t.status],
+      // KanbanPriority has no "urgent" tier — collapse it into "high" and
+      // surface the distinction via a tag instead of losing the signal.
+      priority:    t.priority === "urgent" ? "high" : t.priority,
+      assignees:   t.assigneeName ? [t.assigneeName] : [],
+      dueDate:     t.receivedAt.split("T")[0],
+      tags:        [t.source, ...(t.priority === "urgent" ? ["Urgent"] : [])],
+      // Only email tickets have a working detail route (`/tickets/[id]` resolves
+      // Graph thread ids) — manual tickets show inline info with no dead link.
+      ticketId:    t.source === "email" ? t.id : undefined,
+    };
+  }
+
+  // All cards: user-created kanban cards + live project cards + live ticket cards
+  const allCards = [...cards, ...projectCards, ...ticketCards];
 
   const todayMeetings = cards.filter((c) => c.type === "meeting" && c.meetingDate === todayStr);
 
@@ -385,6 +475,17 @@ export default function TasksPage() {
 
   const myName = authUser?.displayName ?? "";
 
+  function matchesSearch(c: KanbanCard) {
+    const q = search.toLowerCase();
+    return (
+      !q ||
+      c.title.toLowerCase().includes(q) ||
+      c.description.toLowerCase().includes(q) ||
+      c.tags.some((t) => t.toLowerCase().includes(q)) ||
+      c.assignees.some((a) => a.toLowerCase().includes(q))
+    );
+  }
+
   const filtered = allCards.filter((c) => {
     const matchesType =
       filter === "all"     ? true :
@@ -394,15 +495,21 @@ export default function TasksPage() {
       filter === "high"    ? c.priority === "high" :
       filter === "mine"    ? (myName !== "" && c.assignees.includes(myName)) :
       true;
-    const q = search.toLowerCase();
-    const matchesSearch =
-      !q ||
-      c.title.toLowerCase().includes(q) ||
-      c.description.toLowerCase().includes(q) ||
-      c.tags.some((t) => t.toLowerCase().includes(q)) ||
-      c.assignees.some((a) => a.toLowerCase().includes(q));
-    return matchesType && matchesSearch;
+    return matchesType && matchesSearch(c);
   });
+
+  // Completed tab: any task, meeting, or project that reached "done"
+  const completedCards = allCards.filter((c) => c.column === "done" && matchesSearch(c));
+
+  // Follow Up tab: projects currently sitting in the project detail page's "Follow Up" phase
+  const followUpProjectIds = new Set(
+    projects
+      .filter((p) => p.status !== "completed" && getCurrentPhaseId(p) === "followup")
+      .map((p) => p.id)
+  );
+  const followUpCards = projectCards.filter(
+    (c) => c.projectId && followUpProjectIds.has(c.projectId) && matchesSearch(c)
+  );
 
   const filterTabs: { key: Filter; label: string }[] = [
     { key: "all",     label: "All" },
@@ -424,12 +531,24 @@ export default function TasksPage() {
     e.dataTransfer.dropEffect = "move";
     setDragOverCol(col);
   }
+  const COL_TO_STATUS: Record<KanbanColumn, Project["status"]> = {
+    "backlog":     "on-hold",
+    "in-progress": "active",
+    "review":      "overdue",
+    "done":        "completed",
+  };
+
   function handleDrop(e: React.DragEvent<HTMLDivElement>, col: KanbanColumn) {
     e.preventDefault();
     const id = e.dataTransfer.getData("cardId");
     if (id) {
-      setCards((prev) => prev.map((c) => (c.id === id ? { ...c, column: col } : c)));
-      updateTask(id, { column: col }).catch(console.error);
+      if (id.startsWith("proj-")) {
+        const projectId = id.slice(5);
+        updateProject(projectId, { status: COL_TO_STATUS[col] }).catch(console.error);
+      } else {
+        setCards((prev) => prev.map((c) => (c.id === id ? { ...c, column: col } : c)));
+        updateTask(id, { column: col }).catch(console.error);
+      }
     }
     setDraggingId(null);
     setDragOverCol(null);
@@ -439,33 +558,15 @@ export default function TasksPage() {
     setDragOverCol(null);
   }
 
-  /* ─── calendar ──────────────────────────────────────────────────── */
-  const calDays = getCalDays(calYear, calMonth);
-
-  function prevMonth() {
-    if (calMonth === 0) { setCalYear((y) => y - 1); setCalMonth(11); }
-    else setCalMonth((m) => m - 1);
-  }
-  function nextMonth() {
-    if (calMonth === 11) { setCalYear((y) => y + 1); setCalMonth(0); }
-    else setCalMonth((m) => m + 1);
-  }
-
-  const selectedDateCards = allCards.filter((c) =>
-    c.type === "meeting" ? c.meetingDate === selectedDate : c.dueDate === selectedDate
-  );
-
-  function getCardsForDate(dateStr: string) {
-    return allCards.filter((c) =>
-      c.type === "meeting" ? c.meetingDate === dateStr : c.dueDate === dateStr
-    );
-  }
-
-  function formatSelectedDate(dateStr: string) {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString("en-US", {
-      weekday: "long", month: "long", day: "numeric",
-    });
+  // Ticket cards are read-only references, not editable tasks — route them to
+  // the ticket's own detail page instead of opening the generic edit drawer.
+  function handleCardClick(card: KanbanCard) {
+    if (card.type === "ticket") {
+      if (card.ticketId) router.push(`/tickets/${card.ticketId}`);
+      return;
+    }
+    setSelectedCard(card);
+    setDetailOpen(true);
   }
 
   /* ─── render ─────────────────────────────────────────────────────── */
@@ -555,18 +656,21 @@ export default function TasksPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {/* View toggle */}
           <div className="flex items-center gap-0.5 bg-[#f5f5f5] rounded-lg p-0.5">
-            {(["board", "calendar"] as View[]).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  view === v ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#888] hover:text-[#333]"
-                }`}
-              >
-                {v === "board" ? <LayoutGrid className="w-3.5 h-3.5" /> : <CalendarDays className="w-3.5 h-3.5" />}
-                {v === "board" ? "Board" : "Calendar"}
-              </button>
-            ))}
+            {(["board", "completed", "followup"] as View[]).map((v) => {
+              const Icon = VIEW_CONFIG[v].icon;
+              return (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    view === v ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#888] hover:text-[#333]"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {VIEW_CONFIG[v].label}
+                </button>
+              );
+            })}
           </div>
 
           {/* Filter tabs */}
@@ -599,7 +703,7 @@ export default function TasksPage() {
 
       {/* ── Board view ───────────────────────────────────────────────── */}
       {view === "board" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {COLUMNS.map((col) => {
             const colCards = filtered.filter((c) => c.column === col.id);
             const isOver   = dragOverCol === col.id;
@@ -653,8 +757,8 @@ export default function TasksPage() {
                       onDragStart={(e) => handleDragStart(e, card.id)}
                       onDragEnd={handleDragEnd}
                       isDragging={draggingId === card.id}
-                      isReadOnly={card.id.startsWith("proj-")}
-                      onClick={() => { setSelectedCard(card); setDetailOpen(true); }}
+                      isReadOnly={card.type === "ticket"}
+                      onClick={() => handleCardClick(card)}
                     />
                   ))}
 
@@ -679,199 +783,72 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* ── Calendar view ────────────────────────────────────────────── */}
-      {view === "calendar" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 h-[calc(100vh-220px)]">
-          {/* Month grid */}
-          <div className="bg-white border border-[#eaeaea] rounded-xl flex flex-col overflow-hidden h-full">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#f0f0f0] shrink-0">
-              <h2 className="text-sm font-semibold text-[#0a0a0a]">
-                {MONTHS[calMonth]} {calYear}
-              </h2>
-              <div className="flex items-center gap-1">
-                <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors">
-                  <ChevronLeft className="w-4 h-4 text-[#666]" />
-                </button>
-                <button
-                  onClick={() => { setCalYear(today.getFullYear()); setCalMonth(today.getMonth()); setSelectedDate(todayStr); }}
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg hover:bg-[#f5f5f5] transition-colors text-[#666]"
-                >
-                  Today
-                </button>
-                <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors">
-                  <ChevronRight className="w-4 h-4 text-[#666]" />
-                </button>
-              </div>
+      {/* ── Completed view ──────────────────────────────────────────────── */}
+      {view === "completed" && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <CheckCircle2 className="w-4 h-4 text-[#22c55e]" />
+            <h2 className="text-sm font-semibold text-[#0a0a0a]">Completed</h2>
+            <span className="text-[10px] font-medium text-[#999] bg-[#f5f5f5] px-1.5 py-0.5 rounded-full tabular-nums">
+              {completedCards.length}
+            </span>
+          </div>
+          {completedCards.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 rounded-xl border border-dashed border-[#e8e8e8]">
+              <CheckCircle2 className="w-7 h-7 text-[#e8e8e8] mb-2" />
+              <p className="text-xs text-[#bbb]">Nothing completed yet</p>
             </div>
-
-            {/* Weekday headers */}
-            <div className="grid grid-cols-7 border-b border-[#f0f0f0] shrink-0">
-              {WEEKDAYS.map((d) => (
-                <div key={d} className="text-center text-[10px] font-semibold text-[#bbb] uppercase tracking-wide py-2.5 border-r border-[#f0f0f0] last:border-r-0">
-                  {d}
-                </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {completedCards.map((card) => (
+                <Card
+                  key={card.id}
+                  card={card}
+                  onDragStart={() => {}}
+                  onDragEnd={() => {}}
+                  isDragging={false}
+                  isReadOnly
+                  onClick={() => handleCardClick(card)}
+                />
               ))}
             </div>
+          )}
+        </div>
+      )}
 
-            {/* Day grid — fills remaining height */}
-            <div className="grid grid-cols-7 flex-1 auto-rows-fr">
-              {calDays.map((dateStr, idx) => {
-                if (!dateStr) return <div key={idx} className="border-r border-b border-[#f0f0f0]" />;
-                const dayCards   = getCardsForDate(dateStr);
-                const isToday    = dateStr === todayStr;
-                const isSelected = dateStr === selectedDate;
-                const [,, d]     = dateStr.split("-");
-                return (
-                  <button
-                    key={dateStr}
-                    onClick={() => setSelectedDate(dateStr)}
-                    className={`flex flex-col items-start p-1.5 border-r border-b border-[#f0f0f0] last:border-r-0 overflow-hidden transition-colors text-left ${
-                      isSelected ? "bg-[#f5f5f5]" : "hover:bg-[#fafafa]"
-                    }`}
-                  >
-                    <span className={`text-[11px] font-medium w-6 h-6 flex items-center justify-center rounded-full shrink-0 mb-1 ${
-                      isSelected ? "bg-[#0a0a0a] text-white" :
-                      isToday    ? "bg-[#0070f3] text-white" :
-                      "text-[#444]"
-                    }`}>
-                      {parseInt(d)}
-                    </span>
-                    <div className="w-full space-y-0.5 overflow-hidden">
-                      {dayCards.slice(0, 3).map((c) => (
-                        <div
-                          key={c.id}
-                          className={`text-[9px] truncate px-1.5 py-0.5 rounded font-medium leading-tight ${
-                            c.type === "meeting" ? "bg-[#eff6ff] text-[#2563eb]" :
-                            c.type === "project" ? "bg-[#f0fdf4] text-[#16a34a]" :
-                            "bg-[#f5f5f5] text-[#555]"
-                          }`}
-                        >
-                          {c.title}
-                        </div>
-                      ))}
-                      {dayCards.length > 3 && (
-                        <p className="text-[8px] text-[#aaa] px-1">+{dayCards.length - 3} more</p>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Legend */}
-            <div className="flex items-center gap-4 px-6 py-3 border-t border-[#f0f0f0] shrink-0">
-              <span className="flex items-center gap-1.5 text-[10px] text-[#999]">
-                <span className="w-2 h-2 rounded-sm bg-[#eff6ff] border border-[#bfdbfe]" /> Meeting
-              </span>
-              <span className="flex items-center gap-1.5 text-[10px] text-[#999]">
-                <span className="w-2 h-2 rounded-sm bg-[#f0fdf4] border border-[#bbf7d0]" /> Project
-              </span>
-              <span className="flex items-center gap-1.5 text-[10px] text-[#999]">
-                <span className="w-2 h-2 rounded-sm bg-[#f5f5f5] border border-[#e5e5e5]" /> Task
-              </span>
-            </div>
+      {/* ── Follow Up view ──────────────────────────────────────────────── */}
+      {view === "followup" && (
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <Flag className="w-4 h-4 text-[#f59e0b]" />
+            <h2 className="text-sm font-semibold text-[#0a0a0a]">Follow Up</h2>
+            <span className="text-[10px] font-medium text-[#999] bg-[#f5f5f5] px-1.5 py-0.5 rounded-full tabular-nums">
+              {followUpCards.length}
+            </span>
           </div>
-
-          {/* Day detail panel */}
-          <div className="bg-white border border-[#eaeaea] rounded-xl flex flex-col overflow-hidden h-full">
-            <div className="px-5 pt-5 pb-4 border-b border-[#f0f0f0] shrink-0">
-              <h3 className="text-sm font-semibold text-[#0a0a0a]">
-                {selectedDate ? formatSelectedDate(selectedDate) : "Select a day"}
-              </h3>
-              <p className="text-xs text-[#999] mt-0.5">
-                {selectedDateCards.length === 0
-                  ? "Nothing scheduled"
-                  : `${selectedDateCards.length} item${selectedDateCards.length > 1 ? "s" : ""}`}
-              </p>
+          <p className="text-xs text-[#999] mb-4">
+            Projects currently in the Follow Up phase: post-launch actions, client feedback, and handoff docs.
+          </p>
+          {followUpCards.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 rounded-xl border border-dashed border-[#e8e8e8]">
+              <Flag className="w-7 h-7 text-[#e8e8e8] mb-2" />
+              <p className="text-xs text-[#bbb]">No projects in follow up</p>
             </div>
-
-            {selectedDateCards.length === 0 ? (
-              <div className="flex flex-col items-center justify-center flex-1 px-5">
-                <CalendarDays className="w-7 h-7 text-[#e8e8e8] mb-2" />
-                <p className="text-xs text-[#bbb]">Nothing scheduled</p>
-                <button
-                  onClick={() => setMeetingDrawerOpen(true)}
-                  className="mt-3 text-xs text-[#0070f3] hover:underline"
-                >
-                  + Schedule meeting
-                </button>
-              </div>
-            ) : (
-              <div className="flex-1 overflow-y-auto p-5 space-y-2.5">
-                {selectedDateCards.map((card) => {
-                  const cfg = card.type === "meeting" && card.platform ? PLATFORM_CONFIG[card.platform] : null;
-                  return (
-                    <div
-                      key={card.id}
-                      className="flex items-start gap-3 p-3 rounded-lg border border-[#eaeaea] hover:border-[#ccc] transition-colors"
-                    >
-                      <div
-                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-[#f5f5f5]"
-                      >
-                        {card.type === "meeting" ? (
-                          cfg?.letter === "📍"
-                            ? <MapPin className="w-3.5 h-3.5 text-[#b45309]" />
-                            : <Video className="w-3.5 h-3.5" style={{ color: cfg?.color ?? "#666" }} />
-                        ) : card.type === "project" ? (
-                          <FolderKanban className="w-3.5 h-3.5 text-[#16a34a]" />
-                        ) : (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#0070f3]" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-[#0a0a0a] truncate">{card.title}</p>
-                        {card.type === "meeting" && card.meetingTime && (
-                          <p className="text-[10px] text-[#999] mt-0.5">
-                            {formatTime(card.meetingTime)} · {card.duration}min
-                            {cfg ? ` · ${cfg.label}` : ""}
-                          </p>
-                        )}
-                        {card.type !== "meeting" && (
-                          <p className="text-[10px] text-[#bbb] mt-0.5 capitalize">{card.priority} priority</p>
-                        )}
-                        {card.meetingUrl && (
-                          <a
-                            href={card.meetingUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[10px] font-medium text-[#0070f3] hover:underline flex items-center gap-0.5 mt-1"
-                          >
-                            Join <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        )}
-                        {card.type === "project" && card.projectId && (
-                          <Link
-                            href={`/projects/${card.projectId}`}
-                            className="text-[10px] font-medium text-[#0070f3] hover:underline flex items-center gap-0.5 mt-1"
-                          >
-                            View project <ExternalLink className="w-2.5 h-2.5" />
-                          </Link>
-                        )}
-                        {card.assignees.length > 0 && (
-                          <div className="flex -space-x-1 mt-1.5">
-                            {card.assignees.slice(0, 4).map((name) => {
-                              const c = getAvatarColor(name);
-                              return (
-                                <div key={name} title={name} className={`w-4 h-4 rounded-full ${c.bg} ${c.text} border border-white flex items-center justify-center`}>
-                                  <span className="text-[7px] font-semibold">{getInitials(name)}</span>
-                                </div>
-                              );
-                            })}
-                            {card.assignees.length > 4 && (
-                              <div className="w-4 h-4 rounded-full bg-[#f5f5f5] border border-white flex items-center justify-center">
-                                <span className="text-[7px] text-[#666]">+{card.assignees.length - 4}</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {followUpCards.map((card) => (
+                <Card
+                  key={card.id}
+                  card={card}
+                  onDragStart={() => {}}
+                  onDragEnd={() => {}}
+                  isDragging={false}
+                  isReadOnly
+                  onClick={() => handleCardClick(card)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

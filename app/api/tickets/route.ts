@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
-import { getGmailToken, GMAIL_ENCODED } from "./_gmail-auth";
+import { getGraphToken, TICKET_MAILBOX_ENCODED } from "./_ms-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface GmailThread  { id: string; snippet: string }
-interface GmailMsgMeta {
-  id: string; threadId: string; snippet: string; labelIds?: string[]; internalDate?: string;
-  payload?: { headers?: { name: string; value: string }[] };
+interface GraphMessage {
+  id: string;
+  conversationId: string;
+  subject?: string;
+  from?: { emailAddress?: { address?: string; name?: string } };
+  receivedDateTime?: string;
+  bodyPreview?: string;
+  isRead?: boolean;
 }
 
 export interface EmailTicket {
@@ -15,99 +19,39 @@ export interface EmailTicket {
   subject: string; snippet: string; receivedAt: string; isUnread: boolean;
 }
 
-function parseFrom(raw: string): { from: string; fromName: string } {
-  const m = raw.match(/^(.+?)\s*<(.+?)>$/);
-  if (m) return { fromName: m[1].trim().replace(/^"|"$/g, ""), from: m[2].trim() };
-  return { from: raw.trim(), fromName: raw.trim() };
-}
+const NOREPLY_PATTERN = /noreply|no-reply|donotreply|mailer-daemon|postmaster/i;
 
-function threadToTicket(thread: { id: string; messages?: GmailMsgMeta[] }): EmailTicket | null {
-  const messages = thread.messages ?? [];
-  if (messages.length === 0) return null;
-  const first    = messages[0];
-  const isUnread = messages.some((m) => (m.labelIds ?? []).includes("UNREAD"));
-  const hdr      = first.payload?.headers ?? [];
-  const get      = (n: string) => hdr.find((h) => h.name.toLowerCase() === n.toLowerCase())?.value ?? "";
-  const { from, fromName } = parseFrom(get("From"));
-  return {
-    id: thread.id, threadId: thread.id,
-    from, fromName,
-    subject:    get("Subject") || "(no subject)",
-    snippet:    first.snippet ?? "",
-    receivedAt: first.internalDate
-      ? new Date(parseInt(first.internalDate)).toISOString()
-      : new Date(get("Date")).toISOString(),
-    isUnread,
-  };
-}
-
-// Gmail Batch API — send up to 100 thread-detail requests in a single HTTP call.
-// Replaces the old sequential-batches-of-10 pattern (10 round-trips → 1 round-trip).
-async function batchFetchThreads(threadIds: string[], token: string): Promise<EmailTicket[]> {
-  if (threadIds.length === 0) return [];
-
-  const boundary = `gtbatch_${Date.now()}`;
-  const threadPath = (id: string) =>
-    `/gmail/v1/users/${GMAIL_ENCODED}/threads/${id}?format=metadata` +
-    `&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`;
-
-  const bodyParts = threadIds.map((id, i) =>
-    `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <${i}>\r\n\r\nGET ${threadPath(id)}\r\n`
-  );
-  const body = bodyParts.join("\r\n") + `\r\n--${boundary}--`;
-
-  const res = await fetch("https://www.googleapis.com/batch/gmail/v1", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": `multipart/mixed; boundary=${boundary}`,
-    },
-    body,
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    // Fallback: fetch all in parallel individually (still faster than sequential batches)
-    const results = await Promise.all(threadIds.map(async (id) => {
-      const r = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/${GMAIL_ENCODED}/threads/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
-        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
-      );
-      if (!r.ok) return null;
-      return threadToTicket(await r.json() as { id: string; messages?: GmailMsgMeta[] });
-    }));
-    return results.filter((t): t is EmailTicket => t !== null);
+// Graph lists individual messages rather than threads — group by conversationId
+// to emulate the ticket-per-thread view.
+function messagesToTickets(messages: GraphMessage[]): EmailTicket[] {
+  const groups = new Map<string, GraphMessage[]>();
+  for (const m of messages) {
+    if (NOREPLY_PATTERN.test(m.from?.emailAddress?.address ?? "")) continue;
+    const g = groups.get(m.conversationId) ?? [];
+    g.push(m);
+    groups.set(m.conversationId, g);
   }
-
-  const text = await res.text();
-
-  // Extract the response boundary (different from the request boundary)
-  const ct = res.headers.get("content-type") ?? "";
-  const resBoundary = ct.match(/boundary=([^\s;,"]+)/)?.[1]?.replace(/^"|"$/g, "");
-  if (!resBoundary) return [];
 
   const tickets: EmailTicket[] = [];
-  const parts = text.split(`--${resBoundary}`).slice(1); // remove preamble
-
-  for (const part of parts) {
-    if (part.trimStart().startsWith("--")) break; // epilogue boundary
-
-    // Each part: HTTP meta headers → blank line → HTTP status line → blank line → JSON body
-    const jsonStart = part.indexOf("{");
-    const jsonEnd   = part.lastIndexOf("}");
-    if (jsonStart === -1 || jsonEnd === -1) continue;
-
-    try {
-      const thread = JSON.parse(part.slice(jsonStart, jsonEnd + 1)) as { id: string; messages?: GmailMsgMeta[] };
-      const ticket = threadToTicket(thread);
-      if (ticket) tickets.push(ticket);
-    } catch { /* skip malformed part */ }
+  for (const [conversationId, msgs] of groups) {
+    const first = msgs.reduce((a, b) =>
+      (a.receivedDateTime ?? "") <= (b.receivedDateTime ?? "") ? a : b
+    );
+    const isUnread = msgs.some((m) => m.isRead === false);
+    tickets.push({
+      id:         conversationId,
+      threadId:   conversationId,
+      from:       first.from?.emailAddress?.address ?? "",
+      fromName:   first.from?.emailAddress?.name ?? first.from?.emailAddress?.address ?? "",
+      subject:    first.subject || "(no subject)",
+      snippet:    first.bodyPreview ?? "",
+      receivedAt: first.receivedDateTime ?? new Date().toISOString(),
+      isUnread,
+    });
   }
-
-  return tickets;
+  return tickets.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
 }
 
-const PAGE_SIZE = 100;
 const CACHE_TTL = 60_000;
 
 interface CachedResponse {
@@ -117,11 +61,11 @@ interface CachedResponse {
 const responseCache = new Map<string, CachedResponse>();
 
 export async function GET(req: Request) {
-  if (!process.env.GMAIL_CLIENT_EMAIL || !process.env.GMAIL_PRIVATE_KEY) {
+  if (!process.env.MS_TICKETS_CLIENT_ID || !process.env.MS_TICKETS_CLIENT_SECRET || !process.env.MS_TICKETS_TENANT_ID) {
     return NextResponse.json({ error: "not_configured", tickets: [] });
   }
   try {
-    const token = await getGmailToken();
+    const token = await getGraphToken();
     const { searchParams } = new URL(req.url);
     const pageToken = searchParams.get("pageToken") ?? undefined;
     const cacheKey  = pageToken ?? "__first__";
@@ -131,35 +75,35 @@ export async function GET(req: Request) {
       return NextResponse.json(hit.data, { headers: { "X-Cache": "HIT" } });
     }
 
-    const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/${GMAIL_ENCODED}/threads`);
-    url.searchParams.set("maxResults", String(PAGE_SIZE));
-    url.searchParams.set("q", [
-      "to:ticket@atlantisutility.com",
-      "-from:noreply", "-from:no-reply",
-      "-from:donotreply", "-from:mailer-daemon", "-from:postmaster",
-    ].join(" "));
-    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    // pageToken, when present, is the opaque @odata.nextLink from the previous page
+    let url: string;
+    if (pageToken) {
+      url = pageToken;
+    } else {
+      const u = new URL(`https://graph.microsoft.com/v1.0/users/${TICKET_MAILBOX_ENCODED}/mailFolders/inbox/messages`);
+      u.searchParams.set("$top", "100");
+      u.searchParams.set("$orderby", "receivedDateTime desc");
+      u.searchParams.set("$select", "id,conversationId,subject,from,receivedDateTime,bodyPreview,isRead");
+      url = u.toString();
+    }
 
-    const listRes = await fetch(url.toString(), {
+    const listRes = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
     if (!listRes.ok) return NextResponse.json({ error: await listRes.text(), tickets: [] }, { status: 502 });
 
     const data = await listRes.json() as {
-      threads?: GmailThread[];
-      nextPageToken?: string;
-      resultSizeEstimate?: number;
+      value?: GraphMessage[];
+      "@odata.nextLink"?: string;
     };
-    const threads = data.threads ?? [];
 
-    // Single batch call instead of 10 sequential round-trips
-    const tickets = await batchFetchThreads(threads.map((t) => t.id), token);
+    const tickets = messagesToTickets(data.value ?? []);
 
     const result = {
       tickets,
-      nextPageToken: data.nextPageToken ?? null,
-      total: data.resultSizeEstimate ?? tickets.length,
+      nextPageToken: data["@odata.nextLink"] ?? null,
+      total: tickets.length,
     };
     responseCache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL });
     return NextResponse.json(result, { headers: { "X-Cache": "MISS" } });

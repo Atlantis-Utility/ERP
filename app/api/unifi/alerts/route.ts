@@ -82,12 +82,12 @@ export async function GET(req: NextRequest) {
         }
 
         // High latency in the last hour — include real avg/max ms
-        const hlPeriods = recentPeriods.filter((p) => p.high_latency);
+        const hlPeriods = recentPeriods.filter((p) => p.highLatency);
         if (hlPeriods.length > 0) {
           const avgMs =
-            hlPeriods.reduce((s, p) => s + (p.latency_avg_ms ?? 0), 0) /
+            hlPeriods.reduce((s, p) => s + (p.latencyAvgMs ?? 0), 0) /
             hlPeriods.length;
-          const maxMs = Math.max(...hlPeriods.map((p) => p.latency_max_ms ?? 0));
+          const maxMs = Math.max(...hlPeriods.map((p) => p.latencyMaxMs ?? 0));
           issueDescriptions.push(
             `high latency avg ${Math.round(avgMs)} ms, max ${maxMs} ms`
           );
@@ -103,7 +103,7 @@ export async function GET(req: NextRequest) {
 
         // Timestamp = when the most recent issue period occurred
         const latestIssue = sorted.find(
-          (p) => p.wanDowntime || p.packetLoss || p.high_latency
+          (p) => p.wanDowntime || p.packetLoss || p.highLatency
         );
         const created_at = latestIssue
           ? periodToTime(latestIssue.index, maxIndex, nowMs)

@@ -5,36 +5,35 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import IspLogo from "@/components/unifi/IspLogo";
 import {
-  Wifi, AlertTriangle, CheckCircle, XCircle, Phone,
-  ArrowRight, RefreshCw, PhoneIncoming, PhoneOutgoing, Clock,
+  Wifi, AlertTriangle, CheckCircle, Phone,
+  ArrowRight, RefreshCw,
   Users, FolderKanban, Settings, CalendarDays, CheckCheck,
+  DollarSign, Bell,
 } from "lucide-react";
 import type { UiEnrichedSite } from "@/lib/unifi";
 import {
   addNotification, getNotifications, markAllRead,
   type AppNotification,
 } from "@/lib/notifications";
+import { subscribeProjects } from "@/lib/db/projects";
+import type { Project } from "@/lib/mock-projects";
+import { subscribeTasks } from "@/lib/db/tasks";
+import type { KanbanCard } from "@/components/tasks/AddTaskDrawer";
+import type { PortalCustomer } from "@/lib/ringlogix-portal";
+import { balanceAmount } from "@/lib/customer-status";
+import Select from "@/components/ui/Select";
+import ProjectTimelineChart, { TIMELINE_SERIES } from "@/components/dashboard/ProjectTimelineChart";
+import TodaySchedule from "@/components/dashboard/TodaySchedule";
+
+const TIMELINE_RANGE_OPTIONS = [
+  { value: "today", label: "Today" },
+  { value: "week",  label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "3",      label: "Next 3 Months" },
+  { value: "6",      label: "Next 6 Months" },
+];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface RLCDR {
-  callid?: string;
-  domain?: string;
-  start_time?: string;
-  duration?: string;
-  orig_from_user?: string;
-  dest_to_user?: string;
-  direction?: string;
-}
-
-interface RLSummary {
-  customers: number;
-  dids: number;
-  assignedDids: number;
-  calls: number;
-  totalBalance: number;
-  recentCalls: RLCDR[];
-}
 
 interface UnifiSummary {
   total: number;
@@ -56,22 +55,6 @@ function timeAgo(t: string | undefined | null): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
-}
-
-function fmtDuration(s: string | undefined) {
-  if (!s) return "-";
-  const n = parseInt(s, 10);
-  if (isNaN(n)) return "-";
-  if (n < 60) return `${n}s`;
-  return `${Math.floor(n / 60)}m ${n % 60}s`;
-}
-
-function fmtNumber(n: string | undefined) {
-  if (!n) return "-";
-  const d = n.replace(/\D/g, "");
-  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-  if (d.length === 11 && d[0] === "1") return `+1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
-  return n;
 }
 
 function greetingPrefix(): string {
@@ -106,20 +89,28 @@ function NotificationPanel({
   const unread = notifs.filter((n) => !n.read).length;
 
   return (
-    <div className="bg-white border border-[#eaeaea] rounded-xl overflow-hidden flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-[#f4f4f4] shrink-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-[#0a0a0a]">Notifications</p>
-          {unread > 0 && (
-            <span className="bg-[#0a0a0a] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-              {unread}
-            </span>
-          )}
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-[#fafafa] border border-[#f0f0f0]">
+            <Bell className="w-3.5 h-3.5 text-[#666]" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-[#0a0a0a]">Notifications</p>
+              {unread > 0 && (
+                <span className="bg-[#0a0a0a] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                  {unread}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-[#999]">Recent activity</p>
+          </div>
         </div>
         {unread > 0 && (
           <button
             onClick={onMarkAllRead}
-            className="flex items-center gap-1 text-[10px] font-medium text-[#666] hover:text-[#0a0a0a] transition-colors"
+            className="flex items-center gap-1 text-[10px] font-medium text-[#666] hover:text-[#0a0a0a] transition-colors shrink-0"
           >
             <CheckCheck className="w-3 h-3" /> Mark all read
           </button>
@@ -174,6 +165,29 @@ function NotificationPanel({
   );
 }
 
+function deriveUnifiSummary(sites: UiEnrichedSite[]): UnifiSummary {
+  return {
+    total: sites.length,
+    online: sites.filter((s) => s.connected).length,
+    offline: sites.filter((s) => !s.connected).length,
+    alerts: sites.reduce((n, s) => n + s.statistics.counts.criticalNotification, 0),
+    devicesOnline: sites.reduce((n, s) => n + s.statistics.counts.totalDevice - s.statistics.counts.offlineDevice, 0),
+    devicesOffline: sites.reduce((n, s) => n + s.statistics.counts.offlineDevice, 0),
+    problemSites: sites.filter((s) => !s.connected || s.statistics.counts.criticalNotification > 0).slice(0, 5),
+  };
+}
+
+// ── Business / decision-making helpers ───────────────────────────────────────
+
+/** Whole-days between today and a date string, rounded up so "tomorrow" reads as 1, not 0.9. */
+function daysUntil(dateStr: string): number {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr.split("T")[0] + "T00:00:00");
+  return Math.ceil((d.getTime() - now.getTime()) / 86_400_000);
+}
+
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -183,58 +197,26 @@ export default function DashboardPage() {
   const [spinning, setSpinning] = useState(false);
   const [appNotifs, setAppNotifs] = useState<AppNotification[]>([]);
 
-  const [rl, setRl] = useState<RLSummary>({
-    customers: 0, dids: 0, assignedDids: 0, calls: 0, totalBalance: 0, recentCalls: [],
-  });
   const [unifi, setUnifi] = useState<UnifiSummary>({
     total: 0, online: 0, offline: 0, alerts: 0,
     devicesOnline: 0, devicesOffline: 0, problemSites: [],
   });
 
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [cards, setCards] = useState<KanbanCard[]>([]);
+  const [customers, setCustomers] = useState<PortalCustomer[]>([]);
+  const [timelineRange, setTimelineRange] = useState<"today" | "week" | "month" | "3" | "6">("6");
+  const [topPanelTab, setTopPanelTab] = useState<"timeline" | "schedule">("timeline");
+
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setSpinning(true);
     try {
-      const [custR, didR, cdrR, billR, sitesR] = await Promise.allSettled([
-        fetch("/api/ringlogix/customers").then((r) => r.json()),
-        fetch("/api/ringlogix/dids").then((r) => r.json()),
-        fetch("/api/ringlogix/cdr?limit=20").then((r) => r.json()),
-        fetch("/api/ringlogix/billing").then((r) => r.json()),
-        fetch("/api/unifi/sites").then((r) => r.json()),
-      ]);
+      const sitesJson = await fetch("/api/unifi/sites").then((r) => r.json());
+      const sites: UiEnrichedSite[] = sitesJson?.data ?? [];
 
-      const custRaw    = custR.status === "fulfilled" ? custR.value : null;
-      const custArr    = Array.isArray(custRaw) ? custRaw : (custRaw?.data ?? []);
-      const customers  = custArr.length;
-      const didRaw     = didR.status === "fulfilled" ? didR.value : null;
-      const didsArr    = Array.isArray(didRaw) ? didRaw : (didRaw?.data ?? []);
-      const cdrRaw     = cdrR.status === "fulfilled" ? cdrR.value : null;
-      const cdrsArr    = Array.isArray(cdrRaw) ? cdrRaw : (cdrRaw?.data ?? []);
-      const billRaw    = billR.status === "fulfilled" ? billR.value : null;
-      const billArr    = Array.isArray(billRaw) ? billRaw : (billRaw?.data ?? []);
-      const sites: UiEnrichedSite[] = sitesR.status === "fulfilled" ? (sitesR.value?.data ?? []) : [];
-
-
-      setRl({
-        customers,
-        dids:         didsArr.length,
-        assignedDids: didsArr.filter((d: { subscriber?: string }) => d.subscriber).length,
-        calls:        cdrsArr.length,
-        totalBalance: billArr.reduce((s: number, c: { balance?: string }) => s + parseFloat(c.balance ?? "0"), 0),
-        recentCalls:  cdrsArr.slice(0, 8),
-      });
-
-      const online         = sites.filter((s) => s.connected).length;
-      const offline        = sites.filter((s) => !s.connected).length;
-      const alertsCount    = sites.reduce((n, s) => n + s.statistics.counts.criticalNotification, 0);
-      const devicesOnline  = sites.reduce((n, s) => n + s.statistics.counts.totalDevice - s.statistics.counts.offlineDevice, 0);
-      const devicesOffline = sites.reduce((n, s) => n + s.statistics.counts.offlineDevice, 0);
-
-      setUnifi({
-        total: sites.length, online, offline, alerts: alertsCount,
-        devicesOnline, devicesOffline,
-        problemSites:  sites.filter((s) => !s.connected || s.statistics.counts.criticalNotification > 0).slice(0, 5),
-      });
+      setUnifi(deriveUnifiSummary(sites));
+      try { localStorage.setItem("sc:sites", JSON.stringify(sites)); } catch {}
 
       // Detect offline ↔ online transitions
       const prevOfflineRaw = localStorage.getItem("dashboard_last_offline_sites");
@@ -343,7 +325,20 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    // Paint instantly from whatever DataPreloader (or a prior visit) already
+    // cached, then refresh silently in the background instead of blocking
+    // the whole KPI strip on a fresh network round-trip.
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem("sc:sites");
+      if (cached) {
+        setUnifi(deriveUnifiSummary(JSON.parse(cached)));
+        setLoading(false);
+        hasCache = true;
+      }
+    } catch {}
+
+    load(hasCache);
     const iv = setInterval(() => load(true), 60_000);
     return () => clearInterval(iv);
   }, [load]);
@@ -356,23 +351,137 @@ export default function DashboardPage() {
     return () => window.removeEventListener("app-notification", onNotif as EventListener);
   }, []);
 
+  // Projects — for upcoming/overdue deadline tracking
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("sc:projects");
+      if (c) setProjects(JSON.parse(c));
+    } catch {}
+    const unsub = subscribeProjects((ps) => {
+      setProjects(ps);
+      try { localStorage.setItem("sc:projects", JSON.stringify(ps)); } catch {}
+    });
+    return unsub;
+  }, []);
+
+  // Tasks/meetings — for upcoming meeting tracking
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("sc:tasks");
+      if (c) setCards(JSON.parse(c));
+    } catch {}
+    const unsub = subscribeTasks((cs) => {
+      setCards(cs);
+      try { localStorage.setItem("sc:tasks", JSON.stringify(cs)); } catch {}
+    });
+    return unsub;
+  }, []);
+
+  // Customers — for unpaid-balance tracking
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("sc:customers");
+      if (c) setCustomers(JSON.parse(c));
+    } catch {}
+    fetch("/api/ringlogix/customers")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        const arr: PortalCustomer[] = Array.isArray(data) ? data : [];
+        setCustomers(arr);
+        try { localStorage.setItem("sc:customers", JSON.stringify(arr)); } catch {}
+      })
+      .catch(() => {});
+  }, []);
+
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric",
   });
 
-  const systemHealthy = !loading && unifi.offline === 0 && unifi.alerts === 0 && unifi.devicesOffline === 0;
+  // Business KPIs derived from projects, meetings, and customer billing data
+  const activeProjectsWithDays = projects
+    .filter((p) => p.status !== "completed" && !p.deadlineTbd && p.deadline)
+    .map((p) => ({ ...p, daysLeft: daysUntil(p.deadline) }));
+  const overdueProjects = activeProjectsWithDays.filter((p) => p.daysLeft < 0).sort((a, b) => a.daysLeft - b.daysLeft);
+  const upcomingDeadlines = activeProjectsWithDays.filter((p) => p.daysLeft >= 0 && p.daysLeft <= 7).sort((a, b) => a.daysLeft - b.daysLeft);
 
-  // KPI strip — color only for status-meaningful values
-  const kpis = [
-    { value: rl.customers,       label: "Customers",      sub: "Total accounts",                                        href: "/customers"     },
-    { value: rl.dids,            label: "Phone Numbers",  sub: `${rl.assignedDids} assigned`,                           href: "/phone-numbers" },
-    { value: unifi.online,       label: "Sites Online",   sub: `of ${unifi.total} total`,   valueColor: unifi.online > 0 && unifi.offline === 0 ? "text-[#16a34a]" : undefined, href: "/sites"   },
-    { value: unifi.offline,      label: "Sites Offline",  sub: unifi.offline > 0 ? "Needs attention" : "All connected", valueColor: unifi.offline > 0 ? "text-[#dc2626]" : undefined, href: "/sites"   },
-    { value: unifi.alerts,       label: "Active Alerts",  sub: unifi.alerts > 0 ? "Needs review" : "All clear",        valueColor: unifi.alerts > 0 ? "text-[#d97706]" : undefined, href: "/alerts"  },
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todaysMeetings = cards.filter((c) => c.type === "meeting" && c.column !== "done" && c.meetingDate === todayStr);
+
+  const unpaidCustomers = customers
+    .map((c) => ({ ...c, owed: balanceAmount(c.balance) }))
+    .filter((c) => c.owed > 0)
+    .sort((a, b) => b.owed - a.owed);
+  const totalOwed = unpaidCustomers.reduce((s, c) => s + c.owed, 0);
+
+  // Same status colors used on the Projects page badges — kept in sync so a
+  // color always means the same thing across the app.
+  const projectStatusSlices = [
+    { key: "active",    label: "Active",    count: projects.filter((p) => p.status === "active").length,    color: "#818cf8" },
+    { key: "completed", label: "Completed", count: projects.filter((p) => p.status === "completed").length, color: "#22c55e" },
+    { key: "on-hold",   label: "On Hold",   count: projects.filter((p) => p.status === "on-hold").length,   color: "#fbbf24" },
+    { key: "overdue",   label: "Overdue",   count: projects.filter((p) => p.status === "overdue").length,   color: "#fb923c" },
+  ];
+
+  // Project timeline — real deadlines bucketed by the selected range, never fabricated history
+  const timelineMonths = (() => {
+    const now = new Date();
+    const validProjects = projects.filter((p) => !p.deadlineTbd && p.deadline);
+
+    function emptyBucket(key: string, label: string) {
+      return { key, label, active: 0, completed: 0, onHold: 0, overdue: 0 };
+    }
+    function tally(bucket: { active: number; completed: number; onHold: number; overdue: number }, status: string) {
+      if (status === "active") bucket.active++;
+      else if (status === "completed") bucket.completed++;
+      else if (status === "on-hold") bucket.onHold++;
+      else if (status === "overdue") bucket.overdue++;
+    }
+
+    if (timelineRange === "today" || timelineRange === "week") {
+      const bucket = emptyBucket(timelineRange, timelineRange === "today" ? "Today" : "This Week");
+      const maxDays = timelineRange === "today" ? 0 : 6;
+      for (const p of validProjects) {
+        const days = daysUntil(p.deadline);
+        if (days >= 0 && days <= maxDays) tally(bucket, p.status);
+      }
+      return [bucket];
+    }
+
+    if (timelineRange === "month") {
+      const bucket = emptyBucket(`${now.getFullYear()}-${now.getMonth()}`, now.toLocaleDateString("en-US", { month: "long" }));
+      for (const p of validProjects) {
+        const d = new Date(p.deadline.split("T")[0] + "T00:00:00");
+        if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) tally(bucket, p.status);
+      }
+      return [bucket];
+    }
+
+    const monthCount = Number(timelineRange);
+    const months = Array.from({ length: monthCount }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      return emptyBucket(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, d.toLocaleDateString("en-US", { month: "short" }));
+    });
+    const byKey = new Map(months.map((m) => [m.key, m]));
+    for (const p of validProjects) {
+      const d = new Date(p.deadline.split("T")[0] + "T00:00:00");
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const bucket = byKey.get(key);
+      if (bucket) tally(bucket, p.status);
+    }
+    return months;
+  })();
+
+  const kpiCards = [
+    { key: "deadlines",    label: "Deadlines This Week", value: upcomingDeadlines.length, href: "/projects" },
+    { key: "overdue",      label: "Overdue Projects",    value: overdueProjects.length,   href: "/projects" },
+    { key: "unpaid",       label: "Unpaid Customers",    value: unpaidCustomers.length,   href: "/customers" },
+    { key: "sitesOnline",  label: "Sites Online",        value: unifi.online,             href: "/sites" },
+    { key: "meetingsToday",label: "Meetings Today",      value: todaysMeetings.length,    href: "/tasks" },
   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div>
       {/* ── Page header ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4 shrink-0">
         <div>
@@ -382,16 +491,6 @@ export default function DashboardPage() {
           <p className="text-sm text-[#999] mt-1">{today}</p>
         </div>
         <div className="flex items-center gap-3">
-          {!loading && (
-            <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border ${
-              systemHealthy
-                ? "bg-[#f0fdf4] text-[#16a34a] border-[#bbf7d0]"
-                : "bg-[#fffbeb] text-[#b45309] border-[#fde68a]"
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${systemHealthy ? "bg-[#16a34a]" : "bg-[#d97706]"}`} />
-              {systemHealthy ? "All systems operational" : "Issues detected"}
-            </div>
-          )}
           <div className="flex items-center gap-2 text-xs text-[#bbb]">
             {lastUpdated && (
               <span>
@@ -408,227 +507,273 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── KPI strip ────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-4 overflow-hidden shrink-0">
-        {kpis.map((k, i) => (
+      {/* ── KPI strip ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-4 overflow-hidden">
+        {kpiCards.map((k, i, arr) => (
           <Link
-            key={k.label}
+            key={k.key}
             href={k.href}
             className={`px-4 py-4 md:flex-1 md:px-5 md:py-5 hover:bg-[#fafafa] transition-colors ${
-              i < kpis.length - 1 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""
+              i < arr.length - 1 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""
             }`}
           >
             {loading ? (
               <div className="h-7 w-12 bg-[#f1f1f1] rounded animate-pulse mb-1.5" />
             ) : (
-              <p className={`text-2xl font-bold tabular-nums leading-none ${k.valueColor ?? "text-[#0a0a0a]"}`}>
-                {k.value}
-              </p>
+              <p className="text-2xl font-bold tabular-nums leading-none text-[#0a0a0a]">{k.value}</p>
             )}
             <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{k.label}</p>
-            <p className={`text-[10px] mt-0.5 ${"subColor" in k && k.subColor ? k.subColor : "text-[#bbb]"}`}>{k.sub}</p>
           </Link>
         ))}
       </div>
 
-      {/* ── Main grid ────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-
-        {/* Left: Network + Communications */}
-        <div className="lg:col-span-2 flex flex-col gap-4 min-h-0">
-
-          {/* Network · UniFi */}
-          <div className="flex flex-col flex-1 min-h-0 bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f4f4f4]">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-lg bg-[#fafafa] border border-[#f0f0f0]">
-                  <Wifi className="w-3.5 h-3.5 text-[#666]" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-[#0a0a0a]">Network</p>
-                  <p className="text-[10px] text-[#999]">UniFi · real-time</p>
-                </div>
-              </div>
-              <Link href="/sites" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
-                All sites <ArrowRight className="w-3 h-3" />
-              </Link>
+      {/* ── Project Timeline / Today's Schedule · Recent Activity ────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 mb-4 lg:h-105">
+        <div className="lg:col-span-7 flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-4 border-b border-[#f4f4f4] shrink-0">
+            <div className="flex items-center gap-1 bg-[#f4f4f5] rounded-lg p-1">
+              <button
+                onClick={() => setTopPanelTab("timeline")}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  topPanelTab === "timeline" ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
+                }`}
+              >
+                Project Timeline
+              </button>
+              <button
+                onClick={() => setTopPanelTab("schedule")}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  topPanelTab === "schedule" ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
+                }`}
+              >
+                Today&apos;s Schedule
+              </button>
             </div>
 
-            {/* Stats row */}
-            <div className="grid grid-cols-4 divide-x divide-[#f4f4f4] border-b border-[#f4f4f4]">
-              {[
-                { label: "Total",   value: unifi.total,   color: "" },
-                { label: "Online",  value: unifi.online,  color: unifi.online  > 0 && unifi.offline === 0 ? "text-[#16a34a]" : "" },
-                { label: "Offline", value: unifi.offline, color: unifi.offline > 0 ? "text-[#dc2626]" : "" },
-                { label: "Alerts",  value: unifi.alerts,  color: unifi.alerts  > 0 ? "text-[#d97706]" : "" },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="py-3 text-center">
-                  {loading ? (
-                    <div className="h-5 w-7 bg-[#f1f1f1] rounded animate-pulse mx-auto mb-1" />
-                  ) : (
-                    <p className={`text-lg font-semibold tabular-nums ${color || "text-[#0a0a0a]"}`}>{value}</p>
-                  )}
-                  <p className="text-[10px] text-[#bbb]">{label}</p>
+            {topPanelTab === "timeline" ? (
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  {TIMELINE_SERIES.map((s) => (
+                    <div key={s.key} className="flex items-center gap-1.5">
+                      <span className="w-1 h-3 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                      <span className="text-xs text-[#666]">{s.label}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-
-            {/* Problem sites */}
-            {!loading && unifi.problemSites.length === 0 ? (
-              <div className="px-5 py-5 flex items-center gap-2.5 text-sm text-[#16a34a]">
-                <CheckCircle className="w-4 h-4" />
-                <span>All sites are healthy</span>
+                <div className="w-40">
+                  <Select
+                    value={timelineRange}
+                    onChange={(v) => setTimelineRange(v as "today" | "week" | "month" | "3" | "6")}
+                    options={TIMELINE_RANGE_OPTIONS}
+                  />
+                </div>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto">
-                {loading
-                  ? Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="px-5 py-3 flex items-center gap-3 border-b border-[#f8f8f8] last:border-0">
-                        <div className="w-2 h-2 rounded-full bg-[#f1f1f1] animate-pulse shrink-0" />
-                        <div className="h-3 w-44 bg-[#f1f1f1] rounded animate-pulse" />
-                        <div className="h-3 w-16 bg-[#f1f1f1] rounded animate-pulse ml-auto" />
-                      </div>
-                    ))
-                  : unifi.problemSites.map((site) => (
-                      <Link
-                        key={site.siteId}
-                        href={`/sites/${site.siteId}`}
-                        className="flex items-center justify-between px-5 py-3 border-b border-[#f8f8f8] last:border-0 hover:bg-[#fafafa] transition-colors group"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${site.connected ? "bg-[#d97706]" : "bg-[#dc2626]"}`} />
-                          <span className="text-sm text-[#0a0a0a] font-medium truncate group-hover:text-[#444] transition-colors">
-                            {site.displayName}
-                          </span>
-                          {site.ispName && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <IspLogo ispName={site.ispName} size={12} />
-                              <span className="text-[10px] text-[#bbb] hidden sm:block">{site.ispName}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {site.statistics.counts.criticalNotification > 0 && (
-                            <span className="flex items-center gap-0.5 text-[10px] font-semibold text-[#d97706]">
-                              <AlertTriangle className="w-3 h-3" />
-                              {site.statistics.counts.criticalNotification}
-                            </span>
-                          )}
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
-                            site.connected
-                              ? "bg-[#fffbeb] text-[#b45309] border-[#fde68a]"
-                              : "bg-[#fef2f2] text-[#b91c1c] border-[#fecaca]"
-                          }`}>
-                            {site.connected ? "Alerts" : "Offline"}
-                          </span>
-                        </div>
-                      </Link>
-                    ))}
-
-                {!loading && unifi.problemSites.length > 0 && (
-                  <div className="px-5 py-3 border-t border-[#f4f4f4]">
-                    <Link href="/alerts" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
-                      View all alerts <ArrowRight className="w-3 h-3" />
-                    </Link>
-                  </div>
-                )}
-              </div>
+              <Link href="/tasks" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+                View all <ArrowRight className="w-3 h-3" />
+              </Link>
             )}
           </div>
-
-          {/* Communications · RingLogix */}
-          <div className="flex flex-col flex-1 min-h-0 bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f4f4f4]">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-lg bg-[#fafafa] border border-[#f0f0f0]">
-                  <Phone className="w-3.5 h-3.5 text-[#666]" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-[#0a0a0a]">Communications</p>
-                  <p className="text-[10px] text-[#999]">RingLogix · live CDR</p>
-                </div>
+          <div className="flex-1 min-h-0">
+            {topPanelTab === "timeline" ? (
+              <div className="h-full p-5">
+                <ProjectTimelineChart data={timelineMonths} />
               </div>
-              <Link href="/call-records" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
-                All calls <ArrowRight className="w-3 h-3" />
-              </Link>
-            </div>
-
-            {/* Stats row */}
-            <div className="grid grid-cols-4 divide-x divide-[#f4f4f4] border-b border-[#f4f4f4]">
-              {[
-                { label: "Customers",    value: rl.customers                                    },
-                { label: "Phone Nums",   value: rl.dids                                         },
-                { label: "Assigned",     value: rl.assignedDids                                 },
-                { label: "Balance",      value: rl.totalBalance > 0 ? `$${rl.totalBalance.toFixed(0)}` : "$0" },
-              ].map(({ label, value }) => (
-                <div key={label} className="py-3 text-center">
-                  {loading ? (
-                    <div className="h-5 w-10 bg-[#f1f1f1] rounded animate-pulse mx-auto mb-1" />
-                  ) : (
-                    <p className="text-lg font-semibold tabular-nums text-[#0a0a0a]">{value}</p>
-                  )}
-                  <p className="text-[10px] text-[#bbb]">{label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Recent calls */}
-            {!loading && rl.recentCalls.length === 0 ? (
-              <div className="px-5 py-5 text-sm text-[#999]">No recent call records</div>
             ) : (
-              <div className="flex-1 overflow-y-auto">
-                {loading
-                  ? Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="px-5 py-3 flex items-center gap-3 border-b border-[#f8f8f8] last:border-0">
-                        <div className="w-7 h-7 rounded-lg bg-[#f1f1f1] animate-pulse shrink-0" />
-                        <div className="flex-1 space-y-1.5">
-                          <div className="h-3 w-48 bg-[#f1f1f1] rounded animate-pulse" />
-                          <div className="h-2.5 w-24 bg-[#f1f1f1] rounded animate-pulse" />
-                        </div>
-                      </div>
-                    ))
-                  : rl.recentCalls.map((call, i) => {
-                      const isIn = call.direction?.toLowerCase().includes("in");
-                      return (
-                        <div key={call.callid ?? i} className="flex items-center gap-3 px-5 py-3 border-b border-[#f8f8f8] last:border-0 hover:bg-[#fafafa] transition-colors">
-                          <div className="p-1.5 rounded-lg bg-[#fafafa] border border-[#f0f0f0] shrink-0">
-                            {isIn
-                              ? <PhoneIncoming className="w-3.5 h-3.5 text-[#666]" />
-                              : <PhoneOutgoing className="w-3.5 h-3.5 text-[#666]" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-[#0a0a0a] font-medium truncate">
-                              {fmtNumber(call.orig_from_user)}
-                              <span className="text-[#ccc] mx-1.5 font-normal">→</span>
-                              {fmtNumber(call.dest_to_user)}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {call.domain && <span className="text-[10px] text-[#bbb]">{call.domain}</span>}
-                              <Clock className="w-2.5 h-2.5 text-[#ddd]" />
-                              <span className="text-[10px] text-[#bbb]">{fmtDuration(call.duration)}</span>
-                              <span className="text-[10px] text-[#ccc]">
-                                {isIn ? "Inbound" : "Outbound"}
-                              </span>
-                            </div>
-                          </div>
-                          <span className="text-[10px] text-[#bbb] tabular-nums shrink-0">{timeAgo(call.start_time)}</span>
-                        </div>
-                      );
-                    })}
-              </div>
+              <TodaySchedule cards={cards} />
             )}
           </div>
         </div>
 
-        {/* Right: Notification log */}
-        <div className="lg:col-span-1 min-h-0">
+        <div className="lg:col-span-3 min-h-0">
           <NotificationPanel
             notifs={appNotifs}
             onMarkAllRead={() => { markAllRead(); setAppNotifs(getNotifications()); }}
           />
         </div>
-
       </div>
+
+      {/* ── Network · Customers needing attention ────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 lg:h-105">
+        {/* Network */}
+        <div className="flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f4f4f4] shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-[#fafafa] border border-[#f0f0f0]">
+                <Wifi className="w-3.5 h-3.5 text-[#666]" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#0a0a0a]">Network</p>
+                <p className="text-[10px] text-[#999]">UniFi · real-time</p>
+              </div>
+            </div>
+            <Link href="/sites" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+              All sites <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-4 divide-x divide-[#f4f4f4] border-b border-[#f4f4f4] shrink-0">
+            {[
+              { label: "Total",   value: unifi.total,   color: "" },
+              { label: "Online",  value: unifi.online,  color: unifi.online  > 0 && unifi.offline === 0 ? "text-[#16a34a]" : "" },
+              { label: "Offline", value: unifi.offline, color: unifi.offline > 0 ? "text-[#dc2626]" : "" },
+              { label: "Alerts",  value: unifi.alerts,  color: unifi.alerts  > 0 ? "text-[#d97706]" : "" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="py-3 text-center">
+                {loading ? (
+                  <div className="h-5 w-7 bg-[#f1f1f1] rounded animate-pulse mx-auto mb-1" />
+                ) : (
+                  <p className={`text-lg font-semibold tabular-nums ${color || "text-[#0a0a0a]"}`}>{value}</p>
+                )}
+                <p className="text-[10px] text-[#bbb]">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Problem sites */}
+          {!loading && unifi.problemSites.length === 0 ? (
+            <div className="px-5 py-5 flex items-center gap-2.5 text-sm text-[#16a34a]">
+              <CheckCircle className="w-4 h-4" />
+              <span>All sites are healthy</span>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              {loading
+                ? Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="px-5 py-3 flex items-center gap-3 border-b border-[#f8f8f8] last:border-0">
+                      <div className="w-2 h-2 rounded-full bg-[#f1f1f1] animate-pulse shrink-0" />
+                      <div className="h-3 w-44 bg-[#f1f1f1] rounded animate-pulse" />
+                      <div className="h-3 w-16 bg-[#f1f1f1] rounded animate-pulse ml-auto" />
+                    </div>
+                  ))
+                : unifi.problemSites.map((site) => (
+                    <Link
+                      key={site.siteId}
+                      href={`/sites/${site.siteId}`}
+                      className="flex items-center justify-between px-5 py-3 border-b border-[#f8f8f8] last:border-0 hover:bg-[#fafafa] transition-colors group"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${site.connected ? "bg-[#d97706]" : "bg-[#dc2626]"}`} />
+                        <span className="text-sm text-[#0a0a0a] font-medium truncate group-hover:text-[#444] transition-colors">
+                          {site.displayName}
+                        </span>
+                        {site.ispName && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <IspLogo ispName={site.ispName} size={12} />
+                            <span className="text-[10px] text-[#bbb] hidden sm:block">{site.ispName}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {site.statistics.counts.criticalNotification > 0 && (
+                          <span className="flex items-center gap-0.5 text-[10px] font-semibold text-[#d97706]">
+                            <AlertTriangle className="w-3 h-3" />
+                            {site.statistics.counts.criticalNotification}
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                          site.connected
+                            ? "bg-[#fffbeb] text-[#b45309] border-[#fde68a]"
+                            : "bg-[#fef2f2] text-[#b91c1c] border-[#fecaca]"
+                        }`}>
+                          {site.connected ? "Alerts" : "Offline"}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+
+              {!loading && unifi.problemSites.length > 0 && (
+                <div className="px-5 py-3 border-t border-[#f4f4f4]">
+                  <Link href="/alerts" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+                    View all alerts <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Customers needing attention */}
+        <div className="flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f4f4f4] shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-[#fafafa] border border-[#f0f0f0]">
+                <DollarSign className="w-3.5 h-3.5 text-[#666]" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#0a0a0a]">Customers Needing Attention</p>
+                <p className="text-[10px] text-[#999]">Outstanding balances</p>
+              </div>
+            </div>
+            <Link href="/customers" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+              All customers <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-4 divide-x divide-[#f4f4f4] border-b border-[#f4f4f4] shrink-0">
+            {[
+              { label: "Total",      value: customers.length,       color: "" },
+              { label: "Unpaid",     value: unpaidCustomers.length, color: unpaidCustomers.length > 0 ? "text-[#dc2626]" : "" },
+              { label: "Total Owed", value: `$${totalOwed.toFixed(0)}`, color: totalOwed > 0 ? "text-[#dc2626]" : "" },
+              { label: "Highest",    value: `$${(unpaidCustomers[0]?.owed ?? 0).toFixed(0)}`, color: unpaidCustomers.length > 0 ? "text-[#d97706]" : "" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="py-3 text-center">
+                {loading ? (
+                  <div className="h-5 w-10 bg-[#f1f1f1] rounded animate-pulse mx-auto mb-1" />
+                ) : (
+                  <p className={`text-lg font-semibold tabular-nums ${color || "text-[#0a0a0a]"}`}>{value}</p>
+                )}
+                <p className="text-[10px] text-[#bbb]">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Unpaid customers */}
+          {unpaidCustomers.length === 0 ? (
+            <div className="px-5 py-5 flex items-center gap-2.5 text-sm text-[#16a34a]">
+              <CheckCircle className="w-4 h-4" />
+              <span>No outstanding balances</span>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              {unpaidCustomers.slice(0, 5).map((c) => (
+                <Link
+                  key={`${c.id}-${c.parentId}`}
+                  href={`/customers/${c.id}`}
+                  className="flex items-center justify-between px-5 py-3 border-b border-[#f8f8f8] last:border-0 hover:bg-[#fafafa] transition-colors group"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-[#f97316] shrink-0" />
+                    <span className="text-sm text-[#0a0a0a] font-medium truncate group-hover:text-[#444] transition-colors">
+                      {c.company}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="flex items-center gap-0.5 text-[10px] font-semibold text-[#d97706]">
+                      <AlertTriangle className="w-3 h-3" />
+                      1
+                    </span>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-[#fffbeb] text-[#b45309] border-[#fde68a]">
+                      ${c.owed.toFixed(0)}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+
+              {unpaidCustomers.length > 0 && (
+                <div className="px-5 py-3 border-t border-[#f4f4f4]">
+                  <Link href="/customers" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+                    View all unpaid <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }

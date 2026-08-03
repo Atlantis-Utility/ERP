@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from "react";
 import Drawer from "@/components/ui/Drawer";
-import FormField, { inputClass, selectClass } from "@/components/ui/FormField";
+import FormField, { inputClass } from "@/components/ui/FormField";
 import DateTimePicker from "@/components/ui/DateTimePicker";
+import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
-import { getAvatarColor, getInitials } from "@/lib/utils";
+import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import Link from "next/link";
 import {
   Clock, Trash2, Pencil, ExternalLink, Video,
-  FolderKanban, Tag, AlertCircle, CheckCircle2, Check,
+  FolderKanban, Tag, AlertCircle, CheckCircle2, Check, Building2,
 } from "lucide-react";
 import type { KanbanCard, KanbanColumn, KanbanPriority } from "./AddTaskDrawer";
 
@@ -73,6 +74,7 @@ const emptyForm = {
   meetingTime: "",
   meetingUrl: "",
   duration: 30,
+  company: "",
 };
 
 export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDelete }: Props) {
@@ -81,11 +83,13 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     if (!open) {
       setEditing(false);
       setConfirmDelete(false);
+      setSaveError("");
     }
   }, [open]);
 
@@ -104,6 +108,7 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
         meetingTime: card.meetingTime ?? "",
         meetingUrl:  card.meetingUrl  ?? "",
         duration:    card.duration    ?? 30,
+        company:     card.company     ?? "",
       });
     }
   }, [editing, card]);
@@ -124,6 +129,7 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
   async function handleSave() {
     if (!card || !form.title.trim()) return;
     setSaving(true);
+    setSaveError("");
     try {
       const patch: Partial<KanbanCard> = {
         title:       form.title.trim(),
@@ -140,9 +146,13 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
         patch.meetingTime = form.meetingTime;
         patch.meetingUrl  = form.meetingUrl;
         patch.duration    = form.duration;
+        patch.company     = form.company.trim();
       }
       await onUpdate(card.id, patch);
       setEditing(false);
+    } catch (err) {
+      console.error("[TaskDetailDrawer] Failed to save:", err);
+      setSaveError(getErrorMessage(err, "Failed to save. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -151,10 +161,14 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
   async function handleDelete() {
     if (!card) return;
     setSaving(true);
+    setSaveError("");
     try {
       await onDelete(card.id);
       setConfirmDelete(false);
       onClose();
+    } catch (err) {
+      console.error("[TaskDetailDrawer] Failed to delete:", err);
+      setSaveError(getErrorMessage(err, "Failed to delete. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -201,6 +215,12 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
         }
       >
         <div className="space-y-4">
+          {saveError && (
+            <div className="bg-[#fff5f5] border border-[#fecaca] text-[#dc2626] text-sm px-4 py-3 rounded-lg">
+              {saveError}
+            </div>
+          )}
+
           <FormField label="Title" required>
             <input
               className={inputClass}
@@ -220,27 +240,27 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
 
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Column">
-              <select
-                className={selectClass}
+              <Select
                 value={form.column}
-                onChange={(e) => setF("column", e.target.value as KanbanColumn)}
-              >
-                <option value="backlog">Backlog</option>
-                <option value="in-progress">In Progress</option>
-                <option value="review">In Review</option>
-                <option value="done">Done</option>
-              </select>
+                onChange={(v) => setF("column", v as KanbanColumn)}
+                options={[
+                  { value: "backlog", label: "Backlog" },
+                  { value: "in-progress", label: "In Progress" },
+                  { value: "review", label: "In Review" },
+                  { value: "done", label: "Done" },
+                ]}
+              />
             </FormField>
             <FormField label="Priority">
-              <select
-                className={selectClass}
+              <Select
                 value={form.priority}
-                onChange={(e) => setF("priority", e.target.value as KanbanPriority)}
-              >
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
+                onChange={(v) => setF("priority", v as KanbanPriority)}
+                options={[
+                  { value: "high", label: "High" },
+                  { value: "medium", label: "Medium" },
+                  { value: "low", label: "Low" },
+                ]}
+              />
             </FormField>
           </div>
 
@@ -280,6 +300,14 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
 
           {card.type === "meeting" && (
             <>
+              <FormField label="Company" hint="Who this meeting is with — leave blank to auto-detect from attendee emails">
+                <input
+                  className={inputClass}
+                  placeholder="e.g. Acme Corp"
+                  value={form.company}
+                  onChange={(e) => setF("company", e.target.value)}
+                />
+              </FormField>
               <FormField label="Meeting Date">
                 <DateTimePicker
                   dateOnly
@@ -468,6 +496,12 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
         {card.type === "meeting" && (
           <div className="bg-[#fafafa] border border-[#eaeaea] rounded-xl p-4 space-y-2.5">
             <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest">Meeting Details</p>
+            {card.company && (
+              <div className="flex items-center gap-2 text-sm text-[#444]">
+                <Building2 className="w-3.5 h-3.5 text-[#999] shrink-0" />
+                <span>{card.company}</span>
+              </div>
+            )}
             {platformCfg && (
               <div className="flex items-center gap-2">
                 <span

@@ -1,57 +1,89 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  collection,
-  doc,
-  getDocs,
-  onSnapshot,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  orderBy,
-} from "firebase/firestore";
-import { db } from "../firebase";
+import { supabase } from "../supabase/client";
+import { subscribeTable } from "../supabase/realtime";
 import type { Employee } from "../mock-data";
 
-const COL = "employees";
+const TABLE = "employees";
 
-function withTimeout<T>(promise: Promise<T>, ms = 12_000): Promise<T> {
+interface Row { id: string; data: Employee }
+const fromRow = (row: Row): Employee => ({ ...row.data, id: row.id });
+
+function withTimeout<T>(promise: PromiseLike<T>, ms = 20_000): Promise<T> {
   return Promise.race([
-    promise,
+    Promise.resolve(promise),
     new Promise<never>((_, reject) =>
       setTimeout(
-        () => reject(new Error("Request timed out. Check your connection and try again.")),
+        // Client-side race, not a real network failure — the request may well
+        // still complete server-side. Don't blame "your connection" for what
+        // is usually just a slow query or a cold Supabase connection.
+        () => reject(new Error("The server is taking longer than expected to respond. Please try again.")),
         ms
       )
     ),
   ]);
 }
 
+function isTransientFetchError(err: unknown): boolean {
+  const msg = err && typeof err === "object" && "message" in err ? String((err as { message?: unknown }).message) : "";
+  return /failed to fetch|networkerror|load failed/i.test(msg);
+}
+
+// Supabase's client silently refreshes the auth token in the background; if
+// that happens to land mid-request the in-flight fetch can get dropped and
+// throw "Failed to fetch" even though there's no real connectivity problem.
+// One quiet retry absorbs that blip instead of surfacing it as an error —
+// `run` must build a fresh query each call, since an already-awaited
+// PromiseLike can't be re-issued.
+async function withRetry<T>(run: () => PromiseLike<T>, retries = 1): Promise<T> {
+  try {
+    return await withTimeout(run());
+  } catch (err) {
+    if (retries > 0 && isTransientFetchError(err)) {
+      await new Promise((r) => setTimeout(r, 500));
+      return withRetry(run, retries - 1);
+    }
+    throw err;
+  }
+}
+
+async function fetchAll(): Promise<Employee[]> {
+  const { data, error } = await withRetry(() => supabase.from(TABLE).select("id, data").order("name"));
+  if (error) throw error;
+  return (data as Row[]).map(fromRow);
+}
+
 export function subscribeEmployees(cb: (employees: Employee[]) => void) {
-  return onSnapshot(
-    query(collection(db, COL), orderBy("name")),
-    (snap) => cb(snap.docs.map((d) => d.data() as Employee)),
-    (err) => console.error("[employees]", err)
-  );
+  return subscribeTable(TABLE, fetchAll, cb);
 }
 
 export async function getAllEmployees(): Promise<Employee[]> {
-  const snap = await getDocs(collection(db, COL));
-  return snap.docs.map((d) => d.data() as Employee);
+  return fetchAll();
 }
 
 export async function addEmployee(emp: Employee): Promise<void> {
-  await withTimeout(setDoc(doc(db, COL, emp.id), emp));
+  const { error } = await withRetry(() =>
+    supabase.from(TABLE).insert({ id: emp.id, name: emp.name, email: emp.email, status: emp.status, data: emp })
+  );
+  if (error) throw error;
 }
 
 export async function updateEmployee(id: string, patch: Partial<Employee>): Promise<void> {
-  await withTimeout(updateDoc(doc(db, COL, id), patch as Record<string, unknown>));
+  const { data: existing, error: fetchErr } = await withRetry(() =>
+    supabase.from(TABLE).select("data").eq("id", id).single()
+  );
+  if (fetchErr) throw fetchErr;
+  const merged = { ...(existing.data as Employee), ...patch };
+  const { error } = await withRetry(() =>
+    supabase.from(TABLE).update({ name: merged.name, email: merged.email, status: merged.status, data: merged }).eq("id", id)
+  );
+  if (error) throw error;
 }
 
 export async function removeEmployee(id: string): Promise<void> {
-  await withTimeout(deleteDoc(doc(db, COL, id)));
+  const { error } = await withRetry(() => supabase.from(TABLE).delete().eq("id", id));
+  if (error) throw error;
 }
 
 /** React hook — returns a live-updated list of all employees. */

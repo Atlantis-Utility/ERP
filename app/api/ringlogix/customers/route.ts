@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { getCustomers, isConfigured } from "@/lib/ringlogix";
+import { getPortalCustomers, isPortalConfigured } from "@/lib/ringlogix-portal";
 
 export async function GET() {
-  if (!isConfigured()) {
+  if (!isPortalConfigured()) {
     return NextResponse.json({ error: "not_configured" }, { status: 503 });
   }
   try {
-    const data = await getCustomers();
+    const data = await getPortalCustomers();
     return NextResponse.json(data);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";

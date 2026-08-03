@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Drawer from "@/components/ui/Drawer";
 import { addNotification } from "@/lib/notifications";
 import { logActivity } from "@/lib/activity-log";
-import FormField, { inputClass, selectClass } from "@/components/ui/FormField";
+import FormField, { inputClass } from "@/components/ui/FormField";
+import Select from "@/components/ui/Select";
 import { addEmployee } from "@/lib/db/employees";
 import type { Employee, EmployeeStatus, AccessRole } from "@/lib/mock-data";
 
@@ -31,6 +32,13 @@ export default function AddEmployeeDrawer({ open, onClose }: Props) {
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (saveError || Object.keys(errors).length > 0) {
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [saveError, errors]);
 
   function set(field: keyof typeof emptyForm, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -70,6 +78,17 @@ export default function AddEmployeeDrawer({ open, onClose }: Props) {
     };
     try {
       await addEmployee(newEmp);
+    } catch (err) {
+      console.error("[AddEmployeeDrawer] Failed to add employee:", err instanceof Error ? err.message : err);
+      setSaveError(err instanceof Error ? err.message : "Failed to save. Please try again.");
+      setSaving(false);
+      return;
+    }
+
+    // The database write already succeeded — these are best-effort local
+    // mirrors/notifications, so a failure here must not be reported as "the
+    // save failed" or block the drawer from closing.
+    try {
       addNotification({
         prefId: "n-1",
         icon: "user",
@@ -83,16 +102,14 @@ export default function AddEmployeeDrawer({ open, onClose }: Props) {
         detail: `Added ${newEmp.name} as ${newEmp.role} in ${newEmp.location}`,
         metadata: { employeeId: newEmp.id, role: newEmp.role, status: newEmp.status },
       });
-      setForm(emptyForm);
-      setErrors({});
-      setSaveError("");
-      onClose();
     } catch (err) {
-      console.error("[AddEmployeeDrawer] Failed to add employee:", err);
-      setSaveError(err instanceof Error ? err.message : "Failed to save. Please try again.");
-    } finally {
-      setSaving(false);
+      console.error("[AddEmployeeDrawer] Post-save side effect failed (employee was added):", err instanceof Error ? err.message : err);
     }
+    setForm(emptyForm);
+    setErrors({});
+    setSaveError("");
+    setSaving(false);
+    onClose();
   }
 
   function handleClose() {
@@ -128,6 +145,7 @@ export default function AddEmployeeDrawer({ open, onClose }: Props) {
       }
     >
       <div className="space-y-4">
+        <div ref={errorRef} />
         {saveError && (
           <div className="bg-[#fff5f5] border border-[#fecaca] text-[#dc2626] text-sm px-4 py-3 rounded-lg">
             {saveError}
@@ -179,31 +197,31 @@ export default function AddEmployeeDrawer({ open, onClose }: Props) {
             />
           </FormField>
           <FormField label="Status" error={errors.status}>
-            <select
-              className={selectClass}
+            <Select
               value={form.status}
-              onChange={(e) => set("status", e.target.value)}
-            >
-              <option value="active">Active</option>
-              <option value="remote">Remote</option>
-              <option value="on-leave">On Leave</option>
-            </select>
+              onChange={(v) => set("status", v)}
+              options={[
+                { value: "active", label: "Active" },
+                { value: "remote", label: "Remote" },
+                { value: "on-leave", label: "On Leave" },
+              ]}
+            />
           </FormField>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Access Role" hint="Workspace permissions">
-            <select
-              className={selectClass}
+            <Select
               value={form.accessRole}
-              onChange={(e) => set("accessRole", e.target.value)}
-            >
-              <option value="Administrator">Administrator — Full access</option>
-              <option value="Manager">Manager — Manage teams &amp; projects</option>
-              <option value="Analyst">Analyst — View &amp; export data</option>
-              <option value="Contributor">Contributor — Add &amp; edit content</option>
-              <option value="Viewer">Viewer — Read only</option>
-            </select>
+              onChange={(v) => set("accessRole", v)}
+              options={[
+                { value: "Administrator", label: "Administrator: Full access" },
+                { value: "Manager", label: "Manager: Manage teams & projects" },
+                { value: "Analyst", label: "Analyst: View & export data" },
+                { value: "Contributor", label: "Contributor: Add & edit content" },
+                { value: "Viewer", label: "Viewer: Read only" },
+              ]}
+            />
           </FormField>
           <FormField label="Start Date" error={errors.startDate}>
             <input

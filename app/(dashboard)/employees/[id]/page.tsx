@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase/client";
 import { getLogs, type ActivityLogEntry } from "@/lib/activity-log";
 import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
 import { ArrowLeft, Mail, Phone, Pencil, Check } from "lucide-react";
@@ -46,27 +45,27 @@ export default function EmployeeProfilePage() {
   const [employee, setEmployee]     = useState<Employee | null>(null);
   const [notFound, setNotFound]     = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [access, setAccess]     = useState<string[]>([]);
   const [logs, setLogs]         = useState<ActivityLogEntry[]>([]);
 
-  // Live Firestore subscription for this employee
+  // Live subscription for this employee — access, like every other field, comes
+  // straight from this row, so permission changes show up immediately.
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "employees", id), (snap) => {
-      if (!snap.exists()) { setNotFound(true); return; }
-      setEmployee(snap.data() as Employee);
-    });
-    return unsub;
+    function load() {
+      supabase.from("employees").select("id, data").eq("id", id).maybeSingle().then(({ data }) => {
+        if (!data) { setNotFound(true); return; }
+        setEmployee({ ...(data.data as Employee), id: data.id });
+      });
+    }
+    load();
+
+    const channel = supabase
+      .channel(`employee-profile-${id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "employees", filter: `id=eq.${id}` }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [id]);
 
-  // Reload access from localStorage whenever the drawer closes (after a save)
-  useEffect(() => {
-    if (!employee) return;
-    const stored = localStorage.getItem(`emp_access_${id}`);
-    if (stored) {
-      try { setAccess(JSON.parse(stored)); return; } catch {}
-    }
-    setAccess(employee.access ?? []);
-  }, [id, employee, editOpen]);
+  const access = employee?.access ?? [];
 
   // Load activity log entries related to this employee
   useEffect(() => {

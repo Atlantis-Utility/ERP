@@ -11,10 +11,12 @@ export function isConfigured(): boolean {
   return Boolean(API_ID && API_SECRET && RL_USER && RL_PASS);
 }
 
-// In-memory token cache (per server process)
-let cachedToken: { value: string; type: string; expiresAt: number; refreshToken: string } | null = null;
+type RLToken = { value: string; type: string; expiresAt: number; refreshToken: string };
 
-async function fetchToken(body: Record<string, string>): Promise<typeof cachedToken> {
+// In-memory token cache (per server process)
+let cachedToken: RLToken | null = null;
+
+async function fetchToken(body: Record<string, string>): Promise<RLToken> {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(body)) params.append(k, v);
 
@@ -132,11 +134,18 @@ export async function getCustomer(domain: string) {
   return pbxApi("domain", "read", { domain });
 }
 
-// Phone numbers / DIDs
+// Phone numbers / DIDs. The "smsnumber" object name is misleading — it's
+// SMS-only and returns null for every domain in this account. The real DID
+// inventory (with a human label per number, e.g. "Main Number", "Fax") lives
+// in the "phonenumber" object's dial-plan rules, tagged per-row with
+// "domain_owner" (the customer's domain id). The API's own domain_owner
+// filter proved unreliable (returned the unfiltered list on repeat calls
+// with identical params), so this always fetches the full list — cached for
+// 3 minutes and shared across every customer — and filters locally instead.
 export async function getDIDs(domain?: string) {
-  const params: Record<string, string> = {};
-  if (domain) params.domain = domain;
-  return pbxApi("smsnumber", "read", params);
+  const rows = ((await pbxApi("phonenumber", "read", {})) ?? []) as Array<Record<string, unknown>>;
+  if (!domain) return rows;
+  return rows.filter((r) => String(r.domain_owner) === domain);
 }
 
 // Call records (CDRs)

@@ -1,15 +1,4 @@
-import {
-  collection,
-  doc,
-  onSnapshot,
-  setDoc,
-  addDoc,
-  query,
-  orderBy,
-  serverTimestamp,
-  Timestamp,
-} from "firebase/firestore";
-import { db } from "../firebase";
+import { supabase } from "../supabase/client";
 
 export type TicketStatus   = "open" | "in-progress" | "resolved" | "closed";
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
@@ -43,79 +32,148 @@ export interface ManualTicket {
   updatedAt: string;
 }
 
-const META_COL   = "tickets";
-const MANUAL_COL = "manual-tickets";
+const META_TABLE   = "tickets";
+const MANUAL_TABLE = "manual_tickets";
 
 // ── Email ticket metadata (status/priority/assignee overlay) ─────────────────
 
 export async function upsertTicket(id: string, patch: Partial<Omit<TicketMeta, "id">>): Promise<void> {
-  const data = Object.fromEntries(
-    Object.entries({ ...patch, id, updatedAt: new Date().toISOString() }).filter(([, v]) => v !== undefined)
+  const row = Object.fromEntries(
+    Object.entries({
+      id,
+      status: patch.status,
+      priority: patch.priority,
+      assignee_id: patch.assigneeId,
+      assignee_name: patch.assigneeName,
+      notes: patch.notes,
+      updated_at: new Date().toISOString(),
+    }).filter(([, v]) => v !== undefined)
   );
-  await setDoc(doc(db, META_COL, id), data, { merge: true });
+  const { error } = await supabase.from(META_TABLE).upsert(row);
+  if (error) throw error;
+}
+
+function metaFromRow(row: Record<string, unknown>): TicketMeta {
+  return {
+    id: row.id as string,
+    status: row.status as TicketStatus,
+    priority: row.priority as TicketPriority,
+    assigneeId: (row.assignee_id as string) ?? undefined,
+    assigneeName: (row.assignee_name as string) ?? undefined,
+    notes: (row.notes as string) ?? undefined,
+    updatedAt: row.updated_at as string,
+  };
 }
 
 export function subscribeAllTicketMeta(cb: (metas: TicketMeta[]) => void): () => void {
-  return onSnapshot(
-    query(collection(db, META_COL)),
-    (snap) => cb(snap.docs.map((d) => d.data() as TicketMeta)),
-    (err) => console.error("[tickets]", err)
-  );
+  supabase.from(META_TABLE).select("*").then(({ data, error }) => {
+    if (error) { console.error("[tickets]", error); return; }
+    cb((data ?? []).map(metaFromRow));
+  });
+
+  const channel = supabase
+    .channel("tickets-all")
+    .on("postgres_changes", { event: "*", schema: "public", table: META_TABLE }, () => {
+      supabase.from(META_TABLE).select("*").then(({ data, error }) => {
+        if (error) { console.error("[tickets]", error); return; }
+        cb((data ?? []).map(metaFromRow));
+      });
+    })
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
 }
 
 // ── Manual / multi-channel tickets ──────────────────────────────────────────
 
-let _ticketCounter = 0;
-
 async function nextTicketNumber(): Promise<number> {
-  // Use a simple counter doc to track the last ticket number
-  const counterRef = doc(db, "config", "ticketCounter");
-  const { getDoc, updateDoc, increment } = await import("firebase/firestore");
-  const snap = await getDoc(counterRef);
-  if (!snap.exists()) {
-    await setDoc(counterRef, { value: 1 });
-    _ticketCounter = 1;
-    return 1;
-  }
-  await updateDoc(counterRef, { value: increment(1) });
-  const updated = await getDoc(counterRef);
-  return (updated.data()?.value as number) ?? ++_ticketCounter;
+  const { data, error } = await supabase.rpc("next_ticket_number");
+  if (error) throw error;
+  return data as number;
+}
+
+function manualFromRow(row: Record<string, unknown>): ManualTicket {
+  return {
+    id: row.id as string,
+    ticketNumber: row.ticket_number as number,
+    source: row.source as TicketSource,
+    subject: row.subject as string,
+    description: row.description as string,
+    customerName: row.customer_name as string,
+    customerEmail: (row.customer_email as string) ?? undefined,
+    customerPhone: (row.customer_phone as string) ?? undefined,
+    status: row.status as TicketStatus,
+    priority: row.priority as TicketPriority,
+    assigneeId: (row.assignee_id as string) ?? undefined,
+    assigneeName: (row.assignee_name as string) ?? undefined,
+    notes: (row.notes as string) ?? undefined,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
 }
 
 export async function createManualTicket(
   data: Omit<ManualTicket, "id" | "ticketNumber" | "createdAt" | "updatedAt">
 ): Promise<string> {
   const ticketNumber = await nextTicketNumber();
-  const now = new Date().toISOString();
-  const ref = await addDoc(collection(db, MANUAL_COL), {
-    ...data,
-    ticketNumber,
-    createdAt: now,
-    updatedAt: now,
-    _createdAt: serverTimestamp(),
-  });
-  return ref.id;
+  const { data: inserted, error } = await supabase
+    .from(MANUAL_TABLE)
+    .insert({
+      ticket_number: ticketNumber,
+      source: data.source,
+      subject: data.subject,
+      description: data.description,
+      customer_name: data.customerName,
+      customer_email: data.customerEmail,
+      customer_phone: data.customerPhone,
+      status: data.status,
+      priority: data.priority,
+      assignee_id: data.assigneeId,
+      assignee_name: data.assigneeName,
+      notes: data.notes,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return inserted.id as string;
 }
 
 export async function upsertManualTicket(
   id: string,
   patch: Partial<Omit<ManualTicket, "id" | "ticketNumber" | "createdAt">>
 ): Promise<void> {
-  const data = Object.fromEntries(
-    Object.entries({ ...patch, updatedAt: new Date().toISOString() }).filter(([, v]) => v !== undefined)
+  const row = Object.fromEntries(
+    Object.entries({
+      subject: patch.subject,
+      description: patch.description,
+      customer_name: patch.customerName,
+      customer_email: patch.customerEmail,
+      customer_phone: patch.customerPhone,
+      status: patch.status,
+      priority: patch.priority,
+      assignee_id: patch.assigneeId,
+      assignee_name: patch.assigneeName,
+      notes: patch.notes,
+      updated_at: new Date().toISOString(),
+    }).filter(([, v]) => v !== undefined)
   );
-  await setDoc(doc(db, MANUAL_COL, id), data, { merge: true });
+  const { error } = await supabase.from(MANUAL_TABLE).update(row).eq("id", id);
+  if (error) throw error;
 }
 
 export function subscribeManualTickets(cb: (tickets: ManualTicket[]) => void): () => void {
-  return onSnapshot(
-    query(collection(db, MANUAL_COL), orderBy("_createdAt", "desc")),
-    (snap) => cb(snap.docs.map((d) => {
-      const raw = d.data();
-      // Convert Firestore Timestamp to ISO string if needed
-      const createdAt = raw.createdAt ?? (raw._createdAt instanceof Timestamp ? raw._createdAt.toDate().toISOString() : new Date().toISOString());
-      return { ...raw, id: d.id, createdAt } as ManualTicket;
-    })),
-    (err) => console.error("[manual-tickets]", err)
-  );
+  function load() {
+    supabase.from(MANUAL_TABLE).select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
+      if (error) { console.error("[manual-tickets]", error); return; }
+      cb((data ?? []).map(manualFromRow));
+    });
+  }
+  load();
+
+  const channel = supabase
+    .channel("manual-tickets-all")
+    .on("postgres_changes", { event: "*", schema: "public", table: MANUAL_TABLE }, load)
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
 }

@@ -1,139 +1,258 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
-import { formatDate } from "@/lib/utils";
+import { subscribeProjects } from "@/lib/db/projects";
+import { subscribeTasks } from "@/lib/db/tasks";
+import { useUnifiedTickets } from "@/lib/tickets/useUnifiedTickets";
+import type { Project } from "@/lib/mock-projects";
+import type { KanbanCard } from "@/components/tasks/AddTaskDrawer";
+import { formatDate, getAvatarColor, getInitials } from "@/lib/utils";
+import { exportProjectReportPdf } from "@/lib/reports/project-report-pdf";
+import { exportProjectReportDocx } from "@/lib/reports/project-report-docx";
+import { exportTasksReportPdf } from "@/lib/reports/tasks-report-pdf";
+import { exportTasksReportDocx } from "@/lib/reports/tasks-report-docx";
+import { exportTicketsReportPdf } from "@/lib/reports/tickets-report-pdf";
+import { exportTicketsReportDocx } from "@/lib/reports/tickets-report-docx";
 import {
-  Users,
-  Layers,
-  Award,
-  UserPlus,
-  UserMinus,
-  Shield,
-  FileText,
-  BarChart3,
-  Calendar,
-  Download,
-  Plus,
+  FileText, Download, FileType, Eye, CheckSquare, LifeBuoy,
 } from "lucide-react";
 
-type ReportCategory = "HR" | "Operations" | "Legal";
-
-interface Report {
-  id: string;
-  title: string;
-  description: string;
-  icon: React.ElementType;
-  category: ReportCategory;
-  lastGenerated: string;
-  format: string;
-}
-
-const categoryConfig: Record<ReportCategory, { bg: string; text: string; iconBg: string; iconText: string }> = {
-  HR: { bg: "bg-[#e8f2ff]", text: "text-[#0070f3]", iconBg: "bg-[#e8f2ff]", iconText: "text-[#0070f3]" },
-  Operations: { bg: "bg-[#fff8e6]", text: "text-[#f5a524]", iconBg: "bg-[#fff8e6]", iconText: "text-[#f5a524]" },
-  Legal: { bg: "bg-[#f1f1f1]", text: "text-[#666]", iconBg: "bg-[#f1f1f1]", iconText: "text-[#666]" },
-};
-
-const reports: Report[] = [
-  { id: "r-001", title: "Headcount Report", description: "Employee count by department, status, and location with trend analysis", icon: Users, category: "HR", lastGenerated: "2025-06-15", format: "PDF / CSV" },
-  { id: "r-004", title: "Project Status Report", description: "Status, progress, and timelines for all active and completed projects", icon: Layers, category: "Operations", lastGenerated: "2025-06-18", format: "PDF" },
-  { id: "r-005", title: "Performance Reviews", description: "Annual and quarterly performance review summaries by team", icon: Award, category: "HR", lastGenerated: "2025-05-30", format: "PDF" },
-  { id: "r-007", title: "Hiring Pipeline", description: "Open positions, candidate pipeline, and time-to-hire metrics", icon: UserPlus, category: "HR", lastGenerated: "2025-06-12", format: "PDF / CSV" },
-  { id: "r-008", title: "Attrition Analysis", description: "Employee turnover rates, exit interview data, and retention trends", icon: UserMinus, category: "HR", lastGenerated: "2025-05-01", format: "PDF" },
-  { id: "r-009", title: "Compliance Report", description: "Regulatory compliance status, audit trail, and risk assessment", icon: Shield, category: "Legal", lastGenerated: "2025-04-30", format: "PDF" },
-];
-
 export default function ReportsPage() {
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<KanbanCard[]>([]);
+  const { tickets } = useUnifiedTickets();
+
+  useEffect(() => {
+    const unsub = subscribeProjects(setProjects);
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeTasks(setTasks);
+    return unsub;
+  }, []);
+
+  const completed = useMemo(() => projects.filter((p) => p.status === "completed"), [projects]);
+
+  function completedTaskCount(projectId: string): { completed: number; total: number } {
+    const linked = tasks.filter((t) => t.type === "task" && t.projectId === projectId);
+    return { completed: linked.filter((t) => t.column === "done").length, total: linked.length };
+  }
+
+  const stats = useMemo(() => {
+    const now = new Date();
+    const completedThisMonth = completed.filter((p) => {
+      if (p.deadlineTbd || !p.deadline) return false;
+      const d = new Date(p.deadline);
+      return !isNaN(d.getTime()) && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length;
+    const departments = new Set(completed.map((p) => p.department).filter(Boolean)).size;
+    const teamMembers = new Set(completed.flatMap((p) => [p.owner, ...p.team])).size;
+    return { total: completed.length, completedThisMonth, departments, teamMembers };
+  }, [completed]);
+
+  const completedTasksTotal = useMemo(
+    () => tasks.filter((t) => t.type === "task" && t.column === "done").length,
+    [tasks]
+  );
+
+  const completedTicketsTotal = useMemo(
+    () => tickets.filter((t) => t.status === "resolved" || t.status === "closed").length,
+    [tickets]
+  );
+
   return (
     <div>
-      <Header
-        title="Reports"
-        subtitle="Generate and export business reports"
-        actions={
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors">
-              <Calendar className="w-4 h-4" />
-              Schedule
-            </button>
-            <button className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors">
-              <Plus className="w-4 h-4" />
-              Custom Report
-            </button>
-          </div>
-        }
-      />
+      <Header title="Reports" subtitle="Completion reports for finished projects" />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white border border-[#eaeaea] rounded-xl p-5">
-          <div className="bg-[#fafafa] border border-[#eaeaea] p-2 rounded-lg w-fit mb-3">
-            <FileText className="w-4 h-4 text-[#0070f3]" />
+      <div className="grid grid-cols-2 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-6 overflow-hidden">
+        {[
+          { label: "Completed Projects",    value: stats.total,              sub: "With a generated report", valueColor: undefined as string | undefined },
+          { label: "Completed This Month",  value: stats.completedThisMonth, sub: "By completion date",      valueColor: undefined as string | undefined },
+          { label: "Departments",           value: stats.departments,        sub: "Represented",              valueColor: undefined as string | undefined },
+          { label: "Contributors",          value: stats.teamMembers,        sub: "Across completed projects", valueColor: undefined as string | undefined },
+        ].map(({ label, value, sub, valueColor }, i, arr) => (
+          <div key={label} className={`flex-1 px-5 py-5 hover:bg-[#fafafa] transition-colors ${i < arr.length - 1 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""}`}>
+            <p className={`text-2xl font-bold tabular-nums leading-none ${valueColor ?? "text-[#0a0a0a]"}`}>{value}</p>
+            <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{label}</p>
+            <p className="text-[10px] mt-0.5 text-[#bbb]">{sub}</p>
           </div>
-          <p className="text-3xl font-semibold text-[#0a0a0a] leading-none mb-1">6</p>
-          <p className="text-sm text-[#666] mb-1">Report Types</p>
-          <p className="text-xs text-[#999]">Available templates</p>
-        </div>
-        <div className="bg-white border border-[#eaeaea] rounded-xl p-5">
-          <div className="bg-[#fafafa] border border-[#eaeaea] p-2 rounded-lg w-fit mb-3">
-            <BarChart3 className="w-4 h-4 text-[#17c964]" />
-          </div>
-          <p className="text-3xl font-semibold text-[#0a0a0a] leading-none mb-1">7</p>
-          <p className="text-sm text-[#666] mb-1">Generated</p>
-          <p className="text-xs text-[#999]">This month</p>
-        </div>
-        <div className="bg-white border border-[#eaeaea] rounded-xl p-5">
-          <div className="bg-[#fafafa] border border-[#eaeaea] p-2 rounded-lg w-fit mb-3">
-            <Calendar className="w-4 h-4 text-[#7c3aed]" />
-          </div>
-          <p className="text-3xl font-semibold text-[#0a0a0a] leading-none mb-1">3</p>
-          <p className="text-sm text-[#666] mb-1">Scheduled</p>
-          <p className="text-xs text-[#999]">Auto-generate</p>
-        </div>
-        <div className="bg-white border border-[#eaeaea] rounded-xl p-5">
-          <div className="bg-[#fafafa] border border-[#eaeaea] p-2 rounded-lg w-fit mb-3">
-            <Download className="w-4 h-4 text-[#f5a524]" />
-          </div>
-          <p className="text-3xl font-semibold text-[#0a0a0a] leading-none mb-1">24</p>
-          <p className="text-sm text-[#666] mb-1">Exported</p>
-          <p className="text-xs text-[#999]">Total downloads</p>
-        </div>
+        ))}
       </div>
 
-      {/* Report Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {reports.map((report) => {
-          const cat = categoryConfig[report.category];
-          const Icon = report.icon;
-          return (
+      {/* Report cards */}
+      {completed.length === 0 ? (
+        <div className="bg-white border border-[#eaeaea] rounded-xl p-12 text-center">
+          <FileText className="w-6 h-6 text-[#999] mx-auto mb-3" />
+          <p className="text-sm font-medium text-[#0a0a0a] mb-1">No completed projects yet</p>
+          <p className="text-xs text-[#999]">Reports appear here automatically once a project&apos;s status is set to Completed.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {completed.map((project) => {
+            const taskCount = completedTaskCount(project.id);
+            return (
             <div
-              key={report.id}
-              className="bg-white border border-[#eaeaea] rounded-xl p-5 hover:border-[#ccc] transition-colors cursor-pointer"
+              key={project.id}
+              onClick={() => router.push(`/reports/project/${project.id}`)}
+              className="flex flex-col h-full min-h-57.5 bg-white border border-[#eaeaea] rounded-xl p-5 cursor-pointer transition-all duration-150 hover:border-[#ccc] hover:shadow-[0_2px_8px_rgba(0,0,0,0.05)]"
             >
-              <div className="flex items-start justify-between">
-                <div className={`p-2.5 rounded-lg ${cat.iconBg}`}>
-                  <Icon className={`w-4 h-4 ${cat.iconText}`} />
+              <div className="flex items-start justify-between mb-3">
+                <div className="bg-[#e8fdf0] p-2.5 rounded-lg">
+                  <FileText className="w-4 h-4 text-[#17c964]" />
                 </div>
-                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold ${cat.bg} ${cat.text}`}>
-                  {report.category}
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-[#e8fdf0] text-[#17c964]">
+                  {project.department || "General"}
                 </span>
               </div>
-              <p className="text-sm font-semibold text-[#0a0a0a] mt-3 mb-1">{report.title}</p>
-              <p className="text-xs text-[#666] leading-5 mb-4">{report.description}</p>
-              <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-[#0a0a0a] mb-1 line-clamp-1">{project.name}</p>
+              <p className="text-xs text-[#666] leading-5 mb-3 line-clamp-1">
+                {project.clientName || "Internal project"} · Owner {project.owner}
+              </p>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex -space-x-1.5">
+                  {[project.owner, ...project.team.filter((m) => m !== project.owner)].slice(0, 4).map((name) => {
+                    const c = getAvatarColor(name);
+                    return (
+                      <div key={name} className={`w-6 h-6 rounded-full ${c.bg} ${c.text} flex items-center justify-center ring-2 ring-white shrink-0`}>
+                        <span className="text-[9px] font-semibold">{getInitials(name)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <span className="text-[11px] text-[#999]">{project.team.length} team member{project.team.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="flex items-center gap-1.5 mb-4 text-[11px] text-[#999]">
+                <CheckSquare className="w-3 h-3" />
+                {taskCount.total > 0
+                  ? `${taskCount.completed} of ${taskCount.total} tasks completed`
+                  : "No tasks linked"}
+              </div>
+              <div className="flex items-center justify-between mt-auto pt-1">
                 <p className="text-[10px] text-[#999]">
-                  Last: {formatDate(report.lastGenerated)} · {report.format}
+                  Completed {project.deadlineTbd || !project.deadline ? "—" : formatDate(project.deadline)}
                 </p>
-                <div className="flex items-center gap-1.5">
-                  <button className="text-xs font-medium text-[#666] px-2.5 py-1.5 rounded-lg hover:bg-[#f1f1f1] transition-colors">
-                    View
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); router.push(`/reports/project/${project.id}`); }}
+                    className="flex items-center gap-1 text-xs font-medium text-[#666] px-2 py-1.5 rounded-lg hover:bg-[#f1f1f1] transition-colors"
+                    title="View Report"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
                   </button>
-                  <button className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2.5 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors">
-                    <Download className="w-3 h-3" />
-                    Export
+                  <button
+                    onClick={(e) => { e.stopPropagation(); exportProjectReportPdf(project, tasks); }}
+                    className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+                    title="Download PDF"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    PDF
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); exportProjectReportDocx(project, tasks); }}
+                    className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+                    title="Download Word"
+                  >
+                    <FileType className="w-3.5 h-3.5" />
+                    Word
                   </button>
                 </div>
               </div>
             </div>
-          );
-        })}
+            );
+          })}
+        </div>
+      )}
+
+      {/* Other Reports */}
+      <div className="mt-8">
+        <p className="text-sm font-semibold text-[#0a0a0a] mb-1">Other Reports</p>
+        <p className="text-xs text-[#999] mb-4">Consolidated reports across all projects</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div
+            onClick={() => router.push("/reports/tasks")}
+            className="flex flex-col h-full min-h-57.5 bg-white border border-[#eaeaea] rounded-xl p-5 cursor-pointer transition-all duration-150 hover:border-[#ccc] hover:shadow-[0_2px_8px_rgba(0,0,0,0.05)]"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="bg-[#e8f2ff] p-2.5 rounded-lg">
+                <CheckSquare className="w-4 h-4 text-[#0070f3]" />
+              </div>
+            </div>
+            <p className="text-sm font-semibold text-[#0a0a0a] mb-1">Completed Tasks Report</p>
+            <p className="text-xs text-[#666] leading-5 mb-4">
+              {completedTasksTotal} task{completedTasksTotal !== 1 ? "s" : ""} completed across all projects
+            </p>
+            <div className="flex items-center justify-end gap-1 mt-auto">
+              <button
+                onClick={(e) => { e.stopPropagation(); router.push("/reports/tasks"); }}
+                className="flex items-center gap-1 text-xs font-medium text-[#666] px-2 py-1.5 rounded-lg hover:bg-[#f1f1f1] transition-colors"
+                title="View Report"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); exportTasksReportPdf(tasks, projects); }}
+                className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+                title="Download PDF"
+              >
+                <Download className="w-3.5 h-3.5" />
+                PDF
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); exportTasksReportDocx(tasks, projects); }}
+                className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+                title="Download Word"
+              >
+                <FileType className="w-3.5 h-3.5" />
+                Word
+              </button>
+            </div>
+          </div>
+
+          <div
+            onClick={() => router.push("/reports/tickets")}
+            className="flex flex-col h-full min-h-57.5 bg-white border border-[#eaeaea] rounded-xl p-5 cursor-pointer transition-all duration-150 hover:border-[#ccc] hover:shadow-[0_2px_8px_rgba(0,0,0,0.05)]"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="bg-[#fef3c7] p-2.5 rounded-lg">
+                <LifeBuoy className="w-4 h-4 text-[#b45309]" />
+              </div>
+            </div>
+            <p className="text-sm font-semibold text-[#0a0a0a] mb-1">Ticket Resolution Report</p>
+            <p className="text-xs text-[#666] leading-5 mb-4">
+              {completedTicketsTotal} ticket{completedTicketsTotal !== 1 ? "s" : ""} resolved or closed
+            </p>
+            <div className="flex items-center justify-end gap-1 mt-auto">
+              <button
+                onClick={(e) => { e.stopPropagation(); router.push("/reports/tickets"); }}
+                className="flex items-center gap-1 text-xs font-medium text-[#666] px-2 py-1.5 rounded-lg hover:bg-[#f1f1f1] transition-colors"
+                title="View Report"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); exportTicketsReportPdf(tickets); }}
+                className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+                title="Download PDF"
+              >
+                <Download className="w-3.5 h-3.5" />
+                PDF
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); exportTicketsReportDocx(tickets); }}
+                className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+                title="Download Word"
+              >
+                <FileType className="w-3.5 h-3.5" />
+                Word
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

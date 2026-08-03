@@ -6,6 +6,7 @@ export interface NavPage {
 
 export const NAV_PAGES: NavPage[] = [
   { href: "/",              label: "Dashboard",     section: "RingLogix"  },
+  { href: "/quick-access",  label: "Quick Access",  section: "RingLogix"  },
   { href: "/customers",     label: "Customers",     section: "RingLogix"  },
   { href: "/subscribers",   label: "Subscribers",   section: "RingLogix"  },
   { href: "/phone-numbers", label: "Phone Numbers", section: "RingLogix"  },
@@ -18,6 +19,8 @@ export const NAV_PAGES: NavPage[] = [
   { href: "/sites",         label: "Sites",         section: "UniFi"      },
   { href: "/alerts",        label: "Alerts",        section: "UniFi"      },
   { href: "/tasks",         label: "Tasks",         section: "Operations" },
+  { href: "/notes",         label: "Notes",         section: "Operations" },
+  { href: "/calendar",      label: "Calendar",      section: "Operations" },
   { href: "/projects",      label: "Projects",      section: "Operations" },
   { href: "/reports",       label: "Reports",       section: "Operations" },
   { href: "/logs",          label: "Logs",          section: "Operations" },

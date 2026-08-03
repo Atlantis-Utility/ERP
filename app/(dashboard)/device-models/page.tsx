@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import Select from "@/components/ui/Select";
 import { Cpu, Tag, RefreshCw, AlertCircle } from "lucide-react";
 
 interface DeviceModel {
@@ -62,7 +63,7 @@ export default function DeviceModelsPage() {
         subtitle="Supported provisioning devices"
         actions={
           <button
-            onClick={load}
+            onClick={() => load()}
             disabled={state === "loading"}
             className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
           >
@@ -101,16 +102,16 @@ export default function DeviceModelsPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b border-[#eaeaea]">
           <p className="text-sm font-semibold text-[#0a0a0a]">Device Catalog</p>
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={brandFilter}
-              onChange={(e) => setBrandFilter(e.target.value)}
-              className="text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors bg-white"
-            >
-              <option value="">All brands</option>
-              {brands.map((b) => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
+            <div className="w-36">
+              <Select
+                value={brandFilter}
+                onChange={setBrandFilter}
+                options={[
+                  { value: "", label: "All brands" },
+                  ...brands.map((b) => ({ value: b, label: b })),
+                ]}
+              />
+            </div>
             <input
               type="text"
               placeholder="Search models…"
@@ -141,7 +142,7 @@ export default function DeviceModelsPage() {
             <AlertCircle className="w-6 h-6 text-[#f31260] mx-auto mb-3" />
             <p className="text-sm font-medium text-[#0a0a0a] mb-1">Failed to load</p>
             <p className="text-xs text-[#999] mb-4">{error}</p>
-            <button onClick={load} className="text-xs text-[#0070f3] hover:underline">Retry</button>
+            <button onClick={() => load()} className="text-xs text-[#0070f3] hover:underline">Retry</button>
           </div>
         )}
 

@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { getAvatarColor, getInitials } from "@/lib/utils";
-import { Check, X, Plus, ChevronDown, Shield, ShieldOff, Moon, Sun, Monitor } from "lucide-react";
+import { Check, X, Plus, Shield, ShieldOff, Moon, Sun, Monitor } from "lucide-react";
 import { logActivity } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
 import { subscribeUserProfiles, setUserAdmin, ensureAdminProfile, type UserProfile } from "@/lib/db/user-profiles";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Select from "@/components/ui/Select";
 import { useTheme } from "@/lib/theme-context";
 
 type Tab = "general" | "appearance" | "team" | "notifications" | "integrations";
@@ -84,7 +85,7 @@ const DEFAULT_NOTIFS: NotifPref[] = [
 
 const DEFAULT_INTEGRATIONS: Integration[] = [
   { id: "slack",   name: "Slack",             description: "Team messaging and notifications",    initial: "S", connected: true  },
-  { id: "google",  name: "Google Workspace",  description: "Calendar, Drive, and Gmail sync",     initial: "G", connected: true  },
+  { id: "microsoft", name: "Microsoft 365",   description: "Calendar, OneDrive, and Outlook sync", initial: "M", connected: true  },
   { id: "github",  name: "GitHub",            description: "Repository and project activity",     initial: "G", connected: false },
   { id: "sf",      name: "Salesforce",        description: "CRM data and pipeline sync",          initial: "S", connected: true  },
   { id: "qb",      name: "QuickBooks",        description: "Accounting and financial data",       initial: "Q", connected: false },
@@ -310,18 +311,11 @@ function GeneralTab({ onSave }: { onSave: (msg: string) => void }) {
 
           <div>
             <label className="block text-[10px] text-[#999] uppercase tracking-wider mb-1.5">Timezone</label>
-            <div className="relative">
-              <select
-                value={form.timezone}
-                onChange={(e) => set("timezone", e.target.value)}
-                className="w-full appearance-none border border-[#eaeaea] rounded-lg px-3 py-2 text-sm text-[#0a0a0a] focus:outline-none focus:border-[#999] transition-colors bg-white"
-              >
-                {TIMEZONES.map((tz) => (
-                  <option key={tz} value={tz}>{tz}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#bbb] pointer-events-none" />
-            </div>
+            <Select
+              value={form.timezone}
+              onChange={(v) => set("timezone", v)}
+              options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+            />
           </div>
 
           <div className="sm:col-span-2">
@@ -398,8 +392,8 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
 
   // Ensure current user has isAdmin: true in Firestore
   useEffect(() => {
-    if (authUser?.firebaseUser?.uid && authUser.isAdmin) {
-      ensureAdminProfile(authUser.firebaseUser.uid, authUser.email).catch(console.error);
+    if (authUser?.user?.id && authUser.isAdmin) {
+      ensureAdminProfile(authUser.user.id, authUser.email).catch(console.error);
     }
   }, [authUser]);
 
@@ -410,7 +404,7 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
   }, []);
 
   async function toggleAdmin(profile: UserProfile) {
-    if (profile.uid === authUser?.firebaseUser?.uid) return; // can't demote yourself
+    if (profile.uid === authUser?.user?.id) return; // can't demote yourself
     setTogglingUid(profile.uid);
     try {
       await setUserAdmin(profile.uid, !profile.isAdmin);
@@ -530,19 +524,18 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
                         Admin
                       </span>
                     ) : (
-                      <div className="relative inline-block">
-                        <select
+                      <div className="w-36">
+                        <Select
                           value={member.role}
-                          onChange={(e) => changeRole(member.id, e.target.value as TeamMember["role"])}
-                          className="appearance-none border border-[#eaeaea] rounded-lg pl-2.5 pr-6 py-1 text-xs font-medium text-[#0a0a0a] bg-white focus:outline-none focus:border-[#999] transition-colors cursor-pointer"
-                        >
-                          <option value="Administrator">Administrator</option>
-                          <option value="Manager">Manager</option>
-                          <option value="Analyst">Analyst</option>
-                          <option value="Contributor">Contributor</option>
-                          <option value="Viewer">Viewer</option>
-                        </select>
-                        <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#bbb] pointer-events-none" />
+                          onChange={(v) => changeRole(member.id, v as TeamMember["role"])}
+                          options={[
+                            { value: "Administrator", label: "Administrator" },
+                            { value: "Manager", label: "Manager" },
+                            { value: "Analyst", label: "Analyst" },
+                            { value: "Contributor", label: "Contributor" },
+                            { value: "Viewer", label: "Viewer" },
+                          ]}
+                        />
                       </div>
                     )}
                   </td>
@@ -597,20 +590,17 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
               </div>
               <div>
                 <label className="block text-[10px] text-[#999] uppercase tracking-wider mb-1.5">Role</label>
-                <div className="relative">
-                  <select
-                    value={invite.role}
-                    onChange={(e) => setInvite((i) => ({ ...i, role: e.target.value as TeamMember["role"] }))}
-                    className="w-full appearance-none border border-[#eaeaea] rounded-lg px-3 py-2 text-sm text-[#0a0a0a] bg-white focus:outline-none focus:border-[#999] transition-colors"
-                  >
-                    <option value="Administrator">Administrator — Full access</option>
-                    <option value="Manager">Manager — Manage teams &amp; projects</option>
-                    <option value="Analyst">Analyst — View &amp; export data</option>
-                    <option value="Contributor">Contributor — Add &amp; edit content</option>
-                    <option value="Viewer">Viewer — Read only</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#bbb] pointer-events-none" />
-                </div>
+                <Select
+                  value={invite.role}
+                  onChange={(v) => setInvite((i) => ({ ...i, role: v as TeamMember["role"] }))}
+                  options={[
+                    { value: "Administrator", label: "Administrator: Full access" },
+                    { value: "Manager", label: "Manager: Manage teams & projects" },
+                    { value: "Analyst", label: "Analyst: View & export data" },
+                    { value: "Contributor", label: "Contributor: Add & edit content" },
+                    { value: "Viewer", label: "Viewer: Read only" },
+                  ]}
+                />
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
@@ -658,7 +648,7 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
             </thead>
             <tbody>
               {profiles.map((profile) => {
-                const isSelf    = profile.uid === authUser.firebaseUser?.uid;
+                const isSelf    = profile.uid === authUser.user?.id;
                 const colors    = getAvatarColor(profile.email);
                 const initials  = getInitials(profile.displayName || profile.email.split("@")[0]);
                 const toggling  = togglingUid === profile.uid;

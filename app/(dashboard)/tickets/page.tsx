@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Search, RefreshCw, ChevronDown, TicketCheck, X, Plus, Mail, Phone, Globe, Pencil } from "lucide-react";
+import { Search, RefreshCw, TicketCheck, X, Plus, Mail, Phone, Globe, Pencil } from "lucide-react";
 import Header from "@/components/layout/Header";
+import Select from "@/components/ui/Select";
 import { subscribeEmployees } from "@/lib/db/employees";
 import { upsertTicket, subscribeAllTicketMeta, createManualTicket, upsertManualTicket, subscribeManualTickets } from "@/lib/db/tickets";
 import type { TicketStatus, TicketPriority, TicketMeta, ManualTicket, TicketSource } from "@/lib/db/tickets";
 import { logActivity } from "@/lib/activity-log";
+import { isTicketUnread, markLegacyTicketNotificationsRead } from "@/lib/notifications";
 import type { Employee } from "@/lib/mock-data";
 
 interface EmailTicket {
@@ -122,7 +124,6 @@ function NewTicketDrawer({ employees, onSave, onClose }: NewTicketDrawerProps) {
   }
 
   const inputClass = "w-full border border-[#eaeaea] rounded-lg px-3 py-2 text-sm text-[#0a0a0a] placeholder:text-[#bbb] focus:outline-none focus:border-[#0070f3] transition-colors";
-  const selectClass = inputClass + " appearance-none bg-white";
 
   return (
     <div className="fixed inset-0 z-150 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4" onClick={onClose}>
@@ -171,32 +172,31 @@ function NewTicketDrawer({ employees, onSave, onClose }: NewTicketDrawerProps) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-[#444] mb-1.5">Priority</label>
-              <div className="relative">
-                <select value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)} className={selectClass}>
-                  {(["urgent","high","medium","low"] as TicketPriority[]).map((p) => <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-              </div>
+              <Select
+                value={priority}
+                onChange={(v) => setPriority(v as TicketPriority)}
+                options={(["urgent","high","medium","low"] as TicketPriority[]).map((p) => ({ value: p, label: PRIORITY_CONFIG[p].label }))}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-[#444] mb-1.5">Assignee</label>
-              <div className="relative">
-                <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={selectClass}>
-                  <option value="">Unassigned</option>
-                  {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-              </div>
+              <Select
+                value={assigneeId}
+                onChange={setAssigneeId}
+                options={[
+                  { value: "", label: "Unassigned" },
+                  ...employees.map((emp) => ({ value: emp.id, label: emp.name })),
+                ]}
+              />
             </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-[#444] mb-1.5">Status</label>
-            <div className="relative">
-              <select value={status} onChange={(e) => setStatus(e.target.value as TicketStatus)} className={selectClass}>
-                {(["open","in-progress","resolved","closed"] as TicketStatus[]).map((s) => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-            </div>
+            <Select
+              value={status}
+              onChange={(v) => setStatus(v as TicketStatus)}
+              options={(["open","in-progress","resolved","closed"] as TicketStatus[]).map((s) => ({ value: s, label: STATUS_CONFIG[s].label }))}
+            />
           </div>
         </div>
 
@@ -245,9 +245,6 @@ function AssignModal({ ticket, employees, onSave, onClose }: AssignModalProps) {
     onClose();
   }
 
-  const selectClass =
-    "w-full border border-[#eaeaea] rounded-lg px-3 py-2 text-sm text-[#0a0a0a] bg-white focus:outline-none focus:border-[#0070f3] transition-colors appearance-none";
-
   return (
     <div
       className="fixed inset-0 z-150 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
@@ -275,39 +272,32 @@ function AssignModal({ ticket, employees, onSave, onClose }: AssignModalProps) {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-[#444] mb-1.5">Status</label>
-            <div className="relative">
-              <select value={status} onChange={(e) => setStatus(e.target.value as TicketStatus)} className={selectClass}>
-                {ALL_STATUSES.map((s) => (
-                  <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-            </div>
+            <Select
+              value={status}
+              onChange={(v) => setStatus(v as TicketStatus)}
+              options={ALL_STATUSES.map((s) => ({ value: s, label: STATUS_CONFIG[s].label }))}
+            />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-[#444] mb-1.5">Priority</label>
-            <div className="relative">
-              <select value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)} className={selectClass}>
-                {ALL_PRIORITIES.map((p) => (
-                  <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-            </div>
+            <Select
+              value={priority}
+              onChange={(v) => setPriority(v as TicketPriority)}
+              options={ALL_PRIORITIES.map((p) => ({ value: p, label: PRIORITY_CONFIG[p].label }))}
+            />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-[#444] mb-1.5">Assignee</label>
-            <div className="relative">
-              <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={selectClass}>
-                <option value="">Unassigned</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-            </div>
+            <Select
+              value={assigneeId}
+              onChange={setAssigneeId}
+              options={[
+                { value: "", label: "Unassigned" },
+                ...employees.map((emp) => ({ value: emp.id, label: emp.name })),
+              ]}
+            />
           </div>
 
           <div>
@@ -361,7 +351,7 @@ export default function TicketsPage() {
   const router = useRouter();
   const [emailTickets, setEmailTickets]   = useState<EmailTicket[]>([]);
   const [manualTickets, setManualTickets] = useState<ManualTicket[]>([]);
-  const [gmailTotal, setGmailTotal]       = useState<number | null>(null);
+  const [emailTotal, setEmailTotal]       = useState<number | null>(null);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loadingMore, setLoadingMore]     = useState(false);
   const [metaMap, setMetaMap]             = useState<Record<string, TicketMeta>>({});
@@ -372,6 +362,14 @@ export default function TicketsPage() {
   const [notConfigured, setNotConfigured] = useState(false);
   const [showNewTicket, setShowNewTicket] = useState(false);
   const [search, setSearch]               = useState("");
+  const [, forceNotifTick]                = useState(0);
+
+  // Re-render "New" tags live as TicketWatcher adds notifications or a ticket gets opened
+  useEffect(() => {
+    function onNotif() { forceNotifTick((n) => n + 1); }
+    window.addEventListener("app-notification", onNotif);
+    return () => window.removeEventListener("app-notification", onNotif);
+  }, []);
   const [statusFilter, setStatusFilter]   = useState<TicketStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | "all">("all");
   const [assignModal, setAssignModal]     = useState<UnifiedTicket | null>(null);
@@ -381,7 +379,7 @@ export default function TicketsPage() {
     setApiError(null);
     setEmailTickets(data.tickets);
     setNextPageToken(data.nextPageToken ?? null);
-    if (data.total != null) setGmailTotal(data.total);
+    if (data.total != null) setEmailTotal(data.total);
   }, []);
 
   const fetchTickets = useCallback(async () => {
@@ -404,6 +402,11 @@ export default function TicketsPage() {
   }, [applyResponse]);
 
   useEffect(() => {
+    // Retire pre-per-ticket-tracking notifications (no ticketId, so they can
+    // never be cleared by opening a specific ticket) so they don't permanently
+    // inflate the sidebar badge.
+    markLegacyTicketNotificationsRead();
+
     // Show cached data immediately so the page isn't blank while fetching
     const cached = readCache();
     if (cached) {
@@ -547,7 +550,7 @@ export default function TicketsPage() {
     <div>
       <Header
         title="Tickets"
-        subtitle={gmailTotal != null && gmailTotal > emailTickets.length ? `${unified.length} loaded · ${gmailTotal} email threads` : `${unified.length} ticket${unified.length !== 1 ? "s" : ""}`}
+        subtitle={emailTotal != null && emailTotal > emailTickets.length ? `${unified.length} loaded · ${emailTotal} email threads` : `${unified.length} ticket${unified.length !== 1 ? "s" : ""}`}
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -571,12 +574,13 @@ export default function TicketsPage() {
 
       {notConfigured && (
         <div className="mb-6 bg-[#fffbeb] border border-[#fde68a] rounded-xl p-5">
-          <p className="text-sm font-semibold text-[#b45309] mb-1">Gmail credentials not configured</p>
+          <p className="text-sm font-semibold text-[#b45309] mb-1">Microsoft 365 credentials not configured</p>
           <p className="text-sm text-[#92400e]">
-            Set <code className="font-mono bg-[#fef3c7] px-1 rounded">GMAIL_CLIENT_EMAIL</code> and{" "}
-            <code className="font-mono bg-[#fef3c7] px-1 rounded">GMAIL_PRIVATE_KEY</code> in your{" "}
+            Set <code className="font-mono bg-[#fef3c7] px-1 rounded">MS_TICKETS_TENANT_ID</code>,{" "}
+            <code className="font-mono bg-[#fef3c7] px-1 rounded">MS_TICKETS_CLIENT_ID</code>, and{" "}
+            <code className="font-mono bg-[#fef3c7] px-1 rounded">MS_TICKETS_CLIENT_SECRET</code> in your{" "}
             <code className="font-mono bg-[#fef3c7] px-1 rounded">.env.local</code> to connect to{" "}
-            <strong>ticket@atlantisutility.com</strong> via domain-wide delegation.
+            <strong>ticket@atlantisutility.com</strong> via an app-only Microsoft Graph application.
           </p>
         </div>
       )}
@@ -633,18 +637,15 @@ export default function TicketsPage() {
           ))}
         </div>
 
-        <div className="relative">
-          <select
+        <div className="w-40">
+          <Select
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value as TicketPriority | "all")}
-            className="appearance-none border border-[#eaeaea] rounded-lg px-3 py-2 pr-8 text-sm text-[#0a0a0a] bg-white focus:outline-none focus:border-[#0070f3] transition-colors cursor-pointer"
-          >
-            <option value="all">All Priorities</option>
-            {ALL_PRIORITIES.map((p) => (
-              <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
+            onChange={(v) => setPriorityFilter(v as TicketPriority | "all")}
+            options={[
+              { value: "all", label: "All Priorities" },
+              ...ALL_PRIORITIES.map((p) => ({ value: p, label: PRIORITY_CONFIG[p].label })),
+            ]}
+          />
         </div>
       </div>
 
@@ -690,9 +691,16 @@ export default function TicketsPage() {
                     }`}
                   >
                     <td className="px-4 py-3 max-w-xs">
-                      <p className={`text-sm font-medium text-[#0a0a0a] truncate ${ticket.isUnread ? "font-semibold" : ""}`}>
-                        {ticket.ticketNumber ? `#${ticket.ticketNumber} ` : ""}{ticket.subject}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className={`text-sm font-medium text-[#0a0a0a] truncate ${ticket.isUnread ? "font-semibold" : ""}`}>
+                          {ticket.ticketNumber ? `#${ticket.ticketNumber} ` : ""}{ticket.subject}
+                        </p>
+                        {isTicketUnread(ticket.id) && (
+                          <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#dcfce7] text-[#16a34a]">
+                            New
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-[#999] truncate mt-0.5">{ticket.fromName || ticket.from}</p>
                     </td>
                     <td className="px-4 py-3">
@@ -737,7 +745,7 @@ export default function TicketsPage() {
       <div className="flex items-center justify-between mt-3">
         <p className="text-xs text-[#999]">
           Showing {filtered.length} of {unified.length} tickets
-          {gmailTotal != null && gmailTotal > emailTickets.length ? ` · ${gmailTotal} email threads in inbox` : ""}
+          {emailTotal != null && emailTotal > emailTickets.length ? ` · ${emailTotal} email threads in inbox` : ""}
         </p>
         {nextPageToken && (
           <button

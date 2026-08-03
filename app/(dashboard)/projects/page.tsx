@@ -42,11 +42,12 @@ export default function ProjectsPage() {
 
   const filtered = activeTab === "all" ? projects : projects.filter((p) => p.status === activeTab);
 
-  const counts = {
+  const counts: Record<ProjectStatus, number> = {
     active:    projects.filter((p) => p.status === "active").length,
     completed: projects.filter((p) => p.status === "completed").length,
     "on-hold": projects.filter((p) => p.status === "on-hold").length,
     overdue:   projects.filter((p) => p.status === "overdue").length,
+    cancelled: projects.filter((p) => p.status === "cancelled").length,
   };
 
   return (

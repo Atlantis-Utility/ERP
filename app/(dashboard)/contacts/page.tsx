@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import Select from "@/components/ui/Select";
 import { BookUser, Mail, Smartphone, Phone, RefreshCw, AlertCircle, Plus, X, Trash2 } from "lucide-react";
 
 interface Contact {
@@ -157,18 +158,14 @@ export default function ContactsPage() {
 
       {/* Domain + User selector */}
       <div className="bg-white border border-[#eaeaea] rounded-xl p-4 mb-5 flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 w-45">
           <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Domain</label>
-          <select
+          <Select
             value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            className="text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors min-w-[180px] bg-white"
-          >
-            <option value="">Select domain…</option>
-            {customers.map((c) => (
-              <option key={c.domain} value={c.domain}>{c.domain}</option>
-            ))}
-          </select>
+            onChange={setDomain}
+            placeholder="Select domain…"
+            options={customers.map((c) => ({ value: c.domain, label: c.domain }))}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">User / Extension</label>

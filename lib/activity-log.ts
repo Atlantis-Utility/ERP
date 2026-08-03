@@ -32,7 +32,15 @@ function readAll(): ActivityLogEntry[] {
 }
 
 function writeAll(entries: ActivityLogEntry[]): void {
-  localStorage.setItem(KEY, JSON.stringify(entries.slice(0, MAX)));
+  // Logging activity is a side effect, not the operation the caller actually
+  // cares about — a full localStorage quota (QuotaExceededError, which isn't
+  // a plain Error instance) must never bubble up and get mistaken for the
+  // real save/delete/etc. failing.
+  try {
+    localStorage.setItem(KEY, JSON.stringify(entries.slice(0, MAX)));
+  } catch (err) {
+    console.error("[activity-log] Failed to persist entry:", err);
+  }
 }
 
 function resolveUser(): { id: string | null; name: string } {

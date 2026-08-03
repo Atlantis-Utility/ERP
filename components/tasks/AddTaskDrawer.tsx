@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
-import FormField, { inputClass, selectClass } from "@/components/ui/FormField";
+import FormField, { inputClass } from "@/components/ui/FormField";
 import DateTimePicker from "@/components/ui/DateTimePicker";
+import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
 import { getAvatarColor, getInitials } from "@/lib/utils";
 
@@ -14,7 +15,7 @@ export type MeetingPlatform = "zoom" | "meet" | "teams" | "webex" | "in-person";
 
 export interface KanbanCard {
   id: string;
-  type: "task" | "meeting" | "project";
+  type: "task" | "meeting" | "project" | "ticket";
   title: string;
   description: string;
   column: KanbanColumn;
@@ -30,6 +31,10 @@ export interface KanbanCard {
   duration?: number;
   projectId?: string;
   progress?: number;
+  /** Manual override — meetings don't carry attendee emails to infer this from. */
+  company?: string;
+  /** Only set for email-sourced tickets — manual tickets have no working detail route to link to. */
+  ticketId?: string;
 }
 
 interface Props {
@@ -155,28 +160,28 @@ export default function AddTaskDrawer({ open, onClose, onAdd, defaultColumn }: P
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Column">
-            <select
-              className={selectClass}
+            <Select
               value={defaultColumn ?? form.column}
               disabled={!!defaultColumn}
-              onChange={(e) => set("column", e.target.value as KanbanColumn)}
-            >
-              <option value="backlog">Backlog</option>
-              <option value="in-progress">In Progress</option>
-              <option value="review">In Review</option>
-              <option value="done">Done</option>
-            </select>
+              onChange={(v) => set("column", v as KanbanColumn)}
+              options={[
+                { value: "backlog", label: "Backlog" },
+                { value: "in-progress", label: "In Progress" },
+                { value: "review", label: "In Review" },
+                { value: "done", label: "Done" },
+              ]}
+            />
           </FormField>
           <FormField label="Priority">
-            <select
-              className={selectClass}
+            <Select
               value={form.priority}
-              onChange={(e) => set("priority", e.target.value as KanbanPriority)}
-            >
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
+              onChange={(v) => set("priority", v as KanbanPriority)}
+              options={[
+                { value: "high", label: "High" },
+                { value: "medium", label: "Medium" },
+                { value: "low", label: "Low" },
+              ]}
+            />
           </FormField>
         </div>
 

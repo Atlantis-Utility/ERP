@@ -17,21 +17,41 @@ function buildChartData(issues: UiIssuePeriod[]) {
   const N = 72;
   const map = new Map(issues.map((p) => [p.index, p]));
 
-  return Array.from({ length: N }, (_, i) => {
+  const points = Array.from({ length: N }, (_, i) => {
     const idx = currentIdx - (N - 1 - i);
     const p = map.get(idx);
     const date = new Date(idx * 300 * 1000);
-    const latency = p?.latency_avg_ms ?? null;
-    const maxLatency = p?.latency_max_ms ?? null;
-
     return {
       time: date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-      latency,
-      maxLatency,
-      lossShade: p?.packetLoss ? (latency ?? 80) * 2 : null,
-      downShade: p?.wanDowntime ? 9999 : null,
+      latency: p?.latencyAvgMs ?? null,
+      maxLatency: p?.latencyMaxMs ?? null,
+      packetLossPct: p?.packetLossPct ?? (p?.packetLoss ? 1 : null), // real % when we have it, else a thin sentinel bar
+      wanDowntime: Boolean(p?.wanDowntime),
     };
   });
+
+  // The most recent 5-min bucket(s) often haven't reported yet, which left the
+  // line stopping short of "now" with a blank gap at the right edge. Carry the
+  // last known reading forward across that trailing gap only.
+  const lastReported = points.findLast((d) => d.latency !== null)?.latency ?? null;
+  if (lastReported !== null) {
+    for (let i = points.length - 1; i >= 0 && points[i].latency === null; i--) {
+      points[i].latency = lastReported;
+    }
+  }
+
+  const peakLatency = points.reduce((m, d) => Math.max(m, d.latency ?? 0, d.maxLatency ?? 0), 0);
+  const yMax = Math.max(20, Math.ceil((peakLatency * 1.3) / 8) * 8);
+
+  const peakLossPct = points.reduce((m, d) => Math.max(m, d.packetLossPct ?? 0), 0);
+  const lossYMax = Math.max(5, Math.ceil(peakLossPct * 1.3));
+
+  const data = points.map((d) => ({
+    ...d,
+    downShade: d.wanDowntime ? yMax : null,
+  }));
+
+  return { data, yMax, lossYMax };
 }
 
 interface TooltipPayload {
@@ -47,7 +67,7 @@ function CustomTooltip({ active, payload, label }: {
   if (!active || !payload?.length) return null;
   const latency = payload.find((p) => p.dataKey === "latency")?.value;
   const maxLatency = payload.find((p) => p.dataKey === "maxLatency")?.value;
-  const hasLoss = payload.find((p) => p.dataKey === "lossShade")?.value;
+  const packetLossPct = payload.find((p) => p.dataKey === "packetLossPct")?.value;
   const hasDown = payload.find((p) => p.dataKey === "downShade")?.value;
 
   return (
@@ -55,17 +75,24 @@ function CustomTooltip({ active, payload, label }: {
       <p className="text-[#999] mb-1">{label}</p>
       {latency != null && <p className="text-[#06b6d4] font-medium">Avg: {latency} ms</p>}
       {maxLatency != null && <p className="text-[#93c5fd]">Max: {maxLatency} ms</p>}
-      {hasDown ? (
-        <p className="text-[#f31260] font-medium mt-1">WAN Down</p>
-      ) : hasLoss ? (
-        <p className="text-[#f59e0b] font-medium mt-1">Packet Loss</p>
-      ) : null}
+      {hasDown && <p className="text-[#f31260] font-medium mt-1">WAN Down</p>}
+      {!hasDown && packetLossPct != null && (
+        <p className="text-[#f59e0b] font-medium mt-1">Packet loss: {packetLossPct}%</p>
+      )}
     </div>
   );
 }
 
-export default function SiteLatencyChart({ issues }: { issues: UiIssuePeriod[] }) {
-  const data = buildChartData(issues);
+export default function SiteLatencyChart({
+  issues,
+  showLatency = true,
+  showPacketLoss = true,
+}: {
+  issues: UiIssuePeriod[];
+  showLatency?: boolean;
+  showPacketLoss?: boolean;
+}) {
+  const { data, yMax, lossYMax } = buildChartData(issues);
   const hasData = data.some((d) => d.latency !== null);
 
   if (!hasData) {
@@ -84,6 +111,10 @@ export default function SiteLatencyChart({ issues }: { issues: UiIssuePeriod[] }
             <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.18} />
             <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
           </linearGradient>
+          <linearGradient id="lossFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.22} />
+            <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+          </linearGradient>
         </defs>
 
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
@@ -96,63 +127,90 @@ export default function SiteLatencyChart({ issues }: { issues: UiIssuePeriod[] }
           interval={11}
         />
         <YAxis
+          yAxisId="latency"
+          domain={[0, yMax]}
           tick={{ fontSize: 10, fill: "#bbb" }}
           tickLine={false}
           axisLine={false}
           unit=" ms"
           width={48}
         />
+        {showPacketLoss && (
+          <YAxis
+            yAxisId="loss"
+            orientation="right"
+            domain={[0, lossYMax]}
+            tick={{ fontSize: 10, fill: "#f0b756" }}
+            tickLine={false}
+            axisLine={false}
+            unit="%"
+            width={40}
+          />
+        )}
 
         <Tooltip content={<CustomTooltip />} />
 
-        {/* WAN downtime — dark red wash */}
+        {/* WAN downtime — dark red wash spanning the full chart height (always shown; it's a hard fact, not a toggle) */}
         <Area
+          yAxisId="latency"
           dataKey="downShade"
-          fill="rgba(243,18,96,0.05)"
+          fill="rgba(243,18,96,0.08)"
           stroke="none"
           isAnimationActive={false}
           legendType="none"
         />
 
-        {/* Packet loss — amber wash */}
-        <Area
-          dataKey="lossShade"
-          fill="rgba(245,165,36,0.1)"
-          stroke="none"
-          isAnimationActive={false}
-          legendType="none"
-        />
+        {showLatency && (
+          <>
+            {/* Latency gradient fill */}
+            <Area
+              yAxisId="latency"
+              type="monotone"
+              dataKey="latency"
+              fill="url(#latencyFill)"
+              stroke="none"
+              isAnimationActive={false}
+              legendType="none"
+              connectNulls
+            />
 
-        {/* Latency gradient fill */}
-        <Area
-          dataKey="latency"
-          fill="url(#latencyFill)"
-          stroke="none"
-          isAnimationActive={false}
-          legendType="none"
-          connectNulls
-        />
+            {/* Avg latency — main line */}
+            <Line
+              yAxisId="latency"
+              type="monotone"
+              dataKey="latency"
+              stroke="#06b6d4"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />
+          </>
+        )}
 
-        {/* Max latency — light dashed */}
-        <Line
-          dataKey="maxLatency"
-          stroke="#bae6fd"
-          strokeWidth={1.5}
-          strokeDasharray="4 3"
-          dot={false}
-          connectNulls
-          isAnimationActive={false}
-        />
-
-        {/* Avg latency — main line */}
-        <Line
-          dataKey="latency"
-          stroke="#06b6d4"
-          strokeWidth={2}
-          dot={false}
-          connectNulls
-          isAnimationActive={false}
-        />
+        {showPacketLoss && (
+          <>
+            {/* Packet loss % — its own gradient fill on the right-hand axis */}
+            <Area
+              yAxisId="loss"
+              type="monotone"
+              dataKey="packetLossPct"
+              fill="url(#lossFill)"
+              stroke="none"
+              isAnimationActive={false}
+              legendType="none"
+            />
+            <Line
+              yAxisId="loss"
+              type="monotone"
+              dataKey="packetLossPct"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </>
+        )}
       </ComposedChart>
     </ResponsiveContainer>
   );

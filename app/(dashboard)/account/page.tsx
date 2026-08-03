@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { onSnapshot, doc, collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { updateEmployee } from "@/lib/db/employees";
 import { getLogs, logActivity, type ActivityLogEntry } from "@/lib/activity-log";
@@ -74,40 +73,38 @@ export default function AccountPage() {
   const [error,    setError]    = useState("");
   const [logs,     setLogs]     = useState<ActivityLogEntry[]>([]);
 
-  // Subscribe to employee doc — by employeeId if linked, else find by email
+  // Subscribe to employee row — by employeeId if linked, else find by email
   useEffect(() => {
     if (!authUser) return;
 
+    function applyRow(row: { id: string; data: Employee } | null) {
+      if (!row) return;
+      const data = { ...row.data, id: row.id };
+      if (!data.accessRole && authUser!.isAdmin) {
+        updateEmployee(row.id, { accessRole: "Administrator" } as Partial<Employee>).catch(() => {});
+      }
+      setEmployee(data);
+    }
+
     if (authUser.employeeId) {
-      const unsub = onSnapshot(
-        doc(db, "employees", authUser.employeeId),
-        (snap) => {
-          if (!snap.exists()) return;
-          const data = snap.data() as Employee;
-          // Auto-seed accessRole for admin accounts that pre-date the field
-          if (!data.accessRole && authUser.isAdmin) {
-            updateEmployee(authUser.employeeId!, { accessRole: "Administrator" } as Partial<Employee>).catch(() => {});
-          }
-          setEmployee(data);
-        },
-        (err)  => console.error("[account] employee snapshot:", err)
-      );
-      return unsub;
+      const employeeId = authUser.employeeId;
+      supabase.from("employees").select("id, data").eq("id", employeeId).maybeSingle()
+        .then(({ data }) => applyRow(data));
+
+      const channel = supabase
+        .channel(`employee-${employeeId}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "employees", filter: `id=eq.${employeeId}` },
+          (payload) => applyRow(payload.new as { id: string; data: Employee } | null))
+        .subscribe();
+      return () => { supabase.removeChannel(channel); };
     }
 
     // Admin with no employeeId — try to find by matching email
-    getDocs(query(collection(db, "employees"), where("email", "==", authUser.email)))
-      .then((snap) => {
-        if (!snap.empty) {
-          const data = snap.docs[0].data() as Employee;
-          const empId = snap.docs[0].id;
-          if (!data.accessRole && authUser.isAdmin) {
-            updateEmployee(empId, { accessRole: "Administrator" } as Partial<Employee>).catch(() => {});
-          }
-          setEmployee(data);
-        }
-      })
-      .catch((err) => console.error("[account] employee lookup:", err));
+    supabase.from("employees").select("id, data").eq("email", authUser.email).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { console.error("[account] employee lookup:", error); return; }
+        applyRow(data);
+      });
   }, [authUser?.employeeId, authUser?.email]);
 
   // Seed name field when auth user loads
@@ -208,8 +205,8 @@ export default function AccountPage() {
   const displayStart    = employee?.startDate ?? "";
   const displayStatus   = employee?.status   ?? "";
 
-  const memberSince = authUser.firebaseUser.metadata.creationTime
-    ? new Date(authUser.firebaseUser.metadata.creationTime).toLocaleDateString("en-US", {
+  const memberSince = authUser.user.created_at
+    ? new Date(authUser.user.created_at).toLocaleDateString("en-US", {
         month: "long", day: "numeric", year: "numeric",
       })
     : null;

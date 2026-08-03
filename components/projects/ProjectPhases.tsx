@@ -9,145 +9,18 @@ import {
 import { storeFile, retrieveFile, removeStoredFile, formatFileSize } from "@/lib/file-storage";
 import { logActivity } from "@/lib/activity-log";
 import type { Project } from "@/lib/mock-projects";
+import { updateProject } from "@/lib/db/projects";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import {
+  PHASE_DEFS, computeProgress, seedFromProject, emptyPhasesState,
+} from "@/lib/project-phases";
+import type {
+  PhaseStatus, AttachmentType, Attachment, PhaseData, PhasesState,
+} from "@/lib/project-phases";
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
-export type PhaseStatus = "not-started" | "in-progress" | "completed" | "blocked";
-export type AttachmentType = "link" | "file" | "contact" | "media" | "note";
-
-export interface Attachment {
-  id: string;
-  type: AttachmentType;
-  label: string;
-  url?: string;
-  // stored file
-  fileStorageId?: string;
-  fileName?: string;
-  fileSize?: number;
-  fileType?: string;
-  // contact
-  contactName?: string;
-  contactRole?: string;
-  contactEmail?: string;
-  contactPhone?: string;
-  // note / file notes
-  content?: string;
-  addedAt: string;
-}
-
-export interface PhaseData {
-  status: PhaseStatus;
-  description: string;
-  attachments: Attachment[];
-}
-
-export type PhasesState = Record<string, PhaseData>;
-
-// ─── Phase definitions ─────────────────────────────────────────────────────────
-
-interface PhaseDef {
-  id: string;
-  num: number;
-  label: string;
-  hint: string;
-}
-
-export const PHASE_DEFS: PhaseDef[] = [
-  {
-    id: "poc", num: 1, label: "Point of Contact",
-    hint: "Document the problem statement, stakeholder needs, initial requirements, and background context that originated this project.",
-  },
-  {
-    id: "planning", num: 2, label: "Planning",
-    hint: "Define the full scope, milestones, resource plan, timeline, dependencies, risks, and measurable success criteria.",
-  },
-  {
-    id: "execution", num: 3, label: "Execution",
-    hint: "Track active sprint work, blockers, key decisions, change requests, and deliverables as the team builds.",
-  },
-  {
-    id: "deployment", num: 4, label: "Deployment",
-    hint: "Document deployment steps, release notes, rollout strategy, go-live checklist, and stakeholder sign-offs.",
-  },
-  {
-    id: "followup", num: 5, label: "Follow Up",
-    hint: "Capture post-launch actions, client feedback, lessons learned, outstanding items, and handoff documentation.",
-  },
-  {
-    id: "monitoring", num: 6, label: "Monitoring",
-    hint: "Track ongoing metrics, SLA compliance, performance baselines, alert thresholds, and maintenance schedules.",
-  },
-];
-
-const defaultPhase = (): PhaseData => ({ status: "not-started", description: "", attachments: [] });
-
-export function computeProgress(state: PhasesState): number {
-  const total = PHASE_DEFS.length;
-  const score = PHASE_DEFS.reduce((acc, d) => {
-    const s = state[d.id]?.status ?? "not-started";
-    return acc + (s === "completed" ? 1 : s === "in-progress" ? 0.5 : s === "blocked" ? 0.25 : 0);
-  }, 0);
-  return Math.round((score / total) * 100);
-}
-
-function seedFromProject(project: Project): PhasesState {
-  const pocAttachments: Attachment[] = [];
-
-  // Prefer new contacts array, fall back to legacy single-contact fields
-  const allContacts = project.contacts && project.contacts.length > 0
-    ? project.contacts
-    : (project.clientContact || project.clientEmail || project.clientPhone)
-      ? [{ name: project.clientContact ?? "", designation: "", email: project.clientEmail ?? "", phone: project.clientPhone ?? "" }]
-      : [];
-
-  const clientRole = [project.clientName, project.clientLocation].filter(Boolean).join(" · ") || undefined;
-
-  if (allContacts.length > 0) {
-    allContacts.forEach((c, i) => {
-      pocAttachments.push({
-        id: `att-seed-${project.id}-${i}`,
-        type: "contact",
-        label: c.name || project.clientName || "Client",
-        contactName: c.name || project.clientName || undefined,
-        contactRole: [c.designation, clientRole].filter(Boolean).join(" · ") || undefined,
-        contactEmail: c.email || undefined,
-        contactPhone: c.phone || undefined,
-        addedAt: new Date().toISOString(),
-      });
-    });
-  } else if (project.clientName) {
-    pocAttachments.push({
-      id: `att-seed-${project.id}`,
-      type: "contact",
-      label: project.clientName,
-      contactName: project.clientName,
-      contactRole: project.clientLocation || undefined,
-      addedAt: new Date().toISOString(),
-    });
-  }
-
-  return Object.fromEntries(
-    PHASE_DEFS.map((def, i) => {
-      const lo = (i / PHASE_DEFS.length) * 100;
-      const hi = ((i + 1) / PHASE_DEFS.length) * 100;
-      const statusFromProgress: PhaseStatus =
-        project.progress >= hi ? "completed" :
-        project.progress >= lo ? "in-progress" :
-        "not-started";
-
-      if (def.id === "poc") {
-        return [def.id, {
-          status: project.progress >= 100 ? "completed" : "in-progress",
-          description: project.description ?? "",
-          attachments: pocAttachments,
-        }];
-      }
-
-      return [def.id, { status: statusFromProgress, description: "", attachments: [] }];
-    })
-  );
-}
+// Re-exported so existing external import sites keep working unchanged.
+export type { PhaseStatus, AttachmentType, Attachment, PhaseData, PhasesState } from "@/lib/project-phases";
+export { PHASE_DEFS, computeProgress } from "@/lib/project-phases";
 
 // ─── Style maps ────────────────────────────────────────────────────────────────
 
@@ -169,6 +42,16 @@ const attCfg: Record<AttachmentType, { label: string; color: string }> = {
 const fieldCls =
   "w-full border border-[#eaeaea] rounded-lg px-3 py-2 text-sm text-[#0a0a0a] placeholder:text-[#bbb] focus:outline-none focus:border-[#0070f3] transition-colors bg-[#fafafa] focus:bg-white";
 
+// Supabase writes for phases can transiently fail (network blips, VPN/proxy
+// hiccups) and will just retry next time the project is opened — that's by
+// design, not data loss. Avoid re-logging the same failure every mount.
+const loggedPhaseSyncFailures = new Set<string>();
+function logPhaseSyncFailureOnce(projectId: string, message: string, err: unknown) {
+  if (loggedPhaseSyncFailures.has(projectId)) return;
+  loggedPhaseSyncFailures.add(projectId);
+  console.error(message, err);
+}
+
 // ─── Main component ─────────────────────────────────────────────────────────────
 
 type AddingState = {
@@ -186,39 +69,72 @@ interface Props {
 }
 
 export default function ProjectPhases({ projectId, initialProject, onProgressChange, onPhasesChange }: Props) {
-  const [phases, setPhases] = useState<PhasesState>(() =>
-    Object.fromEntries(PHASE_DEFS.map((d) => [d.id, defaultPhase()]))
-  );
+  const [phases, setPhases] = useState<PhasesState>(emptyPhasesState);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<AddingState>(null);
   const [pendingRemove, setPendingRemove] = useState<{ phaseId: string; attId: string; label: string } | null>(null);
 
+  const phasesRef = useRef(phases);
   useEffect(() => {
-    const stored = localStorage.getItem(`project_phases_${projectId}`);
+    phasesRef.current = phases;
+  }, [phases]);
+  const descTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  function apply(next: PhasesState) {
+    setPhases(next);
+    onProgressChange?.(computeProgress(next));
+    onPhasesChange?.(next);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (initialProject?.phases) {
+      apply(initialProject.phases);
+      return () => { cancelled = true; };
+    }
+
+    const legacyKey = `project_phases_${projectId}`;
+    const stored = localStorage.getItem(legacyKey);
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as PhasesState;
-        setPhases(parsed);
-        onProgressChange?.(computeProgress(parsed));
-        onPhasesChange?.(parsed);
-        return;
+        if (!cancelled) apply(parsed);
+        // Self-healing one-time migration off localStorage — only drop the
+        // legacy copy once it's confirmed saved to Supabase.
+        updateProject(projectId, { phases: parsed })
+          .then(() => localStorage.removeItem(legacyKey))
+          .catch((err) => logPhaseSyncFailureOnce(projectId, "[ProjectPhases] migration to Supabase failed, keeping localStorage copy", err));
+        return () => { cancelled = true; };
       } catch {}
     }
-    // No stored data — seed POC from the project's own data
-    const seeded = initialProject
-      ? seedFromProject(initialProject)
-      : Object.fromEntries(PHASE_DEFS.map((d) => [d.id, defaultPhase()]));
-    setPhases(seeded);
-    onProgressChange?.(computeProgress(seeded));
-    onPhasesChange?.(seeded);
+
+    // No stored data anywhere — seed from the project's own fields and persist it,
+    // so a second device opening this project later doesn't independently reseed.
+    const seeded = initialProject ? seedFromProject(initialProject) : emptyPhasesState();
+    if (!cancelled) apply(seeded);
+    updateProject(projectId, { phases: seeded }).catch((err) => logPhaseSyncFailureOnce(projectId, "[ProjectPhases] failed to save seeded phases", err));
+
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  function save(next: PhasesState) {
-    setPhases(next);
-    localStorage.setItem(`project_phases_${projectId}`, JSON.stringify(next));
-    onProgressChange?.(computeProgress(next));
-    onPhasesChange?.(next);
+  // Flush any pending debounced description writes on unmount/project switch.
+  useEffect(() => {
+    return () => {
+      const timers = descTimers.current;
+      const ids = Object.keys(timers);
+      if (ids.length === 0) return;
+      ids.forEach((id) => clearTimeout(timers[id]));
+      descTimers.current = {};
+      updateProject(projectId, { phases: phasesRef.current }).catch(() => {});
+    };
+  }, [projectId]);
+
+  function persist(next: PhasesState) {
+    updateProject(projectId, { phases: next }).catch((err) =>
+      logPhaseSyncFailureOnce(projectId, "[ProjectPhases] failed to save phases", err)
+    );
   }
 
   function updatePhase(id: string, patch: Partial<PhaseData>) {
@@ -232,7 +148,24 @@ export default function ProjectPhases({ projectId, initialProject, onProgressCha
         metadata: { projectId, phaseId: id, from: phases[id]?.status ?? "not-started", to: patch.status },
       });
     }
-    save({ ...phases, [id]: { ...phases[id], ...patch } });
+
+    const next = { ...phases, [id]: { ...phases[id], ...patch } };
+    apply(next);
+
+    const isDescOnly = Object.keys(patch).length === 1 && "description" in patch;
+    if (isDescOnly) {
+      // Keystroke-driven — debounce so we don't hit Supabase on every character.
+      clearTimeout(descTimers.current[id]);
+      descTimers.current[id] = setTimeout(() => {
+        delete descTimers.current[id];
+        persist(next);
+      }, 600);
+    } else {
+      // Discrete, infrequent action (status change, attachment add/remove) — persist immediately.
+      clearTimeout(descTimers.current[id]);
+      delete descTimers.current[id];
+      persist(next);
+    }
   }
 
   function toggleExpanded(id: string) {
@@ -253,6 +186,7 @@ export default function ProjectPhases({ projectId, initialProject, onProgressCha
     let fileType: string | undefined;
 
     if (selectedFile) {
+      // eslint-disable-next-line react-hooks/purity -- only ever invoked from a user event handler, never during render
       fileStorageId = `file-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       await storeFile(fileStorageId, selectedFile);
       fileName = selectedFile.name;
@@ -261,6 +195,7 @@ export default function ProjectPhases({ projectId, initialProject, onProgressCha
     }
 
     const att: Attachment = {
+      // eslint-disable-next-line react-hooks/purity -- only ever invoked from a user event handler, never during render
       id: `att-${Date.now()}`,
       type,
       label: form.label || fileName || form.contactName || "Untitled",

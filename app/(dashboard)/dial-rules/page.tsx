@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import Select from "@/components/ui/Select";
 import { GitBranch, RefreshCw, AlertCircle, Plus, X } from "lucide-react";
 
 interface DialRule {
@@ -131,32 +132,24 @@ export default function DialRulesPage() {
 
       {/* Domain + Plan selector */}
       <div className="bg-white border border-[#eaeaea] rounded-xl p-4 mb-5 flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 w-45">
           <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Domain</label>
-          <select
+          <Select
             value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            className="text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors min-w-[180px] bg-white"
-          >
-            <option value="">Select domain…</option>
-            {customers.map((c) => (
-              <option key={c.domain} value={c.domain}>{c.domain}</option>
-            ))}
-          </select>
+            onChange={setDomain}
+            placeholder="Select domain…"
+            options={customers.map((c) => ({ value: c.domain, label: c.domain }))}
+          />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 w-45">
           <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Dial Plan</label>
-          <select
+          <Select
             value={selectedPlan}
-            onChange={(e) => setSelectedPlan(e.target.value)}
+            onChange={setSelectedPlan}
             disabled={dialplans.length === 0}
-            className="text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors min-w-[180px] bg-white disabled:opacity-50"
-          >
-            <option value="">Select plan…</option>
-            {dialplans.map((p) => (
-              <option key={p.dialplan} value={p.dialplan}>{p.dialplan}</option>
-            ))}
-          </select>
+            placeholder="Select plan…"
+            options={dialplans.map((p) => ({ value: p.dialplan, label: p.dialplan }))}
+          />
         </div>
         <button
           onClick={load}

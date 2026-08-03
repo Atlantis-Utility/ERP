@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
-import FormField, { inputClass, selectClass } from "@/components/ui/FormField";
+import FormField, { inputClass } from "@/components/ui/FormField";
+import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
 import { getAvatarColor, getInitials } from "@/lib/utils";
 import type { Project, ProjectContact } from "@/lib/mock-projects";
@@ -253,19 +254,27 @@ export default function AddProjectDrawer({ open, onClose }: Props) {
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Status" error={errors.status}>
-            <select className={selectClass} value={form.status} onChange={(e) => set("status", e.target.value as Project["status"])}>
-              <option value="active">Active</option>
-              <option value="on-hold">On Hold</option>
-              <option value="completed">Completed</option>
-              <option value="overdue">Overdue</option>
-            </select>
+            <Select
+              value={form.status}
+              onChange={(v) => set("status", v as Project["status"])}
+              options={[
+                { value: "active", label: "Active" },
+                { value: "on-hold", label: "On Hold" },
+                { value: "completed", label: "Completed" },
+                { value: "overdue", label: "Overdue" },
+              ]}
+            />
           </FormField>
           <FormField label="Priority" error={errors.priority}>
-            <select className={selectClass} value={form.priority} onChange={(e) => set("priority", e.target.value as Project["priority"])}>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
+            <Select
+              value={form.priority}
+              onChange={(v) => set("priority", v as Project["priority"])}
+              options={[
+                { value: "high", label: "High" },
+                { value: "medium", label: "Medium" },
+                { value: "low", label: "Low" },
+              ]}
+            />
           </FormField>
         </div>
 
@@ -274,12 +283,12 @@ export default function AddProjectDrawer({ open, onClose }: Props) {
         </div>
 
         <FormField label="Owner" required error={errors.owner}>
-          <select className={selectClass} value={form.owner} onChange={(e) => set("owner", e.target.value)}>
-            <option value="">Select owner</option>
-            {employees.map((e) => (
-              <option key={e.id} value={e.name}>{e.name}</option>
-            ))}
-          </select>
+          <Select
+            value={form.owner}
+            onChange={(v) => set("owner", v)}
+            placeholder="Select owner"
+            options={employees.map((e) => ({ value: e.name, label: e.name }))}
+          />
         </FormField>
 
         <div>

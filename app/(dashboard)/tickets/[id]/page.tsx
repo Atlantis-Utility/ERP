@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ChevronDown, Mail, User, Calendar, RefreshCw, ExternalLink } from "lucide-react";
+import { ArrowLeft, Mail, User, Calendar, RefreshCw, ExternalLink } from "lucide-react";
 import Header from "@/components/layout/Header";
+import Select from "@/components/ui/Select";
 import { upsertTicket, subscribeAllTicketMeta } from "@/lib/db/tickets";
 import type { TicketStatus, TicketPriority, TicketMeta } from "@/lib/db/tickets";
 import { subscribeEmployees } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
+import { markTicketRead } from "@/lib/notifications";
 import type { Employee } from "@/lib/mock-data";
 import Link from "next/link";
 
@@ -100,7 +102,11 @@ function EmailBody({ html, text }: { html: string | null; text: string | null })
 }
 
 export default function TicketDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id: rawId } = useParams<{ id: string }>();
+  // useParams() returns the raw route segment: conversation IDs contain "="
+  // which shows up here as "%3D". Decode it so it matches the id used
+  // everywhere else (the list page, the Graph API, the Firestore doc key).
+  const id = decodeURIComponent(rawId);
   const router = useRouter();
 
   const [email, setEmail]         = useState<FullEmail | null>(null);
@@ -118,6 +124,12 @@ export default function TicketDetailPage() {
   const [assigneeId, setAssigneeId] = useState("");
   const [notes, setNotes]           = useState("");
 
+  // Opening this specific ticket clears its own "new" notification/tag —
+  // other unopened tickets stay flagged and keep counting toward the sidebar badge.
+  useEffect(() => {
+    markTicketRead(id);
+  }, [id]);
+
   useEffect(() => {
     if (meta) {
       setStatus(meta.status);
@@ -133,7 +145,7 @@ export default function TicketDetailPage() {
       .then((r) => r.json())
       .then((data: FullEmail & { error?: string }) => {
         if (data.error) {
-          setEmailError(data.error === "not_configured" ? "Gmail credentials not configured." : data.error);
+          setEmailError(data.error === "not_configured" ? "Microsoft 365 credentials not configured." : data.error);
         } else {
           setEmail(data);
         }
@@ -164,15 +176,12 @@ export default function TicketDetailPage() {
     logActivity({
       category: "access",
       action: "Ticket updated",
-      detail: `Ticket "${email?.subject ?? id}" — status: ${status}, assignee: ${assignee?.name ?? "unassigned"}`,
+      detail: `Ticket "${email?.subject ?? id}": status ${status}, assignee ${assignee?.name ?? "unassigned"}`,
     });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
-
-  const selectClass =
-    "w-full border border-[#eaeaea] rounded-lg px-3 py-2 text-sm text-[#0a0a0a] bg-white focus:outline-none focus:border-[#0070f3] transition-colors appearance-none";
 
   if (loading) {
     return (
@@ -254,7 +263,7 @@ export default function TicketDetailPage() {
                   </div>
                 </div>
 
-                <div className="mt-2.5 ml-10.5 space-y-1 pl-10.5">
+                <div className="mt-2.5 ml-10.5 space-y-1">
                   {msg.to && (
                     <p className="text-xs text-[#999]">
                       <span className="font-medium">To:</span> {msg.to}
@@ -299,39 +308,32 @@ export default function TicketDetailPage() {
 
             <div>
               <label className="block text-xs font-medium text-[#444] mb-1.5">Status</label>
-              <div className="relative">
-                <select value={status} onChange={(e) => setStatus(e.target.value as TicketStatus)} className={selectClass}>
-                  {ALL_STATUSES.map((s) => (
-                    <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-              </div>
+              <Select
+                value={status}
+                onChange={(v) => setStatus(v as TicketStatus)}
+                options={ALL_STATUSES.map((s) => ({ value: s, label: STATUS_CONFIG[s].label }))}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-[#444] mb-1.5">Priority</label>
-              <div className="relative">
-                <select value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)} className={selectClass}>
-                  {ALL_PRIORITIES.map((p) => (
-                    <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-              </div>
+              <Select
+                value={priority}
+                onChange={(v) => setPriority(v as TicketPriority)}
+                options={ALL_PRIORITIES.map((p) => ({ value: p, label: PRIORITY_CONFIG[p].label }))}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-[#444] mb-1.5">Assignee</label>
-              <div className="relative">
-                <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={selectClass}>
-                  <option value="">Unassigned</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>{emp.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
-              </div>
+              <Select
+                value={assigneeId}
+                onChange={setAssigneeId}
+                options={[
+                  { value: "", label: "Unassigned" },
+                  ...employees.map((emp) => ({ value: emp.id, label: emp.name })),
+                ]}
+              />
             </div>
 
             <div>
@@ -362,22 +364,6 @@ export default function TicketDetailPage() {
                 Last updated {formatDate(meta.updatedAt)}
               </p>
             )}
-
-            <div className="border-t border-[#f4f4f4] pt-4">
-              <p className="text-[10px] font-medium text-[#999] uppercase tracking-wide mb-2">Message Info</p>
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-xs">
-                  <span className="text-[#999]">Message ID</span>
-                  <span className="text-[#666] font-mono truncate max-w-[100px]">{id.slice(0, 12)}…</span>
-                </div>
-                {email?.threadId && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-[#999]">Thread ID</span>
-                    <span className="text-[#666] font-mono truncate max-w-[100px]">{email.threadId.slice(0, 12)}…</span>
-                  </div>
-                )}
-              </div>
-            </div>
 
             <button
               onClick={() => router.push("/tickets")}

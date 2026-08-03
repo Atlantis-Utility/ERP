@@ -70,7 +70,7 @@ export default function QueuesPage() {
         subtitle="Hunt groups and call queues from RingLogix"
         actions={
           <button
-            onClick={load}
+            onClick={() => load()}
             disabled={state === "loading"}
             className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
           >
@@ -157,7 +157,7 @@ export default function QueuesPage() {
             <AlertCircle className="w-6 h-6 text-[#f31260] mx-auto mb-3" />
             <p className="text-sm font-medium text-[#0a0a0a] mb-1">Failed to load</p>
             <p className="text-xs text-[#999] mb-4">{error}</p>
-            <button onClick={load} className="text-xs text-[#0070f3] hover:underline">Retry</button>
+            <button onClick={() => load()} className="text-xs text-[#0070f3] hover:underline">Retry</button>
           </div>
         )}
 

@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Drawer from "@/components/ui/Drawer";
-import FormField, { inputClass, selectClass } from "@/components/ui/FormField";
+import FormField, { inputClass } from "@/components/ui/FormField";
+import Select from "@/components/ui/Select";
 import { updateEmployee, removeEmployee } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { NAV_PAGES } from "@/lib/nav-pages";
 import { Check } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { getErrorMessage } from "@/lib/utils";
 import type { Employee, EmployeeStatus, AccessRole } from "@/lib/mock-data";
 
 interface Props {
@@ -37,6 +39,16 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
   const [saveError, setSaveError]     = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting]       = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  // The form is long (Page Access alone can run past a screen's height), and
+  // the Save button lives in a fixed footer — so a validation or save error
+  // can land off-screen above the fold, looking like the click did nothing.
+  useEffect(() => {
+    if (saveError || Object.keys(errors).length > 0) {
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [saveError, errors]);
 
   useEffect(() => {
     setForm({
@@ -50,11 +62,6 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
       startDate:  employee.startDate,
     });
     setErrors({});
-    // Load page access from localStorage
-    const stored = localStorage.getItem(`emp_access_${employee.id}`);
-    if (stored) {
-      try { setAccess(JSON.parse(stored)); return; } catch {}
-    }
     setAccess(employee.access ?? []);
   }, [employee]);
 
@@ -98,28 +105,29 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     };
     try {
       await updateEmployee(employee.id, patch);
-      // Also mirror to localStorage so the sidebar picks it up immediately
-      localStorage.setItem(`emp_access_${employee.id}`, JSON.stringify(access));
-      const currentUserId = localStorage.getItem("current_user_id");
-      if (currentUserId === employee.id) {
-        window.dispatchEvent(new StorageEvent("storage", {
-          key: `emp_access_${employee.id}`,
-          newValue: JSON.stringify(access),
-        }));
-      }
+    } catch (err) {
+      console.error("[EditEmployeeDrawer] Failed to update:", JSON.stringify(err, Object.getOwnPropertyNames(err ?? {})), err);
+      setSaveError(getErrorMessage(err, "Failed to save. Please try again."));
+      setSaving(false);
+      return;
+    }
+
+    // The database write already succeeded — logging is best-effort, so a
+    // failure here must not be reported as "the save failed" or block the close.
+    // Page-access changes reach the sidebar via auth-context's live Supabase
+    // subscription on the employee row, not a local mirror.
+    try {
       logActivity({
         category: "employees",
         action: "Employee updated",
         detail: `Updated profile for ${patch.name ?? employee.name}`,
         metadata: { employeeId: employee.id },
       });
-      onClose();
     } catch (err) {
-      console.error("[EditEmployeeDrawer] Failed to update:", err);
-      setSaveError(err instanceof Error ? err.message : "Failed to save. Please try again.");
-    } finally {
-      setSaving(false);
+      console.error("[EditEmployeeDrawer] Post-save side effect failed (update itself succeeded):", getErrorMessage(err, String(err)));
     }
+    setSaving(false);
+    onClose();
   }
 
   async function handleDelete() {
@@ -135,7 +143,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
       onClose();
       router.push("/employees");
     } catch (err) {
-      console.error("[EditEmployeeDrawer] Delete failed:", err);
+      console.error("[EditEmployeeDrawer] Delete failed:", JSON.stringify(err, Object.getOwnPropertyNames(err ?? {})), err);
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -166,6 +174,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
       }
     >
       <div className="space-y-4">
+        <div ref={errorRef} />
         {saveError && (
           <div className="bg-[#fff5f5] border border-[#fecaca] text-[#dc2626] text-sm px-4 py-3 rounded-lg">
             {saveError}
@@ -196,23 +205,31 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
             <input className={inputClass} value={form.role} onChange={(e) => set("role", e.target.value)} />
           </FormField>
           <FormField label="Status">
-            <select className={selectClass} value={form.status} onChange={(e) => set("status", e.target.value)}>
-              <option value="active">Active</option>
-              <option value="remote">Remote</option>
-              <option value="on-leave">On Leave</option>
-            </select>
+            <Select
+              value={form.status}
+              onChange={(v) => set("status", v)}
+              options={[
+                { value: "active", label: "Active" },
+                { value: "remote", label: "Remote" },
+                { value: "on-leave", label: "On Leave" },
+              ]}
+            />
           </FormField>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Access Role" hint="Workspace permissions">
-            <select className={selectClass} value={form.accessRole} onChange={(e) => set("accessRole", e.target.value)}>
-              <option value="Administrator">Administrator — Full access</option>
-              <option value="Manager">Manager — Manage teams &amp; projects</option>
-              <option value="Analyst">Analyst — View &amp; export data</option>
-              <option value="Contributor">Contributor — Add &amp; edit content</option>
-              <option value="Viewer">Viewer — Read only</option>
-            </select>
+            <Select
+              value={form.accessRole}
+              onChange={(v) => set("accessRole", v)}
+              options={[
+                { value: "Administrator", label: "Administrator: Full access" },
+                { value: "Manager", label: "Manager: Manage teams & projects" },
+                { value: "Analyst", label: "Analyst: View & export data" },
+                { value: "Contributor", label: "Contributor: Add & edit content" },
+                { value: "Viewer", label: "Viewer: Read only" },
+              ]}
+            />
           </FormField>
           <FormField label="Start Date">
             <input className={inputClass} type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />

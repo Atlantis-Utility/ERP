@@ -5,13 +5,14 @@ import Header from "@/components/layout/Header";
 import { Phone, PhoneIncoming, PhoneOff, RefreshCw, AlertCircle } from "lucide-react";
 
 interface RLDid {
-  did: string;
-  domain?: string;
-  subscriber?: string;
-  description?: string;
-  type?: string;
-  status?: string;
-  territory?: string;
+  matchrule?: string;
+  domain_owner?: number | string;
+  plan_description?: string;
+}
+
+interface PortalCustomerLite {
+  id: string;
+  company: string;
 }
 
 type ViewState = "loading" | "unconfigured" | "error" | "ok";
@@ -27,9 +28,22 @@ function formatNumber(n: string) {
   return n;
 }
 
+function isUnassigned(d: RLDid) {
+  return /unassigned/i.test(d.plan_description ?? "");
+}
+
+// The customer's actual owned number lives in "matchrule" (e.g. "sip:18056582233@*")
+// — "to_user" is just the call's routing destination (often a short ring-group
+// extension, or a different number for call-forwarding), not the DID itself.
+function numberFromMatchrule(matchrule?: string): string | null {
+  const m = matchrule?.match(/^sip:(\d+)@/);
+  return m ? m[1] : null;
+}
+
 export default function PhoneNumbersPage() {
   const [state, setState] = useState<ViewState>("loading");
   const [dids, setDids] = useState<RLDid[]>([]);
+  const [customerNames, setCustomerNames] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
 
@@ -40,7 +54,17 @@ export default function PhoneNumbersPage() {
       if (res.status === 503) { if (!silent) setState("unconfigured"); return; }
       if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
       const data = await res.json();
-      const arr: RLDid[] = Array.isArray(data) ? data : (data.data ?? []);
+      const raw: RLDid[] = Array.isArray(data) ? data : (data.data ?? []);
+      // Every row is a dial-plan rule, not necessarily an owned DID — skip
+      // rows whose matchrule doesn't resolve to a real number, and dedupe by
+      // that number (the same DID can have multiple routing rules).
+      const arr = Array.from(
+        new Map(
+          raw
+            .map((d) => [numberFromMatchrule(d.matchrule), d] as const)
+            .filter((entry): entry is [string, RLDid] => entry[0] !== null && entry[0].length >= 10)
+        ).values()
+      );
       setDids(arr);
       setState("ok");
       try { localStorage.setItem("sc:dids", JSON.stringify(arr)); } catch {}
@@ -55,19 +79,28 @@ export default function PhoneNumbersPage() {
       if (c) { setDids(JSON.parse(c)); setState("ok"); load(true); }
       else load();
     } catch { load(); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    try {
+      const c = localStorage.getItem("sc:customers");
+      if (c) {
+        const arr: PortalCustomerLite[] = JSON.parse(c);
+        setCustomerNames(Object.fromEntries(arr.map((cust) => [cust.id, cust.company])));
+      }
+    } catch {}
   }, []);
 
-  const assigned = dids.filter((d) => d.subscriber || d.domain);
-  const unassigned = dids.filter((d) => !d.subscriber && !d.domain);
+  const assigned = dids.filter((d) => !isUnassigned(d));
+  const unassigned = dids.filter(isUnassigned);
 
   const filtered = dids.filter((d) => {
     const q = search.toLowerCase();
+    const domainOwner = d.domain_owner != null ? String(d.domain_owner) : "";
+    const customerName = customerNames[domainOwner] ?? "";
+    const number = numberFromMatchrule(d.matchrule);
     return (
-      d.did?.toLowerCase().includes(q) ||
-      d.domain?.toLowerCase().includes(q) ||
-      d.subscriber?.toLowerCase().includes(q) ||
-      d.description?.toLowerCase().includes(q)
+      number?.toLowerCase().includes(q) ||
+      customerName.toLowerCase().includes(q) ||
+      domainOwner.includes(q) ||
+      d.plan_description?.toLowerCase().includes(q)
     );
   });
 
@@ -78,7 +111,7 @@ export default function PhoneNumbersPage() {
         subtitle="DID inventory from RingLogix"
         actions={
           <button
-            onClick={load}
+            onClick={() => load()}
             disabled={state === "loading"}
             className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
           >
@@ -119,7 +152,7 @@ export default function PhoneNumbersPage() {
             <Phone className="w-4 h-4 text-[#7c3aed]" />
           </div>
           <p className="text-3xl font-semibold text-[#0a0a0a] leading-none mb-1">
-            {state === "ok" ? new Set(dids.map((d) => d.domain).filter(Boolean)).size : "-"}
+            {state === "ok" ? new Set(dids.map((d) => d.domain_owner).filter(Boolean)).size : "-"}
           </p>
           <p className="text-sm text-[#666] mb-1">Customers</p>
           <p className="text-xs text-[#999]">With DIDs assigned</p>
@@ -158,7 +191,7 @@ export default function PhoneNumbersPage() {
             <AlertCircle className="w-6 h-6 text-[#f31260] mx-auto mb-3" />
             <p className="text-sm font-medium text-[#0a0a0a] mb-1">Failed to load</p>
             <p className="text-xs text-[#999] mb-4">{error}</p>
-            <button onClick={load} className="text-xs text-[#0070f3] hover:underline">Retry</button>
+            <button onClick={() => load()} className="text-xs text-[#0070f3] hover:underline">Retry</button>
           </div>
         )}
 
@@ -174,29 +207,29 @@ export default function PhoneNumbersPage() {
             <thead>
               <tr className="border-b border-[#eaeaea]">
                 <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Phone Number</th>
+                <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Description</th>
                 <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Customer Account</th>
-                <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Assigned To</th>
-                <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Type</th>
                 <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Status</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((d, i) => {
-                const isAssigned = Boolean(d.subscriber || d.domain);
+                const domainOwner = d.domain_owner != null ? String(d.domain_owner) : "";
+                const unassigned = isUnassigned(d);
+                const number = numberFromMatchrule(d.matchrule);
                 return (
-                  <tr key={d.did + i} className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors">
+                  <tr key={(number ?? "") + i} className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <Phone className="w-3.5 h-3.5 text-[#999] shrink-0" />
-                        <span className="text-sm font-medium text-[#0a0a0a] font-mono">{formatNumber(d.did)}</span>
+                        <span className="text-sm font-medium text-[#0a0a0a] font-mono">{number ? formatNumber(number) : "-"}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-sm text-[#666]">{d.domain || "-"}</td>
-                    <td className="px-5 py-3 text-sm text-[#666]">{d.subscriber || "-"}</td>
-                    <td className="px-5 py-3 text-sm text-[#666] capitalize">{d.type || "direct"}</td>
+                    <td className="px-5 py-3 text-sm text-[#666]">{d.plan_description || "-"}</td>
+                    <td className="px-5 py-3 text-sm text-[#666]">{customerNames[domainOwner] ?? domainOwner ?? "-"}</td>
                     <td className="px-5 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${isAssigned ? "bg-[#e8fdf0] text-[#17c964]" : "bg-[#f1f1f1] text-[#666]"}`}>
-                        {isAssigned ? "Assigned" : "Available"}
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${!unassigned ? "bg-[#e8fdf0] text-[#17c964]" : "bg-[#f1f1f1] text-[#666]"}`}>
+                        {!unassigned ? "Assigned" : "Available"}
                       </span>
                     </td>
                   </tr>

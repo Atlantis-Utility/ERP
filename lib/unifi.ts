@@ -48,7 +48,12 @@ export interface UiSite {
     gateway?: { shortname: string; ipsMode?: string };
     ispInfo?: { name?: string; organization?: string; asn?: number };
     percentages?: { wanUptime?: number; txRetry?: number };
-    wans?: Record<string, { externalIp?: string; wanUptime?: number; wanIssues?: UiIssuePeriod[] }>;
+    wans?: Record<string, {
+      externalIp?: string;
+      wanUptime?: number;
+      wanIssues?: UiIssuePeriod[];
+      ispInfo?: { name?: string; organization?: string; asn?: number };
+    }>;
     internetIssues?: UiIssuePeriod[];
   };
   permission?: string;
@@ -62,6 +67,7 @@ export interface UiIssuePeriod {
   notReported?: boolean;
   highLatency?: boolean;
   packetLoss?: boolean;
+  packetLossPct?: number; // raw 0–100 value, when the source has it — drives the packet-loss line graph
   latencyAvgMs?: number;
   latencyMaxMs?: number;
 }
@@ -77,6 +83,7 @@ export interface UiHost {
     hostname: string;
     state: string; // "connected" | "disconnected"
     ip: string;
+    version?: string; // console/UniFi OS version
     hardware: {
       shortname: string;
       name: string;
@@ -85,7 +92,11 @@ export interface UiHost {
       firmwareVersion?: string;
     };
     location?: { text?: string; lat?: number; long?: number };
+    ipAddrs?: string[]; // includes the LAN gateway IP alongside link-local/WAN addresses
     internetIssues5min?: { periods: UiIssuePeriod[] };
+    // `type` here is the WAN role/interface label (e.g. "WAN", "WAN2"), NOT
+    // the IP assignment method — the Site Manager API does not expose
+    // static-vs-DHCP configuration, only runtime WAN state.
     wans?: Array<{ ipv4?: string; type?: string; interface?: string; enabled?: boolean }>;
     controllers?: Array<{ name: string; version?: string; uiVersion?: string; state?: string }>;
     timezone?: string;
@@ -93,6 +104,21 @@ export interface UiHost {
 }
 
 // ─── Merged type used in UI ─────────────────────────────────────────────────
+export interface UiEnrichedWan {
+  key: string;          // "WAN", "WAN2", ...
+  label: string;        // "Primary" | "Secondary" | key
+  ipv4: string;
+  ispName: string;
+  ispOrganization: string;
+  asn: number | null;
+  wanUptime: number | null;
+  // Estimated from the WAN IP's reverse-DNS hostname — UniFi's API has no
+  // static-vs-DHCP field. "unknown" is expected whenever the ISP doesn't
+  // label its PTR records this way, not a failure.
+  ipType: "static" | "dynamic" | "unknown";
+  ipTypeHostname?: string;
+}
+
 export interface UiEnrichedSite extends UiSite {
   displayName: string;
   connected: boolean;
@@ -103,6 +129,12 @@ export interface UiEnrichedSite extends UiSite {
   ispName: string;
   internetIssues: UiIssuePeriod[];
   firmwareVersion: string;
+  wans: UiEnrichedWan[];   // every WAN/ISP reported for the site (primary + failover)
+  mac: string;
+  serialNumber: string;
+  timezone: string;
+  osVersion: string;
+  lanIp: string; // gateway's LAN-facing IP, e.g. 192.168.1.1
 }
 
 // ─── API calls ──────────────────────────────────────────────────────────────
@@ -114,8 +146,75 @@ export async function getHosts(): Promise<{ data: UiHost[] }> {
   return uiApi<{ data: UiHost[] }>("/ea/hosts?pageSize=200");
 }
 
+// ─── ISP metrics (continuous per-5-min WAN telemetry) ──────────────────────
+// `site.statistics.internetIssues` / `host.reportedState.internetIssues5min`
+// are a SPARSE anomaly log — only periods with a flagged issue are present,
+// so a perfectly healthy site has zero entries there even during the last 6
+// hours (which is why the chart showed "no data" for clean sites). This
+// endpoint instead returns one entry per site with a genuinely continuous
+// ~24h/5-min series (avg/max latency, packet loss, downtime for every
+// interval), matching what UniFi's own dashboard graphs. Its `siteId`/
+// `hostIds` filter params are ignored server-side (same quirk as
+// `/ea/devices`), so fetch once and match client-side.
+export interface UiIspMetricPeriod {
+  metricTime: string;
+  data?: {
+    wan?: {
+      avgLatency?: number;
+      maxLatency?: number;
+      packetLoss?: number;
+      downtime?: number;
+      uptime?: number;
+    };
+  };
+}
+
+export interface UiIspMetricsEntry {
+  hostId: string;
+  siteId: string;
+  periods: UiIspMetricPeriod[];
+}
+
+export async function getIspMetrics(): Promise<{ data: UiIspMetricsEntry[] }> {
+  return uiApi<{ data: UiIspMetricsEntry[] }>("/ea/isp-metrics/5m?pageSize=200");
+}
+
+// Converts a continuous isp-metrics period series into the sparse
+// `UiIssuePeriod` shape the existing chart/health-bar components consume, so
+// they work unchanged regardless of which source fed them.
+export function ispMetricsToIssuePeriods(periods: UiIspMetricPeriod[]): UiIssuePeriod[] {
+  return periods.map((p) => {
+    const wan = p.data?.wan;
+    const avg = wan?.avgLatency;
+    const uptime = wan?.uptime;
+    return {
+      index: Math.floor(new Date(p.metricTime).getTime() / 1000 / 300),
+      latencyAvgMs: avg,
+      latencyMaxMs: wan?.maxLatency,
+      packetLoss: (wan?.packetLoss ?? 0) > 0,
+      packetLossPct: wan?.packetLoss,
+      wanDowntime: (wan?.downtime ?? 0) > 0 || (uptime !== undefined && uptime < 100),
+      highLatency: avg !== undefined && avg > 50,
+    };
+  });
+}
+
+// The Site Manager API has no `/ea/sites/{siteId}/devices` endpoint (404) —
+// devices are only exposed via `/ea/devices`, grouped by *host* (one entry
+// per adopted console, e.g. `{ hostId, hostName, devices: [...] }`), and it
+// ignores `siteId`/`hostIds` filter params, always returning every host. So
+// this fetches the full (cached) set and filters down to the one host tied
+// to the requested site.
+export async function getAllHostDevices(): Promise<{ data: UiHostDevices[] }> {
+  return uiApi<{ data: UiHostDevices[] }>("/ea/devices?pageSize=200");
+}
+
 export async function getSiteDevices(siteId: string): Promise<{ data: UiDevice[] }> {
-  return uiApi<{ data: UiDevice[] }>(`/ea/sites/${siteId}/devices?pageSize=200`);
+  const [sitesRes, hostDevicesRes] = await Promise.all([getSites(), getAllHostDevices()]);
+  const site = sitesRes.data.find((s) => s.siteId === siteId);
+  if (!site) return { data: [] };
+  const group = hostDevicesRes.data.find((h) => h.hostId === site.hostId);
+  return { data: group?.devices ?? [] };
 }
 
 export async function getSiteAlerts(siteId: string): Promise<{ data: UiAlert[] }> {
@@ -139,10 +238,27 @@ export interface UiDevice {
   name?: string;
   mac?: string;
   model?: string;
+  shortname?: string;
+  productLine?: "network" | "protect" | "access" | string;
   type?: string;
   status?: string;
   ip?: string;
   uptime?: number;
+  version?: string;
+  firmwareStatus?: string;
+  updateAvailable?: string;
+  isConsole?: boolean;
+  isManaged?: boolean;
+  adoptionTime?: string;
+  startupTime?: string; // ISO timestamp of last boot — use to derive system uptime
+  note?: string;
+}
+
+export interface UiHostDevices {
+  hostId: string;
+  hostName: string;
+  devices: UiDevice[];
+  updatedAt?: string;
 }
 
 export interface UiAlert {
@@ -154,4 +270,76 @@ export interface UiAlert {
   resolved_at?: string | null;
   site_id?: string;
   siteName?: string; // enriched by API route
+}
+
+// ─── Network Integration API (Cloud Connector Proxy) ───────────────────────
+// A separate, per-console API reached via
+// /v1/connector/consoles/{hostId}/proxy/network/integration/v1/... — it
+// returns real per-client uplink data (which switch/AP a client is attached
+// to), unlike the /ea/* Site Manager endpoints above. UniFi only allows this
+// proxy for consoles the API key's account directly *owns*; for sites shared
+// via Cloud Access (the normal way an MSP manages a customer's console) it
+// returns 403 "user is not the owner of this host". Always check
+// `available` on the result rather than assuming this works for every site.
+export interface UiConnectorSite {
+  id: string;               // internal site UUID, distinct from the Site Manager `siteId`
+  internalReference?: string;
+  name: string;
+}
+
+export interface UiConnectorDevice {
+  id: string;
+  macAddress: string;
+  ipAddress?: string;
+  name: string;
+  model: string;
+  state: string; // "ONLINE" | "OFFLINE" | ...
+  firmwareVersion?: string;
+  firmwareUpdatable?: boolean;
+}
+
+export interface UiConnectorClient {
+  id: string;
+  type: "WIRED" | "WIRELESS" | string;
+  name: string;
+  connectedAt?: string;
+  ipAddress?: string;
+  macAddress: string;
+  uplinkDeviceId?: string; // references UiConnectorDevice.id — may reference a device no longer present
+}
+
+export interface UiRealTopology {
+  available: boolean;
+  devices: UiConnectorDevice[];
+  clients: UiConnectorClient[];
+}
+
+async function getConnectorSites(hostId: string): Promise<{ data: UiConnectorSite[] }> {
+  return uiApi(`/v1/connector/consoles/${hostId}/proxy/network/integration/v1/sites`);
+}
+
+async function getConnectorDevices(hostId: string, intSiteId: string): Promise<{ data: UiConnectorDevice[] }> {
+  return uiApi(`/v1/connector/consoles/${hostId}/proxy/network/integration/v1/sites/${intSiteId}/devices`);
+}
+
+async function getConnectorClients(hostId: string, intSiteId: string): Promise<{ data: UiConnectorClient[] }> {
+  return uiApi(`/v1/connector/consoles/${hostId}/proxy/network/integration/v1/sites/${intSiteId}/clients`);
+}
+
+export async function getRealTopology(hostId: string): Promise<UiRealTopology> {
+  try {
+    const sitesRes = await getConnectorSites(hostId);
+    const intSite = sitesRes.data?.[0];
+    if (!intSite) return { available: false, devices: [], clients: [] };
+
+    const [devicesRes, clientsRes] = await Promise.all([
+      getConnectorDevices(hostId, intSite.id),
+      getConnectorClients(hostId, intSite.id),
+    ]);
+    return { available: true, devices: devicesRes.data ?? [], clients: clientsRes.data ?? [] };
+  } catch {
+    // Most sites are managed via Cloud Access rather than owned outright, so
+    // a 403/failure here is the expected common case, not an error to surface.
+    return { available: false, devices: [], clients: [] };
+  }
 }

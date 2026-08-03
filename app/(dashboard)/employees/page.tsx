@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { subscribeEmployees } from "@/lib/db/employees";
 import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
-import { Search, Plus, ChevronDown } from "lucide-react";
+import { Search, Plus } from "lucide-react";
 import type { Employee, EmployeeStatus } from "@/lib/mock-data";
 import AddEmployeeDrawer from "@/components/employees/AddEmployeeDrawer";
+import Select from "@/components/ui/Select";
 
 const statusConfig: Record<EmployeeStatus, { label: string; bg: string; text: string; dot: string }> = {
   active: {
@@ -97,21 +98,15 @@ export default function EmployeesPage() {
           />
         </div>
 
-        <div className="relative">
-          <select
+        <div className="w-40">
+          <Select
             value={selectedStatus}
-            onChange={(e) =>
-              setSelectedStatus(e.target.value as "All Statuses" | EmployeeStatus)
-            }
-            className="appearance-none border border-[#eaeaea] rounded-lg px-3 py-2 pr-8 text-sm text-[#0a0a0a] bg-white focus:outline-none focus:border-[#0070f3] transition-colors cursor-pointer"
-          >
-            {allStatuses.map((s) => (
-              <option key={s} value={s}>
-                {s === "on-leave" ? "On Leave" : s.charAt(0).toUpperCase() + s.slice(1)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999] pointer-events-none" />
+            onChange={(v) => setSelectedStatus(v as "All Statuses" | EmployeeStatus)}
+            options={allStatuses.map((s) => ({
+              value: s,
+              label: s === "on-leave" ? "On Leave" : s.charAt(0).toUpperCase() + s.slice(1),
+            }))}
+          />
         </div>
       </div>
 

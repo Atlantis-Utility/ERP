@@ -7,11 +7,11 @@ import { statusConfig, priorityConfig } from "@/lib/mock-projects";
 import type { Project, ProjectContact } from "@/lib/mock-projects";
 import { useEmployees } from "@/lib/db/employees";
 import { updateProject } from "@/lib/db/projects";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase/client";
 import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
 import Drawer from "@/components/ui/Drawer";
-import FormField, { inputClass, selectClass } from "@/components/ui/FormField";
+import FormField, { inputClass } from "@/components/ui/FormField";
+import Select from "@/components/ui/Select";
 import DateTimePicker from "@/components/ui/DateTimePicker";
 import ProjectPhases from "@/components/projects/ProjectPhases";
 import type { PhasesState } from "@/components/projects/ProjectPhases";
@@ -58,16 +58,25 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     setIsAdmin(!localStorage.getItem("current_user_id"));
-    const unsub = onSnapshot(doc(db, "projects", id), (snap) => {
-      if (snap.exists()) {
-        const p = snap.data() as Project;
-        setProject(p);
-        setComputedProgress(p.progress);
-      } else {
-        setProject(null);
-      }
-    });
-    return unsub;
+
+    function load() {
+      supabase.from("projects").select("id, data").eq("id", id).maybeSingle().then(({ data }) => {
+        if (data) {
+          const p = { ...(data.data as Project), id: data.id };
+          setProject(p);
+          setComputedProgress(p.progress);
+        } else {
+          setProject(null);
+        }
+      });
+    }
+    load();
+
+    const channel = supabase
+      .channel(`project-${id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "projects", filter: `id=eq.${id}` }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [id]);
 
   function handleProgressChange(p: number) {
@@ -558,27 +567,28 @@ export default function ProjectDetailPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <FormField label="Status">
-                <select
-                  className={selectClass}
+                <Select
                   value={form.status}
-                  onChange={(e) => setField("status", e.target.value as Project["status"])}
-                >
-                  <option value="active">Active</option>
-                  <option value="on-hold">On Hold</option>
-                  <option value="completed">Completed</option>
-                  <option value="overdue">Overdue</option>
-                </select>
+                  onChange={(v) => setField("status", v as Project["status"])}
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "on-hold", label: "On Hold" },
+                    { value: "completed", label: "Completed" },
+                    { value: "overdue", label: "Overdue" },
+                    { value: "cancelled", label: "Cancelled" },
+                  ]}
+                />
               </FormField>
               <FormField label="Priority">
-                <select
-                  className={selectClass}
+                <Select
                   value={form.priority}
-                  onChange={(e) => setField("priority", e.target.value as Project["priority"])}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
+                  onChange={(v) => setField("priority", v as Project["priority"])}
+                  options={[
+                    { value: "high", label: "High" },
+                    { value: "medium", label: "Medium" },
+                    { value: "low", label: "Low" },
+                  ]}
+                />
               </FormField>
             </div>
 
@@ -640,11 +650,11 @@ export default function ProjectDetailPage() {
             </div>
 
             <FormField label="Owner" required>
-              <select className={selectClass} value={form.owner} onChange={(e) => setField("owner", e.target.value)}>
-                {employees.map((e) => (
-                  <option key={e.id} value={e.name}>{e.name}</option>
-                ))}
-              </select>
+              <Select
+                value={form.owner}
+                onChange={(v) => setField("owner", v)}
+                options={employees.map((e) => ({ value: e.name, label: e.name }))}
+              />
             </FormField>
 
             <div className="border-t border-[#f7f7f7] pt-4">
