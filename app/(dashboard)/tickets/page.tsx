@@ -535,7 +535,12 @@ export default function TicketsPage() {
     // by ticket id, so it's safe to call this on every save where the
     // ticket is closed, not just the specific transition into "closed".
     if (isManual && patch.status === "closed") {
-      fetch(`/api/tickets/manual/${id}/review-request`, { method: "POST" }).catch(() => {});
+      fetch(`/api/tickets/manual/${id}/review-request`, { method: "POST" })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!data.reviewSent) console.error("[review-request] not sent:", data.reason ?? data.error ?? res.status);
+        })
+        .catch((err) => console.error("[review-request] request failed:", err));
     }
   }
 

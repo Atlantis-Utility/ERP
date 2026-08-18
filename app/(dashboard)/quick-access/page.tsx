@@ -261,6 +261,8 @@ const QUICK_LINK_SECTIONS: QuickLinkSection[] = [
       {
         label: "Resend",
         href: "https://resend.com",
+        logoFile: "resend.png",
+        logoDir: "isp-logos",
         domain: "resend.com",
         icon: Mail,
         text: "text-[#111827]",

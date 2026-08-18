@@ -21,14 +21,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!ticket) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   if (!ticket.customer_email) {
+    console.error(`[review-request] ticket ${id}: no customer_email on file`);
     return NextResponse.json({ ok: true, reviewSent: false, reason: "no_customer_email" });
   }
   if (!isEmailConfigured()) {
+    console.error(`[review-request] ticket ${id}: RESEND_API_KEY/RESEND_FROM_EMAIL not set in this environment`);
     return NextResponse.json({ ok: true, reviewSent: false, reason: "email_not_configured" });
   }
 
   const existing = await findReviewByTicketId(supabase, id);
   if (existing) {
+    console.error(`[review-request] ticket ${id}: already sent, skipping (token ${existing.token})`);
     return NextResponse.json({ ok: true, reviewSent: false, reason: "already_sent" });
   }
 
@@ -56,8 +59,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     // permanently blocked by findReviewByTicketId's "already sent" check.
     await supabase.from("ticket_reviews").delete().eq("token", token);
     const msg = err instanceof Error ? err.message : "send_failed";
+    console.error(`[review-request] ticket ${id}: send failed — ${msg}`);
     return NextResponse.json({ ok: true, reviewSent: false, reason: msg });
   }
 
+  console.log(`[review-request] ticket ${id}: sent to ${ticket.customer_email} (token ${token})`);
   return NextResponse.json({ ok: true, reviewSent: true });
 }
