@@ -92,6 +92,12 @@ const navSections: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "GDMS",
+    items: [
+      { label: "Devices", href: "/gdms", icon: Cpu },
+    ],
+  },
+  {
     label: "Operations",
     items: [
       { label: "Tasks",    href: "/tasks",    icon: KanbanSquare },

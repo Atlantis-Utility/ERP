@@ -143,14 +143,11 @@ export interface PortalCustomer {
   creditLimit: string;
 }
 
-function parseCustomerTable(html: string, tbodyId: string): PortalCustomer[] {
-  const tbodyMatch = html.match(new RegExp(`<tbody id="${tbodyId}"[^>]*>([\\s\\S]*?)</tbody>`));
-  if (!tbodyMatch) return [];
-
+function parseCustomerRows(tbodyHtml: string): PortalCustomer[] {
   const rows: PortalCustomer[] = [];
   const rowRegex = /<tr>([\s\S]*?)<\/tr>/g;
   let rowMatch: RegExpExecArray | null;
-  while ((rowMatch = rowRegex.exec(tbodyMatch[1]))) {
+  while ((rowMatch = rowRegex.exec(tbodyHtml))) {
     const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
     const cells: string[] = [];
     let cellMatch: RegExpExecArray | null;
@@ -169,6 +166,27 @@ function parseCustomerTable(html: string, tbodyId: string): PortalCustomer[] {
       balance: decodeCellText(cells[5]),
       creditLimit: decodeCellText(cells[6]),
     });
+  }
+  return rows;
+}
+
+// The portal groups customers into a variable number of <tbody> blocks (open,
+// suspended, terminated, ...) — previously this only read the first two
+// ("tbodyCustomerList" / "tbodyCustomerList2") which silently dropped any
+// further status groups. Scan for all of them instead, and dedupe by id in
+// case a row appears in more than one group.
+function parseAllCustomerTables(html: string): PortalCustomer[] {
+  const rows: PortalCustomer[] = [];
+  const seen = new Set<string>();
+  const tbodyRegex = /<tbody id="(tbodyCustomerList\w*)"[^>]*>([\s\S]*?)<\/tbody>/g;
+  let tbodyMatch: RegExpExecArray | null;
+  while ((tbodyMatch = tbodyRegex.exec(html))) {
+    for (const row of parseCustomerRows(tbodyMatch[2])) {
+      const key = `${row.id}:${row.parentId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(row);
+    }
   }
   return rows;
 }
@@ -209,14 +227,17 @@ async function fetchPortalCustomersRaw(): Promise<PortalCustomer[]> {
   }
 
   const html = await res.text();
-  return [
-    ...parseCustomerTable(html, "tbodyCustomerList"),
-    ...parseCustomerTable(html, "tbodyCustomerList2"),
-  ];
+  return parseAllCustomerTables(html);
 }
 
 const PORTAL_TTL = 10 * 60_000;
 
 export function getPortalCustomers(): Promise<PortalCustomer[]> {
   return withCache("rl:portal:customers", PORTAL_TTL, fetchPortalCustomersRaw);
+}
+
+// Bypasses the in-memory cache entirely — used by the cron sync route so
+// each run reflects the portal's current state, not a stale cached copy.
+export function fetchFreshPortalCustomers(): Promise<PortalCustomer[]> {
+  return fetchPortalCustomersRaw();
 }

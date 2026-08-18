@@ -75,6 +75,19 @@ create table notes ( -- personal notes, optionally shared with other employees
   data       jsonb not null default '{}'
 );
 
+create table ringlogix_customers ( -- cached snapshot of the RingLogix reseller portal customer list, refreshed every 3h by app/api/cron/ringlogix-sync
+  id           text primary key, -- RingLogix customer/domain id
+  parent_id    text,
+  company      text,
+  contact      text,
+  email        text,
+  phone        text,
+  status       text,
+  balance      text,
+  credit_limit text,
+  synced_at    timestamptz not null default now() -- rows older than the latest sync run are pruned (customer no longer on the portal)
+);
+
 create table customer_profiles ( -- editable ISP/contacts overlay for a RingLogix customer (domain id)
   customer_id     text primary key,
   isp             text,
@@ -203,6 +216,7 @@ alter table settings       enable row level security;
 alter table customer_unifi_sites enable row level security;
 alter table customer_profiles enable row level security;
 alter table notes enable row level security;
+alter table ringlogix_customers enable row level security;
 
 create policy "authenticated read/write" on employees
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -223,6 +237,8 @@ create policy "authenticated read/write" on customer_unifi_sites
 create policy "authenticated read/write" on customer_profiles
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated read/write" on notes
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "authenticated read/write" on ringlogix_customers
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 -- user_profiles: any authenticated user can read all profiles (matches

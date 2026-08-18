@@ -18,6 +18,7 @@ export const NAV_PAGES: NavPage[] = [
   { href: "/billing",       label: "Billing",       section: "RingLogix"  },
   { href: "/sites",         label: "Sites",         section: "UniFi"      },
   { href: "/alerts",        label: "Alerts",        section: "UniFi"      },
+  { href: "/gdms",          label: "GDMS",          section: "GDMS"       },
   { href: "/tasks",         label: "Tasks",         section: "Operations" },
   { href: "/notes",         label: "Notes",         section: "Operations" },
   { href: "/calendar",      label: "Calendar",      section: "Operations" },
