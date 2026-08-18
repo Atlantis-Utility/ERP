@@ -110,6 +110,13 @@ const QUICK_LINK_SECTIONS: QuickLinkSection[] = [
         text: "text-[#0a5eb0]",
         roundedLogo: true,
       },
+      {
+        label: "Cloudflare",
+        href: "https://dash.cloudflare.com",
+        domain: "cloudflare.com",
+        icon: Cloud,
+        text: "text-[#f38020]",
+      },
     ],
   },
   {

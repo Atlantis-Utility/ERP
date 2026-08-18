@@ -151,7 +151,7 @@ export default function GlobalSearch({ allowedHrefs }: { allowedHrefs?: string[]
           placeholder="Search pages, customers, tasks, projects…"
           className="w-full h-9 pl-9 pr-14 rounded-lg border border-[#eaeaea] bg-[#fafafa] text-sm text-[#0a0a0a] placeholder:text-[#999] focus:outline-none focus:ring-2 focus:ring-[#0070f3]/30 focus:border-[#0070f3] focus:bg-white transition-colors"
         />
-        <kbd className="hidden lg:flex items-center gap-0.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[#999] bg-white border border-[#eaeaea] rounded px-1.5 py-0.5">
+        <kbd className="hidden lg:flex items-center gap-0.5 whitespace-nowrap absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[#999] bg-white border border-[#eaeaea] rounded px-1.5 py-0.5">
           ⌘K
         </kbd>
       </div>
