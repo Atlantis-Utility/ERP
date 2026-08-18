@@ -18,23 +18,22 @@ export function buildTicketReviewEmail(opts: {
   const stars = [1, 2, 3, 4, 5]
     .map(
       (n) => `
-        <a href="${starLink(appUrl, token, n)}" style="display:inline-block;margin:0 6px;padding:10px 16px;background:#f5f5f5;border-radius:8px;text-decoration:none;color:#0a0a0a;font-size:16px;font-weight:600;">
-          ${"★".repeat(n)} ${n}
+        <a href="${starLink(appUrl, token, n)}" style="display:inline-block;margin:0 8px;text-decoration:none;color:#d4af37;font-size:32px;line-height:1;">
+          ★
         </a>`
     )
     .join("");
 
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0a0a0a;">
-      <p>Hi ${customerName},</p>
-      <p>Thank you for reaching out to Atlantis Utility. This is a quick note to confirm that your support ticket, "${subject}," has been marked as resolved.</p>
-      <p>If anything still isn't quite right, just reply to this email and we'll take another look right away.</p>
-      <p>We'd also really appreciate 30 seconds of your time to tell us how we did:</p>
+      <p>Dear ${customerName},</p>
+      <p>Thank you for contacting Atlantis Utility. This is to confirm that your support ticket, "${subject}," has been resolved.</p>
+      <p>We'd appreciate a moment of your time to rate your recent experience with our support team:</p>
       <div style="text-align:center;margin:24px 0;">${stars}</div>
-      <p>Thank you for choosing Atlantis Utility.</p>
-      <p>Best regards,<br/>Atlantis Utility Support Team</p>
+      <p>Thank you for being a valued Atlantis Utility customer.</p>
+      <p>Sincerely,<br/>The Atlantis Utility Support Team</p>
     </div>
   `;
 
-  return { subject: "Your ticket has been resolved — how did we do?", html };
+  return { subject: "Your Support Ticket Has Been Resolved", html };
 }

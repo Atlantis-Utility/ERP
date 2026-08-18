@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getReviewByToken, submitRating, submitFeedback } from "@/lib/db/ticket-reviews";
+import { notifyStaffOfFeedback } from "@/lib/email/send-feedback-notification";
 
 // Public, unauthenticated — the token itself is the access credential.
 export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
@@ -35,6 +36,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       return NextResponse.json({ error: "invalid_rating" }, { status: 400 });
     }
     await submitRating(supabase, token, rating);
+    if (rating >= 5) {
+      await notifyStaffOfFeedback(supabase, {
+        ticketId: review.ticketId,
+        customerName: review.customerName ?? "",
+        subject: review.subject ?? "",
+        rating,
+        feedback: null,
+      });
+    }
     return NextResponse.json({
       ok: true,
       status: rating >= 5 ? "completed" : "rated",
@@ -46,7 +56,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (review.rating === null) {
       return NextResponse.json({ error: "rate_first" }, { status: 400 });
     }
-    await submitFeedback(supabase, token, body.feedback.slice(0, 2000));
+    const feedbackText = body.feedback.slice(0, 2000);
+    await submitFeedback(supabase, token, feedbackText);
+    await notifyStaffOfFeedback(supabase, {
+      ticketId: review.ticketId,
+      customerName: review.customerName ?? "",
+      subject: review.subject ?? "",
+      rating: review.rating,
+      feedback: feedbackText,
+    });
     return NextResponse.json({ ok: true, status: "completed" });
   }
 

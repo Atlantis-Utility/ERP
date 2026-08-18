@@ -6,7 +6,7 @@ export function isEmailConfigured(): boolean {
   return Boolean(RESEND_API_KEY && RESEND_FROM_EMAIL);
 }
 
-export async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<void> {
+export async function sendEmail(opts: { to: string | string[]; subject: string; html: string }): Promise<void> {
   if (!isEmailConfigured()) throw new Error("EMAIL_NOT_CONFIGURED");
 
   const res = await fetch(RESEND_API_URL, {
@@ -22,7 +22,7 @@ export async function sendEmail(opts: { to: string; subject: string; html: strin
     },
     body: JSON.stringify({
       from: RESEND_FROM_EMAIL,
-      to: [opts.to],
+      to: Array.isArray(opts.to) ? opts.to : [opts.to],
       subject: opts.subject,
       html: opts.html,
     }),
