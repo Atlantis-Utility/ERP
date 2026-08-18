@@ -519,7 +519,9 @@ export default function TicketsPage() {
     });
   }
 
-  async function handleSave(id: string, subject: string, patch: Partial<TicketMeta>, isManual: boolean) {
+  async function handleSave(ticket: UnifiedTicket, patch: Partial<TicketMeta>) {
+    const isManual = ticket.source !== "email";
+    const { id, subject } = ticket;
     if (isManual) {
       await upsertManualTicket(id, patch);
     } else {
@@ -531,11 +533,21 @@ export default function TicketsPage() {
       detail: `Ticket "${subject}" updated — status: ${patch.status ?? "unchanged"}, assignee: ${patch.assigneeName ?? "unassigned"}`,
     });
 
-    // Fire the "how did we do" review-request email. The API route dedupes
-    // by ticket id, so it's safe to call this on every save where the
-    // ticket is closed, not just the specific transition into "closed".
-    if (isManual && patch.status === "closed") {
-      fetch(`/api/tickets/manual/${id}/review-request`, { method: "POST" })
+    // Fire the "how did we do" review-request email. Both routes dedupe by
+    // ticket id, so it's safe to call this on every save where the ticket
+    // is closed, not just the specific transition into "closed". Manual
+    // tickets look their customer info up server-side (from Supabase);
+    // email tickets only exist in the mailbox, so we pass along what the
+    // page already has loaded from Microsoft Graph.
+    if (patch.status === "closed") {
+      const url = isManual ? `/api/tickets/manual/${id}/review-request` : `/api/tickets/${id}/review-request`;
+      fetch(url, {
+        method: "POST",
+        ...(isManual ? {} : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customerEmail: ticket.from, customerName: ticket.fromName, subject: ticket.subject }),
+        }),
+      })
         .then(async (res) => {
           const data = await res.json().catch(() => ({}));
           if (!data.reviewSent) console.error("[review-request] not sent:", data.reason ?? data.error ?? res.status);
@@ -775,7 +787,7 @@ export default function TicketsPage() {
         <AssignModal
           ticket={modalTicket}
           employees={employees}
-          onSave={(patch) => handleSave(modalTicket.id, modalTicket.subject, patch, modalTicket.source !== "email")}
+          onSave={(patch) => handleSave(modalTicket, patch)}
           onClose={() => setAssignModal(null)}
         />
       )}
