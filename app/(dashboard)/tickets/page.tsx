@@ -510,13 +510,40 @@ export default function TicketsPage() {
     unassigned: unified.filter((t) => !t.assigneeId).length,
   }), [unified]);
 
+  // Fire the "how did we do" review-request email. Both routes dedupe by
+  // ticket id, so it's safe to call this any time the ticket is closed —
+  // on creation already-closed, on a later edit, or after being reopened
+  // and re-closed. Manual tickets look their customer info up server-side
+  // (from Supabase); email tickets only exist in the mailbox, so we pass
+  // along what the page already has loaded from Microsoft Graph.
+  function fireReviewRequest(opts: { id: string; isManual: boolean; subject: string; customerEmail?: string; customerName?: string }) {
+    const { id, isManual, subject, customerEmail, customerName } = opts;
+    const url = isManual ? `/api/tickets/manual/${id}/review-request` : `/api/tickets/${id}/review-request`;
+    fetch(url, {
+      method: "POST",
+      ...(isManual ? {} : {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerEmail, customerName, subject }),
+      }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!data.reviewSent) console.error("[review-request] not sent:", data.reason ?? data.error ?? res.status);
+      })
+      .catch((err) => console.error("[review-request] request failed:", err));
+  }
+
   async function handleCreateTicket(data: Omit<ManualTicket, "id" | "ticketNumber" | "createdAt" | "updatedAt">) {
-    await createManualTicket(data);
+    const id = await createManualTicket(data);
     logActivity({
       category: "access",
       action: "Ticket created",
       detail: `Manual ticket "${data.subject}" created via ${data.source} for ${data.customerName}`,
     });
+
+    if (data.status === "closed") {
+      fireReviewRequest({ id, isManual: true, subject: data.subject, customerEmail: data.customerEmail, customerName: data.customerName });
+    }
   }
 
   async function handleSave(ticket: UnifiedTicket, patch: Partial<TicketMeta>) {
@@ -533,26 +560,8 @@ export default function TicketsPage() {
       detail: `Ticket "${subject}" updated — status: ${patch.status ?? "unchanged"}, assignee: ${patch.assigneeName ?? "unassigned"}`,
     });
 
-    // Fire the "how did we do" review-request email. Both routes dedupe by
-    // ticket id, so it's safe to call this on every save where the ticket
-    // is closed, not just the specific transition into "closed". Manual
-    // tickets look their customer info up server-side (from Supabase);
-    // email tickets only exist in the mailbox, so we pass along what the
-    // page already has loaded from Microsoft Graph.
     if (patch.status === "closed") {
-      const url = isManual ? `/api/tickets/manual/${id}/review-request` : `/api/tickets/${id}/review-request`;
-      fetch(url, {
-        method: "POST",
-        ...(isManual ? {} : {
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ customerEmail: ticket.from, customerName: ticket.fromName, subject: ticket.subject }),
-        }),
-      })
-        .then(async (res) => {
-          const data = await res.json().catch(() => ({}));
-          if (!data.reviewSent) console.error("[review-request] not sent:", data.reason ?? data.error ?? res.status);
-        })
-        .catch((err) => console.error("[review-request] request failed:", err));
+      fireReviewRequest({ id, isManual, subject, customerEmail: ticket.from, customerName: ticket.fromName });
     }
   }
 
