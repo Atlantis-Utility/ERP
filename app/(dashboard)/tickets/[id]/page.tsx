@@ -178,6 +178,23 @@ export default function TicketDetailPage() {
       action: "Ticket updated",
       detail: `Ticket "${email?.subject ?? id}": status ${status}, assignee ${assignee?.name ?? "unassigned"}`,
     });
+
+    // Fire the "how did we do" review-request email — mirrors the list
+    // page's logic. The route dedupes by ticket id, so it's safe to call
+    // on every save where the ticket is closed, not just the transition.
+    if (status === "closed") {
+      fetch(`/api/tickets/${id}/review-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerEmail: email?.from, customerName: email?.fromName, subject: email?.subject }),
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!data.reviewSent) console.error("[review-request] not sent:", data.reason ?? data.error ?? res.status);
+        })
+        .catch((err) => console.error("[review-request] request failed:", err));
+    }
+
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
