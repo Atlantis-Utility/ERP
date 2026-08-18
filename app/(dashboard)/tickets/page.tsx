@@ -530,6 +530,13 @@ export default function TicketsPage() {
       action: "Ticket updated",
       detail: `Ticket "${subject}" updated — status: ${patch.status ?? "unchanged"}, assignee: ${patch.assigneeName ?? "unassigned"}`,
     });
+
+    // Fire the "how did we do" review-request email. The API route dedupes
+    // by ticket id, so it's safe to call this on every save where the
+    // ticket is closed, not just the specific transition into "closed".
+    if (isManual && patch.status === "closed") {
+      fetch(`/api/tickets/manual/${id}/review-request`, { method: "POST" }).catch(() => {});
+    }
   }
 
   const modalTicket = assignModal ? unified.find((t) => t.id === assignModal.id) ?? null : null;

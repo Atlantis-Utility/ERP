@@ -192,14 +192,6 @@ export default function CustomersPage() {
           ))}
         </div>
 
-        <div className="w-full sm:w-56">
-          <Select
-            value={sortKey}
-            onChange={(v) => setSortKey(v as SortKey)}
-            options={SORT_OPTIONS}
-          />
-        </div>
-
         <div className="flex items-center gap-1 bg-[#f5f5f5] rounded-lg p-0.5">
           {([
             { value: "all", label: "All" },
@@ -233,6 +225,14 @@ export default function CustomersPage() {
           <DollarSign className="w-3 h-3" />
           Unpaid Balance
         </button>
+
+        <div className="w-full sm:w-56">
+          <Select
+            value={sortKey}
+            onChange={(v) => setSortKey(v as SortKey)}
+            options={SORT_OPTIONS}
+          />
+        </div>
       </div>
 
       {/* Table */}

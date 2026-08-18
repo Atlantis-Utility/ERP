@@ -258,6 +258,13 @@ const QUICK_LINK_SECTIONS: QuickLinkSection[] = [
         icon: GitFork,
         text: "text-[#111827]",
       },
+      {
+        label: "Resend",
+        href: "https://resend.com",
+        domain: "resend.com",
+        icon: Mail,
+        text: "text-[#111827]",
+      },
     ],
   },
 ];

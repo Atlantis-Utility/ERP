@@ -75,6 +75,20 @@ create table notes ( -- personal notes, optionally shared with other employees
   data       jsonb not null default '{}'
 );
 
+create table ticket_reviews ( -- post-close "how did we do" review request, sent by app/api/tickets/manual/[id]/review-request
+  token          text primary key, -- unguessable id used in the public feedback link, doubles as the row's access credential
+  ticket_id      text not null,
+  customer_name  text,
+  customer_email text,
+  subject        text,
+  rating         int,
+  feedback       text, -- free-text "how can we improve" answer, only collected when rating < 5
+  status         text not null default 'sent', -- sent | rated | completed
+  clicked_google boolean not null default false,
+  created_at     timestamptz not null default now(),
+  responded_at   timestamptz
+);
+
 create table ringlogix_customers ( -- cached snapshot of the RingLogix reseller portal customer list, refreshed every 3h by app/api/cron/ringlogix-sync
   id           text primary key, -- RingLogix customer/domain id
   parent_id    text,
@@ -217,6 +231,7 @@ alter table customer_unifi_sites enable row level security;
 alter table customer_profiles enable row level security;
 alter table notes enable row level security;
 alter table ringlogix_customers enable row level security;
+alter table ticket_reviews enable row level security;
 
 create policy "authenticated read/write" on employees
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -240,6 +255,9 @@ create policy "authenticated read/write" on notes
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated read/write" on ringlogix_customers
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+-- ticket_reviews has no client-side policy: the public feedback page never
+-- talks to Supabase directly, only through app/api/feedback/[token] routes
+-- running under the service-role key, which bypasses RLS entirely.
 
 -- user_profiles: any authenticated user can read all profiles (matches
 -- today's admin-facing "subscribeUserProfiles" use case) and update their
