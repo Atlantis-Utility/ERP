@@ -36,6 +36,7 @@ import {
   Zap,
   CalendarDays,
   StickyNote,
+  Target,
 } from "lucide-react";
 
 interface NavItem {
@@ -61,6 +62,7 @@ const navSections: { label: string; items: NavItem[] }[] = [
     items: [
       { label: "Dashboard", href: "/",          icon: LayoutDashboard },
       { label: "Customers", href: "/customers", icon: Building2       },
+      { label: "Leads",     href: "/leads",     icon: Target          },
       { label: "Tickets",      href: "/tickets",      icon: TicketCheck },
       { label: "Quick Access", href: "/quick-access", icon: Zap        },
     ],

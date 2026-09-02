@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 
 export interface SelectOption {
   value: string;
@@ -16,17 +16,21 @@ interface SelectProps {
   className?: string;
   disabled?: boolean;
   id?: string;
-  // Opt-in only — every existing call site keeps its plain dropdown
-  // behavior unless it explicitly asks for the search box (useful once the
-  // option list gets long, e.g. picking a customer).
+  // Opt-in only, every existing call site keeps its plain dropdown behavior
+  // unless it explicitly asks for the search box (useful once the option
+  // list gets long, e.g. picking a customer).
   searchable?: boolean;
+  // Opt-in only. Shows a small X in the closed control once a value is
+  // selected, clicking it resets to the placeholder/unselected state
+  // without opening the option list.
+  clearable?: boolean;
 }
 
 // Custom dropdown replacing native <select>: the browser renders a native
 // select's open option list itself (OS-styled, blue highlight), which can't
 // be restyled with CSS. This keeps full control over both closed and open
 // states so it matches the rest of the app consistently.
-export default function Select({ value, onChange, options, placeholder, className = "", disabled, id, searchable = false }: SelectProps) {
+export default function Select({ value, onChange, options, placeholder, className = "", disabled, id, searchable = false, clearable = false }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -68,7 +72,21 @@ export default function Select({ value, onChange, options, placeholder, classNam
         <span className={`truncate ${selected ? "text-[#0a0a0a]" : "text-[#bbb]"}`}>
           {selected ? selected.label : placeholder ?? "Select…"}
         </span>
-        <ChevronDown className={`w-3.5 h-3.5 text-[#999] shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        <span className="flex items-center gap-1 shrink-0">
+          {clearable && selected && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onChange(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); onChange(""); } }}
+              className="p-0.5 rounded hover:bg-[#f0f0f0] text-[#999] hover:text-[#666] transition-colors"
+              aria-label="Clear selection"
+            >
+              <X className="w-3 h-3" />
+            </span>
+          )}
+          <ChevronDown className={`w-3.5 h-3.5 text-[#999] transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
       </button>
 
       {open && (

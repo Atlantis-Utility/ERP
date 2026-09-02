@@ -8,6 +8,7 @@ export const NAV_PAGES: NavPage[] = [
   { href: "/",              label: "Dashboard",     section: "RingLogix"  },
   { href: "/quick-access",  label: "Quick Access",  section: "RingLogix"  },
   { href: "/customers",     label: "Customers",     section: "RingLogix"  },
+  { href: "/leads",         label: "Leads",         section: "Sales"      },
   { href: "/subscribers",   label: "Subscribers",   section: "RingLogix"  },
   { href: "/phone-numbers", label: "Phone Numbers", section: "RingLogix"  },
   { href: "/call-records",  label: "Call Records",  section: "RingLogix"  },
