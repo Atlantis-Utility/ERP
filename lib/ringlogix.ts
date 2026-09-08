@@ -29,7 +29,12 @@ async function fetchToken(body: Record<string, string>): Promise<RLToken> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`RingLogix auth failed ${res.status}: ${text.slice(0, 300)}`);
+    // The token endpoint answers failures with an empty body and puts the
+    // actual reason in a "Warning" header — "Invalid User Login" when the
+    // user lacks API access, "Invalid_client [OA051]" for a bad
+    // client_id/secret. Without it every failure reads as a bare 403.
+    const reason = res.headers.get("warning") ?? text.slice(0, 300);
+    throw new Error(`RingLogix auth failed ${res.status}: ${reason || "no reason given"}`);
   }
 
   const data = await res.json();
