@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase/client";
 import { subscribeTable } from "../supabase/realtime";
-import type { Employee } from "../mock-data";
+import type { Employee, AccessRole } from "../mock-data";
 
 const TABLE = "employees";
 
@@ -79,6 +79,20 @@ export async function updateEmployee(id: string, patch: Partial<Employee>): Prom
     supabase.from(TABLE).update({ name: merged.name, email: merged.email, status: merged.status, data: merged }).eq("id", id)
   );
   if (error) throw error;
+}
+
+// Routed through an admin-gated API route rather than a direct client write —
+// see app/api/employees/[id]/access/route.ts for why.
+export async function updateEmployeeAccess(id: string, patch: { access?: string[]; accessRole?: AccessRole }): Promise<void> {
+  const res = await fetch(`/api/employees/${id}/access`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? "Failed to update access");
+  }
 }
 
 export async function removeEmployee(id: string): Promise<void> {

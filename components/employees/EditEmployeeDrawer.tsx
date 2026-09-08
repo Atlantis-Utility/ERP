@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
-import { updateEmployee, removeEmployee } from "@/lib/db/employees";
+import { updateEmployee, updateEmployeeAccess, removeEmployee } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { NAV_PAGES } from "@/lib/nav-pages";
-import { Check } from "lucide-react";
+import { Check, Lock } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getErrorMessage } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 import type { Employee, EmployeeStatus, AccessRole } from "@/lib/mock-data";
 
 interface Props {
@@ -23,6 +24,8 @@ const PAGE_SECTIONS = Array.from(new Set(NAV_PAGES.map((p) => p.section)));
 
 export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
   const router = useRouter();
+  const { authUser } = useAuth();
+  const isAdmin = authUser?.isAdmin ?? false;
   const [form, setForm] = useState({
     name:       employee.name,
     email:      employee.email,
@@ -97,14 +100,17 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
       email:      form.email.trim().toLowerCase(),
       phone:      form.phone.trim(),
       role:       form.role.trim(),
-      accessRole: form.accessRole,
       status:     form.status as EmployeeStatus,
       location:   form.location.trim(),
       startDate:  form.startDate,
-      access,
     };
     try {
       await updateEmployee(employee.id, patch);
+      // Access role and page access are permission grants — only admins can
+      // change them, enforced server-side too (see updateEmployeeAccess).
+      if (isAdmin) {
+        await updateEmployeeAccess(employee.id, { access, accessRole: form.accessRole });
+      }
     } catch (err) {
       console.error("[EditEmployeeDrawer] Failed to update:", JSON.stringify(err, Object.getOwnPropertyNames(err ?? {})), err);
       setSaveError(getErrorMessage(err, "Failed to save. Please try again."));
@@ -218,18 +224,25 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Access Role" hint="Workspace permissions">
-            <Select
-              value={form.accessRole}
-              onChange={(v) => set("accessRole", v)}
-              options={[
-                { value: "Administrator", label: "Administrator: Full access" },
-                { value: "Manager", label: "Manager: Manage teams & projects" },
-                { value: "Analyst", label: "Analyst: View & export data" },
-                { value: "Contributor", label: "Contributor: Add & edit content" },
-                { value: "Viewer", label: "Viewer: Read only" },
-              ]}
-            />
+          <FormField label="Access Role" hint={isAdmin ? "Workspace permissions" : "Only admins can change this"}>
+            {isAdmin ? (
+              <Select
+                value={form.accessRole}
+                onChange={(v) => set("accessRole", v)}
+                options={[
+                  { value: "Administrator", label: "Administrator: Full access" },
+                  { value: "Manager", label: "Manager: Manage teams & projects" },
+                  { value: "Analyst", label: "Analyst: View & export data" },
+                  { value: "Contributor", label: "Contributor: Add & edit content" },
+                  { value: "Viewer", label: "Viewer: Read only" },
+                ]}
+              />
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-[#666] border border-[#eaeaea] bg-[#fafafa] rounded-lg px-3 py-2">
+                <Lock className="w-3.5 h-3.5 text-[#bbb] shrink-0" />
+                {form.accessRole}
+              </div>
+            )}
           </FormField>
           <FormField label="Start Date">
             <input className={inputClass} type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
@@ -246,7 +259,14 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
 
         <div className="border-t border-[#f7f7f7] pt-4">
           <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-1">Page Access</p>
-          <p className="text-xs text-[#999] mb-3">{access.length} of {NAV_PAGES.length} pages granted</p>
+          <p className="text-xs text-[#999] mb-3 flex items-center gap-1.5">
+            {access.length} of {NAV_PAGES.length} pages granted
+            {!isAdmin && (
+              <span className="inline-flex items-center gap-1 text-[#bbb]">
+                <Lock className="w-3 h-3" /> only admins can change this
+              </span>
+            )}
+          </p>
         </div>
 
         <div className="space-y-4">
@@ -258,6 +278,21 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
                 <div className="flex flex-wrap gap-2">
                   {pages.map((page) => {
                     const granted = access.includes(page.href);
+                    if (!isAdmin) {
+                      return (
+                        <span
+                          key={page.href}
+                          className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border ${
+                            granted
+                              ? "bg-[#f5f5f5] text-[#666] border-[#eaeaea]"
+                              : "bg-white text-[#ccc] border-[#f0f0f0]"
+                          }`}
+                        >
+                          {granted && <Check className="w-3 h-3 shrink-0" />}
+                          {page.label}
+                        </span>
+                      );
+                    }
                     return (
                       <button
                         key={page.href}

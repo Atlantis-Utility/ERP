@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { NAV_PAGES } from "@/lib/nav-pages";
+import NotFound from "@/app/not-found";
 
 // `authUser.access` (undefined = unrestricted) is only used to hide sidebar
 // links today, it never stopped someone from typing/bookmarking the URL
@@ -29,18 +30,6 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!loading && !authUser) router.replace("/login");
   }, [authUser, loading, router]);
 
-  // Re-checked on every render, so this also fires the moment an admin
-  // revokes access to the page the employee is currently sitting on.
-  // authUser.access updates live (see auth-context's realtime subscription),
-  // which re-runs this effect with the same pathname and kicks them out.
-  useEffect(() => {
-    if (!authUser) return;
-    if (!isAllowed(pathname, authUser.access)) {
-      const fallback = authUser.access && authUser.access.length > 0 ? authUser.access[0] : "/account";
-      router.replace(fallback);
-    }
-  }, [authUser, pathname, router]);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#fafafa]">
@@ -50,7 +39,13 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!authUser) return null;
-  if (!isAllowed(pathname, authUser.access)) return null;
+
+  // A revoked/never-granted page renders as a genuine 404, not a redirect —
+  // it shouldn't even confirm to the visitor that the route exists. Because
+  // authUser.access updates live (auth-context's realtime subscription),
+  // this also kicks in the moment an admin revokes access to the page an
+  // employee is currently sitting on.
+  if (!isAllowed(pathname, authUser.access)) return <NotFound />;
 
   return <>{children}</>;
 }
