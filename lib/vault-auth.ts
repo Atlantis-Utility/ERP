@@ -52,13 +52,37 @@ export async function requireVaultUnlocked(supabase: SupabaseServerClient, uid: 
 // Sharing is keyed by uid (stable, tied to the actual session), not the
 // employees table's own id. Returns null if that employee has no account
 // yet (nothing to share with).
+// Maps an employees row to the auth account that signed in as that person.
+//
+// user_profiles.employee_id looks like the obvious key but is null on every
+// row in practice — the first-sign-in path inserts `employee_id: null` and
+// nothing ever links it — so matching on it alone reports that a person has
+// never signed in when they have. Fall back to their email, which is how
+// lib/auth-context resolves the same pairing.
 export async function resolveEmployeeUid(supabase: SupabaseServerClient, employeeId: string): Promise<string | null> {
-  const { data } = await supabase
+  const { data: linked } = await supabase
     .from("user_profiles")
     .select("uid")
     .eq("employee_id", employeeId)
     .maybeSingle();
-  return (data?.uid as string) ?? null;
+  if (linked?.uid) return linked.uid as string;
+
+  const { data: employee } = await supabase
+    .from("employees")
+    .select("email")
+    .eq("id", employeeId)
+    .maybeSingle();
+  const email = (employee?.email as string | undefined)?.trim();
+  if (!email) return null;
+
+  // Case-insensitive, and limit(1) rather than maybeSingle() so a duplicate
+  // profile row resolves to one account instead of erroring the whole share.
+  const { data: byEmail } = await supabase
+    .from("user_profiles")
+    .select("uid")
+    .ilike("email", email)
+    .limit(1);
+  return (byEmail?.[0]?.uid as string) ?? null;
 }
 
 export async function getDisplayName(supabase: SupabaseServerClient, uid: string | null): Promise<string> {
