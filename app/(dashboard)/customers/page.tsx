@@ -133,7 +133,6 @@ export default function CustomersPage() {
     <div>
       <Header
         title="Customers"
-        subtitle="RingLogix reseller account directory"
         actions={
           <DownloadMenu
             onExportCsv={handleExportCsv}

@@ -6,7 +6,8 @@ import Header from "@/components/layout/Header";
 import CopyButton from "@/components/ui/CopyButton";
 import CustomerUnifiPanel from "@/components/customers/CustomerUnifiPanel";
 import EditCustomerDetailsDrawer from "@/components/customers/EditCustomerDetailsDrawer";
-import { getCustomerProfile, DEFAULT_CONTACT_ID, type CustomerProfileOverlay } from "@/lib/db/customer-profiles";
+import { getCustomerProfile, DEFAULT_CONTACT_ID, type CustomerProfileOverlay, type StaticIpConfig } from "@/lib/db/customer-profiles";
+import { getUnifiLink } from "@/lib/db/unifi-links";
 import { subscribeProjects } from "@/lib/db/projects";
 import { statusConfig, type Project } from "@/lib/mock-projects";
 import { matchScore, LIKELY_MATCH_THRESHOLD } from "@/lib/name-match";
@@ -17,7 +18,7 @@ import {
 import {
   ArrowLeft, RefreshCw, AlertCircle, Building2, Phone, User,
   Smartphone, ListOrdered, Wifi, Pencil, FolderKanban, ArrowUpRight,
-  ChevronLeft, ChevronRight, Mail,
+  ChevronLeft, ChevronRight, Mail, Network,
 } from "lucide-react";
 
 interface PortalCustomer {
@@ -116,6 +117,65 @@ function Field({ label, value, copy, hint }: { label: string; value: string; cop
 
 function currency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+// Static IP config, hand-maintained. UniFi exposes a WAN's address but never
+// its mask/gateway/DNS, so a half-filled row is expected — show the gaps as
+// blanks rather than hiding the row.
+function StaticIpCard({ ips, billedCount }: { ips: StaticIpConfig[]; billedCount: number }) {
+  const short = billedCount > 0 && ips.length < billedCount;
+  return (
+    <div className="bg-white border border-[#eaeaea] rounded-xl mb-6">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[#eaeaea]">
+        <div className="flex items-center gap-2">
+          <Network className="w-4 h-4 text-[#0070f3]" />
+          <p className="text-sm font-semibold text-[#0a0a0a]">Static IPs</p>
+        </div>
+        {short && (
+          <p className="text-[11px] text-[#b45309]">
+            {ips.length} of {billedCount} billed recorded
+          </p>
+        )}
+      </div>
+
+      {ips.length === 0 ? (
+        <p className="text-xs text-[#999] px-5 py-6 text-center">
+          Billed for {billedCount} static IP{billedCount > 1 ? "s" : ""} — none recorded yet. Add them from Edit.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-140">
+            <thead>
+              <tr className="border-b border-[#eaeaea]">
+                {["IP Address", "Subnet Mask", "Gateway", "DNS", "Circuit"].map((h) => (
+                  <th key={h} className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ips.map((s) => (
+                <tr key={s.id} className="border-b border-[#f7f7f7] last:border-0">
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-mono font-medium text-[#0a0a0a]">{s.ip || "-"}</span>
+                      {s.ip && <CopyButton value={s.ip} label="IP address" />}
+                    </div>
+                    {s.notes && <p className="text-[10px] text-[#bbb] mt-0.5">{s.notes}</p>}
+                  </td>
+                  <td className="px-5 py-3 text-sm font-mono text-[#666]">{s.subnetMask || "-"}</td>
+                  <td className="px-5 py-3 text-sm font-mono text-[#666]">{s.gateway || "-"}</td>
+                  <td className="px-5 py-3 text-sm font-mono text-[#666]">
+                    {[s.dnsPrimary, s.dnsSecondary].filter(Boolean).join(", ") || "-"}
+                  </td>
+                  <td className="px-5 py-3 text-sm text-[#666]">{s.label || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // What we're billed for this customer's circuits, straight off the upstream
@@ -338,6 +398,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const [overlay, setOverlay] = useState<CustomerProfileOverlay | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [wanIps, setWanIps] = useState<string[]>([]);
   const [devicesRes, setDevicesRes] = useState<ResourceState<Device>>(emptyResource);
   const [subscribersRes, setSubscribersRes] = useState<ResourceState<Subscriber>>(emptyResource);
   const [phoneNumbersRes, setPhoneNumbersRes] = useState<ResourceState<DIDNumber>>(emptyResource);
@@ -394,6 +455,30 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   useEffect(() => {
     return subscribeProjects(setProjects);
   }, []);
+
+  // WAN addresses off the linked UniFi site, offered as prefill for the static
+  // IP editor. Read from the sites payload DataPreloader already caches, so
+  // this costs one cheap Supabase lookup and no extra UniFi call.
+  useEffect(() => {
+    let cancelled = false;
+    getUnifiLink(id)
+      .then((link) => {
+        if (cancelled || !link) return;
+        const raw = localStorage.getItem("sc:sites");
+        if (!raw) return;
+        const sites = JSON.parse(raw) as Array<{
+          siteId: string;
+          wanIp?: string;
+          wans?: Array<{ ipv4?: string }>;
+        }>;
+        const site = sites.find((s) => s.siteId === link.siteId);
+        if (!site) return;
+        const ips = (site.wans ?? []).map((w) => w.ipv4).filter((v): v is string => Boolean(v));
+        setWanIps(ips.length > 0 ? ips : site.wanIp ? [site.wanIp] : []);
+      })
+      .catch(() => {}); // prefill is a convenience — never block the page on it
+    return () => { cancelled = true; };
+  }, [id]);
 
   const backAction = (
     <Link
@@ -470,6 +555,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const billed = findBilledIsp(customer.company);
   const billedPrimary = billed?.primary ? ISP_PROVIDERS[billed.primary.provider] : null;
   const billedBackup = billed?.backup ? ISP_PROVIDERS[billed.backup.provider] : null;
+  // How many static IPs the provider invoices us for, across every circuit at
+  // this customer — the target count for what should be recorded below.
+  const billedStaticIps = billed?.services.reduce((n, s) => n + s.staticIps, 0) ?? 0;
+  const savedStaticIps = overlay?.staticIps ?? [];
 
   const ongoingProject = projects
     .filter((p) => p.status !== "completed" && p.status !== "cancelled" && p.clientName)
@@ -572,6 +661,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
       {billed && <BilledIspCard billed={billed} />}
 
+      {(savedStaticIps.length > 0 || billedStaticIps > 0) && (
+        <StaticIpCard ips={savedStaticIps} billedCount={billedStaticIps} />
+      )}
+
       <EditCustomerDetailsDrawer
         open={editOpen}
         onClose={() => setEditOpen(false)}
@@ -579,6 +672,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         defaultContact={defaultContact}
         overlay={overlay}
         onSaved={setOverlay}
+        suggestedIps={wanIps}
+        billedStaticIps={billedStaticIps}
       />
 
       {/* Numbers / Extensions / Call Queues / Devices / Network */}

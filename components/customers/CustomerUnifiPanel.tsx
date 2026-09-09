@@ -181,6 +181,7 @@ export default function CustomerUnifiPanel({ customerId, companyName, bare }: { 
         backupIsp: existing?.backupIsp || backup,
         contacts: existing?.contacts ?? [],
         mainContactId: existing?.mainContactId ?? DEFAULT_CONTACT_ID,
+        staticIps: existing?.staticIps ?? [], // pass through — this is a full-row upsert
       }, authUser?.email);
     } catch {
       // Non-fatal — the site link itself already succeeded.
