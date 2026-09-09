@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase/client";
 
@@ -32,6 +32,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [loading, setLoading]   = useState(true);
+  // Tracks whether we've completed at least one profile load for the current
+  // session — see the TOKEN_REFRESHED guard below.
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     async function loadProfile(user: User) {
@@ -115,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) loadProfile(session.user);
+      if (session?.user) loadProfile(session.user).then(() => { initializedRef.current = true; });
       else setLoading(false);
     });
 
@@ -124,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthUser(null);
         localStorage.removeItem("current_user_id");
         setLoading(false);
+        initializedRef.current = false;
         return;
       }
 
@@ -139,7 +143,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       }
 
-      loadProfile(session.user);
+      // TOKEN_REFRESHED fires on every silent session refresh — including the
+      // one Supabase's client does automatically the moment a backgrounded
+      // tab regains focus. Once this session's profile is already loaded,
+      // there's nothing new to fetch: re-running loadProfile would flip
+      // `loading` back to true, and AuthGuard renders a spinner in place of
+      // the whole app while `loading` is true — unmounting (and resetting)
+      // every open page, drawer, and in-progress form for no reason. Page
+      // access changes still reach authUser live via the realtime
+      // subscription below, so skipping this refetch loses nothing.
+      if (event === "TOKEN_REFRESHED" && initializedRef.current) return;
+
+      loadProfile(session.user).then(() => { initializedRef.current = true; });
     });
 
     return () => subscription.unsubscribe();
