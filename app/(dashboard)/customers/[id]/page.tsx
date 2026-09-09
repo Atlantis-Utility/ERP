@@ -10,6 +10,10 @@ import { getCustomerProfile, DEFAULT_CONTACT_ID, type CustomerProfileOverlay } f
 import { subscribeProjects } from "@/lib/db/projects";
 import { statusConfig, type Project } from "@/lib/mock-projects";
 import { matchScore, LIKELY_MATCH_THRESHOLD } from "@/lib/name-match";
+import IspLogo from "@/components/unifi/IspLogo";
+import {
+  findBilledIsp, ISP_PROVIDERS, serviceMonthlyTotal, formatSpeed, type BilledIsp,
+} from "@/lib/isp-accounts";
 import {
   ArrowLeft, RefreshCw, AlertCircle, Building2, Phone, User,
   Smartphone, ListOrdered, Wifi, Pencil, FolderKanban, ArrowUpRight,
@@ -97,7 +101,7 @@ async function fetchResource<T>(url: string): Promise<ResourceState<T>> {
   }
 }
 
-function Field({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
+function Field({ label, value, copy, hint }: { label: string; value: string; copy?: boolean; hint?: string }) {
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-semibold text-[#999] uppercase tracking-wider mb-1">{label}</p>
@@ -105,6 +109,72 @@ function Field({ label, value, copy }: { label: string; value: string; copy?: bo
         <p className="text-sm font-medium text-[#0a0a0a] truncate">{value || "-"}</p>
         {copy && value && <CopyButton value={value} label={label} />}
       </div>
+      {hint && <p className="text-[10px] text-[#bbb] mt-0.5 truncate">{hint}</p>}
+    </div>
+  );
+}
+
+function currency(n: number) {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+// What we're billed for this customer's circuits, straight off the upstream
+// provider's latest invoice (lib/isp-accounts.ts). Rates here are wholesale —
+// what Atlantis pays — not what the customer is charged.
+function BilledIspCard({ billed }: { billed: BilledIsp }) {
+  return (
+    <div className="bg-white border border-[#eaeaea] rounded-xl mb-6">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[#eaeaea]">
+        <div className="flex items-center gap-2">
+          <Wifi className="w-4 h-4 text-[#0070f3]" />
+          <p className="text-sm font-semibold text-[#0a0a0a]">Internet Service</p>
+        </div>
+        <p className="text-[11px] text-[#999] truncate">Billed as “{billed.customer}”</p>
+      </div>
+
+      {billed.services.map((s, i) => {
+        const provider = ISP_PROVIDERS[s.provider];
+        const speed = formatSpeed(s);
+        return (
+          <div
+            key={`${s.provider}-${s.role}-${i}`}
+            className="flex items-start justify-between gap-4 px-5 py-4 border-b border-[#f2f2f2] last:border-0"
+          >
+            <div className="flex items-start gap-3 min-w-0">
+              <IspLogo ispName={provider.name} size={28} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-[#0a0a0a]">{provider.name}</p>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    s.role === "backup" ? "bg-[#fff8e6] text-[#b45309]" : "bg-[#e8f2ff] text-[#0070f3]"
+                  }`}>
+                    {s.role === "backup" ? "Backup" : "Primary"}
+                  </span>
+                </div>
+                <p className="text-xs text-[#666] mt-1">{[speed, s.plan].filter(Boolean).join(" · ")}</p>
+                {s.address && <p className="text-[11px] text-[#999] mt-0.5">{s.address}</p>}
+                {s.note && <p className="text-[11px] text-[#bbb] mt-0.5">{s.note}</p>}
+              </div>
+            </div>
+
+            <div className="text-right shrink-0">
+              <p className="text-sm font-semibold text-[#0a0a0a]">
+                {currency(serviceMonthlyTotal(s))}
+                <span className="text-[11px] font-normal text-[#999]">/mo</span>
+              </p>
+              <p className="text-[10px] text-[#999] mt-0.5">our cost</p>
+              <p className="text-[11px] text-[#666] mt-1.5">
+                {s.staticIps > 0
+                  ? `${s.staticIps} static IP${s.staticIps > 1 ? "s" : ""} @ ${currency(s.staticIpRate)}`
+                  : "No static IPs"}
+              </p>
+              <p className="text-[10px] text-[#bbb] mt-0.5">
+                Invoice #{provider.invoice.number} · {provider.invoice.servicePeriod}
+              </p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -395,6 +465,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   // Best-effort link to an in-progress project for this customer — projects
   // only store a free-text clientName (no RingLogix customer id), so this is
   // a fuzzy name match rather than a reliable foreign key.
+  // Falls back to the upstream provider invoices when nobody has typed an ISP
+  // into the profile yet — a hand-entered value always wins.
+  const billed = findBilledIsp(customer.company);
+  const billedPrimary = billed?.primary ? ISP_PROVIDERS[billed.primary.provider] : null;
+  const billedBackup = billed?.backup ? ISP_PROVIDERS[billed.backup.provider] : null;
+
   const ongoingProject = projects
     .filter((p) => p.status !== "completed" && p.status !== "cancelled" && p.clientName)
     .map((p) => ({ project: p, score: matchScore(customer.company, p.clientName!) }))
@@ -451,8 +527,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-5 border-t border-[#f0f0f0]">
           <div className="grid grid-cols-2 gap-x-6 gap-y-5">
-            <Field label="Internet Service Provider" value={overlay?.isp ?? ""} />
-            <Field label="Backup Internet Service Provider" value={overlay?.backupIsp ?? ""} />
+            <Field
+              label="Internet Service Provider"
+              value={overlay?.isp || billedPrimary?.name || ""}
+              hint={!overlay?.isp && billedPrimary ? `From invoice #${billedPrimary.invoice.number}` : undefined}
+            />
+            <Field
+              label="Backup Internet Service Provider"
+              value={overlay?.backupIsp || billedBackup?.name || ""}
+              hint={!overlay?.backupIsp && billedBackup ? `From invoice #${billedBackup.invoice.number}` : undefined}
+            />
             <Field label="Balance" value={customer.balance} />
             <Field label="Credit Limit" value={customer.creditLimit} />
           </div>
@@ -485,6 +569,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
       </div>
+
+      {billed && <BilledIspCard billed={billed} />}
 
       <EditCustomerDetailsDrawer
         open={editOpen}

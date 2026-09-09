@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import IspLogo from "@/components/unifi/IspLogo";
+import { findBilledIsp, ISP_PROVIDERS, serviceMonthlyTotal, formatSpeed, billedInvoiceRefs } from "@/lib/isp-accounts";
 import SiteTopology from "@/components/unifi/SiteTopology";
 import RealTopology from "@/components/unifi/RealTopology";
 import WanHealthBar from "@/components/unifi/WanHealthBar";
@@ -197,6 +198,7 @@ export default function SiteDetailPage() {
 
   const c = site.statistics.counts;
   const online = c.totalDevice - c.offlineDevice;
+  const billed = findBilledIsp(site.displayName);
   const wanUptime = site.statistics.percentages?.wanUptime;
   const gatewayDevice = devices.find(
     (d) => d.mac && site.mac && d.mac.toLowerCase().replace(/:/g, "") === site.mac.toLowerCase().replace(/:/g, "")
@@ -435,6 +437,47 @@ export default function SiteDetailPage() {
                 </>
               )}
             </div>
+
+            {/* The circuit we actually buy for this location — UniFi only sees
+                the upstream carrier that owns the WAN IP block. */}
+            {billed && (
+              <div className="mt-5">
+                <SectionLabel>Billed Service</SectionLabel>
+                <div className="space-y-2">
+                  {billed.services.map((s, i) => {
+                    const provider = ISP_PROVIDERS[s.provider];
+                    const speed = formatSpeed(s);
+                    return (
+                      <div key={`${s.provider}-${s.role}-${i}`} className="rounded-xl border border-[#f0f0f0] px-3.5 py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-1.5 text-[11px] text-[#222] font-semibold min-w-0">
+                            <IspLogo ispName={provider.name} size={14} />
+                            <span className="truncate">{provider.name}</span>
+                          </span>
+                          <span className="text-[9px] font-semibold text-[#999] uppercase tracking-wider shrink-0">
+                            {s.role === "backup" ? "Backup" : "Primary"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-[#888] mt-1.5">{[speed, s.plan].filter(Boolean).join(" · ")}</p>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <span className="text-[9.5px] text-[#bbb]">
+                            {s.staticIps > 0 ? `${s.staticIps} static IP${s.staticIps > 1 ? "s" : ""}` : "No static IPs"}
+                          </span>
+                          <span className="text-[10px] text-[#666] font-semibold tabular-nums shrink-0">
+                            ${serviceMonthlyTotal(s).toFixed(2)}/mo
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[9.5px] text-[#bbb] px-0.5">
+                    {/* A primary and its failover can come from two different
+                        providers, so name every invoice the rows came off. */}
+                    {billedInvoiceRefs(billed)} · our cost, not the customer’s rate
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Notices */}
             {(c.pendingUpdateDevice > 0 || c.criticalNotification > 0) && (

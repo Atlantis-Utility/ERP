@@ -6,6 +6,7 @@ import Header from "@/components/layout/Header";
 import { Wifi, AlertTriangle, RefreshCw, AlertCircle } from "lucide-react";
 import type { UiEnrichedSite, UiIssuePeriod } from "@/lib/unifi";
 import IspLogo from "@/components/unifi/IspLogo";
+import { resellerFor } from "@/lib/isp-accounts";
 import WanHealthBar, { expandPeriods, N_BARS } from "@/components/unifi/WanHealthBar";
 import Select from "@/components/ui/Select";
 
@@ -117,6 +118,12 @@ function SiteCard({ site }: { site: UiEnrichedSite }) {
   const offlineSince   = isOffline ? getOfflineSince(site.internetIssues) : null;
   const offlineDuration = offlineSince ? formatDuration(offlineSince) : null;
 
+  // UniFi reports whoever owns the WAN IP block, which on a reseller circuit is
+  // the upstream carrier — name the company we actually buy from alongside it,
+  // and stand in for it entirely when UniFi couldn't detect an ISP at all.
+  const reseller = resellerFor(site.displayName);
+  const ispLabel = site.ispName || reseller?.name || "";
+
   // Grey for offline (WAN down / gateway disconnected), yellow degraded, green healthy
   const statusDot   = isOffline ? "bg-[#9ca3af]"  : isDegraded ? "bg-[#f59e0b]" : "bg-[#22c55e]";
   const statusText  = isOffline ? "text-[#6b7280]" : isDegraded ? "text-[#b45309]" : "text-[#16a34a]";
@@ -152,10 +159,13 @@ function SiteCard({ site }: { site: UiEnrichedSite }) {
 
       {/* ISP row */}
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#f5f5f5]">
-        {site.ispName ? (
+        {ispLabel ? (
           <div className="flex items-center gap-2 min-w-0">
-            <IspLogo ispName={site.ispName} size={16} className="shrink-0" />
-            <span className="text-[11px] text-[#555] font-medium truncate">{site.ispName}</span>
+            <IspLogo ispName={ispLabel} size={16} className="shrink-0" />
+            <span className="text-[11px] text-[#555] font-medium truncate">{ispLabel}</span>
+            {reseller && reseller.name !== ispLabel && (
+              <span className="text-[10px] text-[#bbb] shrink-0">via {reseller.name}</span>
+            )}
           </div>
         ) : (
           <span className="text-[11px] text-[#bbb]">No ISP</span>
@@ -234,6 +244,7 @@ export default function SitesPage() {
         !q ||
         s.displayName.toLowerCase().includes(q) ||
         s.ispName.toLowerCase().includes(q) ||
+        (resellerFor(s.displayName)?.name.toLowerCase().includes(q) ?? false) ||
         s.hardware.shortname.toLowerCase().includes(q) ||
         s.wanIp.includes(q) ||
         s.location.toLowerCase().includes(q);
