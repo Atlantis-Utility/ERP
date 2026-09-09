@@ -12,7 +12,14 @@ export interface AuthUser {
   email: string;
   employeeRole: string | null;
   employeeAccessRole: string | null;
-  /** Allowed page hrefs for this employee — undefined means unrestricted (no linked employee record). */
+  /**
+   * The employees row this login actually resolves to, by profile link OR by
+   * email. Distinct from `employeeId`, which mirrors user_profiles.employee_id
+   * and is null for admins — other pages read that as "no linked profile", so
+   * it must keep its meaning. Use this one for permissions.
+   */
+  accessEmployeeId: string | null;
+  /** Allowed page hrefs — undefined means unrestricted (Administrator, or no employee record). */
   access: string[] | undefined;
 }
 
@@ -103,6 +110,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       localStorage.setItem("current_user_name", displayName);
 
+      // Permissions resolve off the employee row found by EITHER route.
+      // user_profiles.employee_id is null in practice — the first-sign-in
+      // insert above never fills it — so keying access off it alone meant
+      // `access` was always undefined and every page stayed visible no matter
+      // what the Employees page had granted.
+      const accessEmployeeId = employeeId ?? employeeRow?.id ?? null;
+
+      // The Employees page labels this role "Administrator: Full access", so it
+      // decides for anyone who has an employee record. user_profiles.is_admin
+      // only applies to logins with no employee row at all (bootstrap admin) —
+      // otherwise it would override every grant, since first sign-in sets it
+      // true for everybody.
+      const unrestricted = employeeRow
+        ? employeeExtra?.accessRole === "Administrator"
+        : isAdmin;
+
       setAuthUser({
         user,
         employeeId,
@@ -111,9 +134,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email:              user.email ?? "",
         employeeRole:       employeeExtra?.role ?? null,
         employeeAccessRole: employeeExtra?.accessRole ?? null,
-        // Only linked employee records are access-restricted — an admin account
-        // with no employee row (e.g. the bootstrap admin) stays unrestricted.
-        access:             employeeId ? (employeeExtra?.access ?? []) : undefined,
+        accessEmployeeId,
+        access:             unrestricted ? undefined : (employeeExtra?.access ?? []),
       });
       setLoading(false);
     }
@@ -166,21 +188,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Keep page-access permissions live for the whole session — if an admin changes
   // this employee's access while they're logged in, it takes effect immediately
   // instead of requiring them to log out and back in.
-  const employeeId = authUser?.employeeId ?? null;
+  // Must follow the same resolved id as the initial load — keyed on
+  // `employeeId` this never fired at all, since that column is null.
+  const accessEmployeeId = authUser?.accessEmployeeId ?? null;
   useEffect(() => {
-    if (!employeeId) return;
+    if (!accessEmployeeId) return;
     const channel = supabase
-      .channel(`auth-employee-${employeeId}`)
+      .channel(`auth-employee-${accessEmployeeId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "employees", filter: `id=eq.${employeeId}` },
+        { event: "UPDATE", schema: "public", table: "employees", filter: `id=eq.${accessEmployeeId}` },
         (payload) => {
           const row = payload.new as { data?: { access?: string[]; role?: string; accessRole?: string } } | undefined;
           if (!row) return;
           setAuthUser((prev) =>
             prev ? {
               ...prev,
-              access:             row.data?.access ?? [],
+              // Promoting someone to Administrator mid-session has to lift the
+              // restriction, not pin them to a stale page list.
+              access:             row.data?.accessRole === "Administrator" ? undefined : (row.data?.access ?? []),
               employeeRole:       row.data?.role ?? prev.employeeRole,
               employeeAccessRole: row.data?.accessRole ?? prev.employeeAccessRole,
             } : prev
@@ -189,7 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [employeeId]);
+  }, [accessEmployeeId]);
 
   async function login(email: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
