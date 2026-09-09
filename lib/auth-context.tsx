@@ -33,14 +33,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [loading, setLoading]   = useState(true);
   // Tracks whether we've completed at least one profile load for the current
-  // session — see the TOKEN_REFRESHED guard below.
+  // session — see the silent-reload guard below.
   const initializedRef = useRef(false);
 
   useEffect(() => {
-    async function loadProfile(user: User) {
+    async function loadProfile(user: User, silent: boolean) {
       // Keep loading true while we fetch the profile — prevents AuthGuard
-      // from redirecting to /login during the async lookup.
-      setLoading(true);
+      // from redirecting to /login during the async lookup. Skipped once
+      // we already have a loaded session: see the call site below for why.
+      if (!silent) setLoading(true);
 
       let employeeId: string | null = null;
       let isAdmin = true;
@@ -118,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) loadProfile(session.user).then(() => { initializedRef.current = true; });
+      if (session?.user) loadProfile(session.user, false).then(() => { initializedRef.current = true; });
       else setLoading(false);
     });
 
@@ -143,18 +144,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       }
 
-      // TOKEN_REFRESHED fires on every silent session refresh — including the
-      // one Supabase's client does automatically the moment a backgrounded
-      // tab regains focus. Once this session's profile is already loaded,
-      // there's nothing new to fetch: re-running loadProfile would flip
-      // `loading` back to true, and AuthGuard renders a spinner in place of
-      // the whole app while `loading` is true — unmounting (and resetting)
-      // every open page, drawer, and in-progress form for no reason. Page
-      // access changes still reach authUser live via the realtime
-      // subscription below, so skipping this refetch loses nothing.
-      if (event === "TOKEN_REFRESHED" && initializedRef.current) return;
-
-      loadProfile(session.user).then(() => { initializedRef.current = true; });
+      // Supabase's client silently re-checks/refreshes the session the
+      // moment a backgrounded tab regains focus — this fires some auth
+      // event (TOKEN_REFRESHED in most versions, but not guaranteed to be
+      // only that one) purely as a background credential refresh, not a
+      // real sign-in. Gate on "have we already loaded a session" rather
+      // than on the specific event name, so this can't reopen depending on
+      // exactly which event Supabase happens to fire: re-running the full
+      // loadProfile — which flips `loading` back to true, and AuthGuard
+      // renders a spinner in place of the whole app while `loading` is
+      // true — would unmount (and reset) every open page, drawer, and
+      // in-progress form for no reason. Page access changes still reach
+      // authUser live via the realtime subscription below, so loading the
+      // profile silently (never touching `loading`) loses nothing.
+      loadProfile(session.user, initializedRef.current).then(() => { initializedRef.current = true; });
     });
 
     return () => subscription.unsubscribe();
