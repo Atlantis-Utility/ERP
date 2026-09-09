@@ -67,16 +67,16 @@ const phaseStatusLabel: Record<string, string> = {
 export function describeAttachment(a: Attachment): string {
   switch (a.type) {
     case "contact":
-      return [a.contactName, a.contactRole, a.contactEmail, a.contactPhone].filter(Boolean).join(" — ") || a.label;
+      return [a.contactName, a.contactRole, a.contactEmail, a.contactPhone].filter(Boolean).join(", ") || a.label;
     case "link":
       return [a.label, a.url].filter(Boolean).join(": ");
     case "media":
       return [a.label, a.url].filter(Boolean).join(": ");
     case "note":
-      return [a.label && a.label !== "Untitled" ? a.label : null, a.content].filter(Boolean).join(" — ");
+      return [a.label && a.label !== "Untitled" ? a.label : null, a.content].filter(Boolean).join(": ");
     case "file": {
       const details = [a.fileName, a.fileSize !== undefined ? formatFileSize(a.fileSize) : null].filter(Boolean).join(", ");
-      return `${a.label}${details ? ` (${details})` : ""} — file not embedded, see original upload`;
+      return `${a.label}${details ? ` (${details})` : ""}, file not embedded, see original upload`;
     }
     default:
       return a.label;
@@ -94,11 +94,11 @@ export function buildProjectReportData(project: Project, allTasks: KanbanCard[] 
   const phasesState: PhasesState = project.phases ?? {};
 
   const meta: ReportMetaRow[] = [
-    { label: "Client", value: project.clientName || "—" },
-    { label: "Location", value: project.clientLocation || "—" },
-    { label: "Department", value: project.department || "—" },
-    { label: "Owner", value: project.owner || "—" },
-    { label: "Completion Date", value: project.deadlineTbd ? "TBD" : (project.deadline ? formatDate(project.deadline) : "—") },
+    { label: "Client", value: project.clientName || "-" },
+    { label: "Location", value: project.clientLocation || "-" },
+    { label: "Department", value: project.department || "-" },
+    { label: "Owner", value: project.owner || "-" },
+    { label: "Completion Date", value: project.deadlineTbd ? "TBD" : (project.deadline ? formatDate(project.deadline) : "-") },
     { label: "Priority", value: priorityConfig[project.priority]?.label ?? project.priority },
   ];
   const ispPrimary = project.ispPrimary ?? project.isp;
@@ -126,7 +126,7 @@ export function buildProjectReportData(project: Project, allTasks: KanbanCard[] 
       : (project.clientContact || project.clientEmail || project.clientPhone)
         ? [{ name: project.clientContact ?? "", designation: "", email: project.clientEmail ?? "", phone: project.clientPhone ?? "" }]
         : []
-  ).map((c) => ({ name: c.name || "—", role: c.designation || "—", email: c.email || "—", phone: c.phone || "—" }));
+  ).map((c) => ({ name: c.name || "-", role: c.designation || "-", email: c.email || "-", phone: c.phone || "-" }));
 
   const projectTasks = allTasks.filter((t) => t.type === "task" && t.projectId === project.id);
   const completedTasksRaw = projectTasks.filter((t) => t.column === "done");
@@ -134,7 +134,7 @@ export function buildProjectReportData(project: Project, allTasks: KanbanCard[] 
     title: t.title,
     assignees: t.assignees,
     priorityLabel: priorityConfig[t.priority]?.label ?? t.priority,
-    dueDate: t.dueDateTbd ? "TBD" : (t.dueDate ? formatDate(t.dueDate) : "—"),
+    dueDate: t.dueDateTbd ? "TBD" : (t.dueDate ? formatDate(t.dueDate) : "-"),
   }));
 
   return {

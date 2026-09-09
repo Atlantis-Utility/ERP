@@ -254,7 +254,7 @@ export default function InventoryItemDrawer({ open, onClose, item }: Props) {
                 <FormField label="Location">
                   <input
                     className={inputClass}
-                    placeholder="e.g. Warehouse — Donlon Unit 14"
+                    placeholder="e.g. Warehouse, Donlon Unit 14"
                     value={draft.location ?? ""}
                     onChange={(e) => set("location", e.target.value)}
                   />

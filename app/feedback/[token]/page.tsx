@@ -146,7 +146,7 @@ export default function FeedbackPage({ params }: { params: Promise<{ token: stri
             )}
 
             {review.status === "rated" && feedbackSent && (
-              <p className="text-sm text-[#666] mt-2">Thanks for the feedback — we&apos;ll use it to improve.</p>
+              <p className="text-sm text-[#666] mt-2">Thanks for the feedback, we&apos;ll use it to improve.</p>
             )}
 
             {review.status === "completed" && review.rating === 5 && (
@@ -166,7 +166,7 @@ export default function FeedbackPage({ params }: { params: Promise<{ token: stri
             )}
 
             {review.status === "completed" && review.rating !== null && review.rating < 5 && (
-              <p className="text-sm text-[#666]">Thanks for the feedback — we&apos;ll use it to improve.</p>
+              <p className="text-sm text-[#666]">Thanks for the feedback, we&apos;ll use it to improve.</p>
             )}
           </>
         )}

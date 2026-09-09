@@ -30,10 +30,10 @@ export function buildTasksReportData(allTasks: KanbanCard[], projects: Project[]
   const tasks: ReportTaskEntry[] = completed
     .map((t) => ({
       title: t.title,
-      projectName: (t.projectId && projectNameById.get(t.projectId)) || "—",
+      projectName: (t.projectId && projectNameById.get(t.projectId)) || "-",
       assignees: t.assignees,
       priorityLabel: priorityConfig[t.priority]?.label ?? t.priority,
-      dueDate: t.dueDateTbd ? "TBD" : (t.dueDate ? formatDate(t.dueDate) : "—"),
+      dueDate: t.dueDateTbd ? "TBD" : (t.dueDate ? formatDate(t.dueDate) : "-"),
     }))
     .sort((a, b) => a.title.localeCompare(b.title));
 

@@ -241,7 +241,7 @@ export default function VaultPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-[#666]">
-                      {entry.accountId || entry.email || <span className="text-[#ccc]">—</span>}
+                      {entry.accountId || entry.email || <span className="text-[#ccc]">-</span>}
                     </td>
                     <td className="px-4 py-3 text-[#666]">
                       {entry.customerName ? (
@@ -250,7 +250,7 @@ export default function VaultPage() {
                           <span className="truncate max-w-40">{entry.customerName}</span>
                         </span>
                       ) : (
-                        <span className="text-[#ccc]">—</span>
+                        <span className="text-[#ccc]">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-[#666]">

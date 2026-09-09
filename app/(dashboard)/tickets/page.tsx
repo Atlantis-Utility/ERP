@@ -557,7 +557,7 @@ export default function TicketsPage() {
     logActivity({
       category: "access",
       action: "Ticket updated",
-      detail: `Ticket "${subject}" updated — status: ${patch.status ?? "unchanged"}, assignee: ${patch.assigneeName ?? "unassigned"}`,
+      detail: `Ticket "${subject}" updated, status: ${patch.status ?? "unchanged"}, assignee: ${patch.assigneeName ?? "unassigned"}`,
     });
 
     if (patch.status === "closed") {

@@ -10,7 +10,7 @@ export function getErrorMessage(err: unknown, fallback: string): string {
       // errors always come back with a real code, so this is the one case worth naming
       // explicitly instead of showing the raw "TypeError: Failed to fetch".
       if (/failed to fetch|networkerror|load failed/i.test(e.message)) {
-        return "Network error — couldn't reach the database. Check your internet connection, VPN, or browser extensions (ad blockers can block requests), then try again.";
+        return "Network error: couldn't reach the database. Check your internet connection, VPN, or browser extensions (ad blockers can block requests), then try again.";
       }
       return e.hint && typeof e.hint === "string" ? `${e.message} (${e.hint})` : e.message;
     }

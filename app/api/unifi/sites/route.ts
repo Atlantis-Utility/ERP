@@ -78,7 +78,7 @@ export async function GET() {
           connected: rs?.state === "connected",
           wanUptime,
           hardware: {
-            shortname: rs?.hardware?.shortname ?? site.statistics.gateway?.shortname ?? "—",
+            shortname: rs?.hardware?.shortname ?? site.statistics.gateway?.shortname ?? "-",
             name: rs?.hardware?.name ?? "Unknown",
           },
           location: rs?.location?.text ?? "",

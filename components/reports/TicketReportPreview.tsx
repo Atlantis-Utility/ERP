@@ -20,7 +20,7 @@ export default function TicketReportPreview({ tickets }: { tickets: UnifiedTicke
           <p className="text-xs text-[#444]">
             {Object.entries(data.summary.bySource).length > 0
               ? Object.entries(data.summary.bySource).map(([source, count]) => `${count} ${source}`).join(", ")
-              : "—"}
+              : "-"}
           </p>
         </div>
       </div>

@@ -163,16 +163,16 @@ export default function AccountPage() {
       if (authUser?.employeeId && employee) {
         const patch: Partial<Employee> = {};
         if (name.trim() !== employee.name)       { patch.name     = name.trim();     changes.push(`Name: "${employee.name}" → "${name.trim()}"`); }
-        if (phone    !== (employee.phone    ?? "")) { patch.phone    = phone.trim();    changes.push(`Phone: "${employee.phone || "—"}" → "${phone.trim() || "—"}"`); }
-        if (location !== (employee.location ?? "")) { patch.location = location.trim(); changes.push(`Location: "${employee.location || "—"}" → "${location.trim() || "—"}"`); }
+        if (phone    !== (employee.phone    ?? "")) { patch.phone    = phone.trim();    changes.push(`Phone: "${employee.phone || "-"}" → "${phone.trim() || "-"}"`); }
+        if (location !== (employee.location ?? "")) { patch.location = location.trim(); changes.push(`Location: "${employee.location || "-"}" → "${location.trim() || "-"}"`); }
         if (Object.keys(patch).length > 0) await updateEmployee(authUser.employeeId, patch);
       } else {
         const newExtra: ExtraProfile = { phone, altEmail, title: extra.title, location };
         localStorage.setItem(EXTRA_KEY, JSON.stringify(newExtra));
         setExtra(newExtra);
-        if (phone    !== extra.phone)    changes.push(`Phone: "${extra.phone    || "—"}" → "${phone    || "—"}"`);
-        if (altEmail !== extra.altEmail) changes.push(`Alt Email: "${extra.altEmail || "—"}" → "${altEmail || "—"}"`);
-        if (location !== extra.location) changes.push(`Location: "${extra.location || "—"}" → "${location || "—"}"`);
+        if (phone    !== extra.phone)    changes.push(`Phone: "${extra.phone    || "-"}" → "${phone    || "-"}"`);
+        if (altEmail !== extra.altEmail) changes.push(`Alt Email: "${extra.altEmail || "-"}" → "${altEmail || "-"}"`);
+        if (location !== extra.location) changes.push(`Location: "${extra.location || "-"}" → "${location || "-"}"`);
       }
 
       if (changes.length > 0) {
@@ -334,7 +334,7 @@ export default function AccountPage() {
                     <div className="bg-[#fafafa] border border-[#eaeaea] p-2 rounded-lg shrink-0 mt-0.5">{row.icon}</div>
                     <div>
                       <p className="text-[10px] text-[#999] uppercase tracking-wider mb-0.5">{row.label}</p>
-                      <p className="text-sm font-medium text-[#0a0a0a]">{row.value || "—"}</p>
+                      <p className="text-sm font-medium text-[#0a0a0a]">{row.value || "-"}</p>
                     </div>
                   </div>
                 ))}
@@ -385,7 +385,7 @@ export default function AccountPage() {
                     <div className="bg-[#fafafa] border border-[#eaeaea] p-2 rounded-lg shrink-0 mt-0.5">{row.icon}</div>
                     <div>
                       <p className="text-[10px] text-[#999] uppercase tracking-wider mb-0.5">{row.label}</p>
-                      <p className="text-sm font-medium text-[#0a0a0a] break-all">{row.value || "—"}</p>
+                      <p className="text-sm font-medium text-[#0a0a0a] break-all">{row.value || "-"}</p>
                     </div>
                   </div>
                 ))}

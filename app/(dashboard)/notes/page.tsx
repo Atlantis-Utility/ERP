@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import { useAuth } from "@/lib/auth-context";
 import { useEmployees } from "@/lib/db/employees";
 import { useNotes, addNote, updateNote, removeNote, type Note } from "@/lib/db/notes";
+import { useCurrentEmployeeId } from "@/lib/hooks/use-current-employee-id";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import { Plus, Search, Send, Trash2, Check, StickyNote as StickyNoteIcon } from "lucide-react";
 
@@ -25,7 +26,7 @@ export default function NotesPage() {
   const employees = useEmployees();
   const notes = useNotes();
 
-  const myId = authUser?.employeeId ?? "";
+  const myId = useCurrentEmployeeId();
   const myName = authUser?.displayName || authUser?.email || "Me";
 
   const [filter, setFilter] = useState<ViewFilter>("mine");
@@ -85,7 +86,15 @@ export default function NotesPage() {
   }, [selectedId]);
 
   async function handleCreate() {
-    if (!myId) return;
+    // Notes are keyed on an employee id, so an account with no matching
+    // employee record can't author one. Say so rather than no-op'ing — a
+    // button that does nothing at all is indistinguishable from a broken page.
+    if (!myId) {
+      setError(
+        "Your account isn't linked to an employee record, so notes can't be created. Ask an admin to link it under Settings › Team.",
+      );
+      return;
+    }
     const now = new Date().toISOString();
     const note: Note = {
       id: newId(),
@@ -140,7 +149,7 @@ export default function NotesPage() {
     <div>
       <Header
         title="Notes"
-        subtitle="Personal notes — keep them to yourself or share with a teammate"
+        subtitle="Personal notes, keep them to yourself or share with a teammate"
         actions={
           <button
             onClick={handleCreate}

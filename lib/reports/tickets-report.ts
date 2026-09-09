@@ -49,7 +49,7 @@ export function buildTicketsReportData(allTickets: UnifiedTicket[]): TicketsRepo
   const tickets: ReportTicketEntry[] = completed
     .map((t) => ({
       subject: t.subject,
-      requester: t.fromName || t.from || "—",
+      requester: t.fromName || t.from || "-",
       assigneeName: t.assigneeName || "Unassigned",
       priorityLabel: priorityLabel[t.priority] ?? t.priority,
       statusLabel: statusLabel[t.status] ?? t.status,

@@ -22,7 +22,7 @@ export async function exportTasksReportDocx(tasks: KanbanCard[], projects: Proje
           ...data.tasks.map(
             (t) =>
               new TableRow({
-                children: [t.title, t.projectName, t.assignees.join(", ") || "—", t.priorityLabel, t.dueDate].map(
+                children: [t.title, t.projectName, t.assignees.join(", ") || "-", t.priorityLabel, t.dueDate].map(
                   (v) => new TableCell({ children: [new Paragraph(v)] })
                 ),
               })

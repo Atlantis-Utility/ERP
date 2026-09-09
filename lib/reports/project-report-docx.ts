@@ -107,7 +107,7 @@ export async function exportProjectReportDocx(project: Project, tasks: KanbanCar
               ...data.completedTasks.map(
                 (t) =>
                   new TableRow({
-                    children: [t.title, t.assignees.join(", ") || "—", t.priorityLabel, t.dueDate].map(
+                    children: [t.title, t.assignees.join(", ") || "-", t.priorityLabel, t.dueDate].map(
                       (v) => new TableCell({ children: [new Paragraph(v)] })
                     ),
                   })

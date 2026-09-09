@@ -214,7 +214,7 @@ export default function CustomersPage() {
 
         <button
           onClick={() => setPaymentFilter(paymentFilter === "unpaid" ? "all" : "unpaid")}
-          title="Balance owed > 0 — RingLogix only exposes a running balance, not per-invoice payment dates, so this can't be scoped to a specific month"
+          title="Balance owed > 0: RingLogix only exposes a running balance, not per-invoice payment dates, so this can't be scoped to a specific month"
           className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
             paymentFilter === "unpaid"
               ? "bg-[#fdeaea] text-[#f31260] border-[#f9c9c9]"

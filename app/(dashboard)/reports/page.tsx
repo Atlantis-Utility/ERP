@@ -134,7 +134,7 @@ export default function ReportsPage() {
               </div>
               <div className="flex items-center justify-between mt-auto pt-1">
                 <p className="text-[10px] text-[#999]">
-                  Completed {project.deadlineTbd || !project.deadline ? "—" : formatDate(project.deadline)}
+                  Completed {project.deadlineTbd || !project.deadline ? "-" : formatDate(project.deadline)}
                 </p>
                 <div className="flex items-center gap-1">
                   <button

@@ -179,7 +179,7 @@ export default function InventoryPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-[#0a0a0a] truncate">{item.name || "Untitled item"}</p>
                           <p className="text-xs text-[#999] truncate">
-                            {[item.carrier, item.model].filter(Boolean).join(" · ") || "—"}
+                            {[item.carrier, item.model].filter(Boolean).join(" · ") || "-"}
                           </p>
                         </div>
                       </div>
@@ -191,17 +191,17 @@ export default function InventoryPage() {
                           <p className="text-xs font-mono text-[#444]">{ident}</p>
                           <p className="text-[10px] text-[#bbb] uppercase tracking-wider">{identifierLabel(item)}</p>
                         </div>
-                      ) : <span className="text-sm text-[#bbb]">—</span>}
+                      ) : <span className="text-sm text-[#bbb]">-</span>}
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">{item.phoneNumber || "—"}</td>
+                    <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">{item.phoneNumber || "-"}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${style.bg} ${style.text}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                         {STATUS_LABELS[item.status]}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#666] max-w-40 truncate">{item.assignedTo || "—"}</td>
-                    <td className="px-4 py-3 text-sm text-[#666] max-w-40 truncate">{item.location || "—"}</td>
+                    <td className="px-4 py-3 text-sm text-[#666] max-w-40 truncate">{item.assignedTo || "-"}</td>
+                    <td className="px-4 py-3 text-sm text-[#666] max-w-40 truncate">{item.location || "-"}</td>
                     <td className="px-4 py-3 text-sm text-[#444] text-right tabular-nums">{item.quantity || 1}</td>
                   </tr>
                 );

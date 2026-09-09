@@ -140,7 +140,7 @@ function StaticIpCard({ ips, billedCount }: { ips: StaticIpConfig[]; billedCount
 
       {ips.length === 0 ? (
         <p className="text-xs text-[#999] px-5 py-6 text-center">
-          Billed for {billedCount} static IP{billedCount > 1 ? "s" : ""} — none recorded yet. Add them from Edit.
+          Billed for {billedCount} static IP{billedCount > 1 ? "s" : ""}, none recorded yet. Add them from Edit.
         </p>
       ) : (
         <div className="overflow-x-auto">

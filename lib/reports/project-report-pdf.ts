@@ -137,7 +137,7 @@ export async function exportProjectReportPdf(project: Project, tasks: KanbanCard
     autoTable(doc, {
       startY: y,
       head: [["Task", "Assignee(s)", "Priority", "Due Date"]],
-      body: data.completedTasks.map((t) => [t.title, t.assignees.join(", ") || "—", t.priorityLabel, t.dueDate]),
+      body: data.completedTasks.map((t) => [t.title, t.assignees.join(", ") || "-", t.priorityLabel, t.dueDate]),
       styles: { fontSize: 8.5 },
       headStyles: { fillColor: [10, 10, 10] },
       margin: { left: MARGIN, right: MARGIN },

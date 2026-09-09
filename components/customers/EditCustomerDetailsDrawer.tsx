@@ -194,7 +194,7 @@ export default function EditCustomerDetailsDrawer({
             )}
           </div>
           <p className="text-[10px] text-[#bbb] mb-3">
-            UniFi only reports the WAN address — mask, gateway and DNS are entered by hand. Blank rows aren&apos;t saved.
+            UniFi only reports the WAN address, mask, gateway and DNS are entered by hand. Blank rows aren&apos;t saved.
           </p>
 
           <div className="space-y-3">

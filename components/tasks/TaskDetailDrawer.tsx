@@ -41,7 +41,7 @@ function todayStr(): string {
 }
 
 function fmtDate(dateStr: string): string {
-  if (!dateStr) return "—";
+  if (!dateStr) return "-";
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-US", {
     weekday: "short", month: "short", day: "numeric", year: "numeric",
@@ -307,7 +307,7 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
 
           {card.type === "meeting" && (
             <>
-              <FormField label="Company" hint="Who this meeting is with — leave blank to auto-detect from attendee emails">
+              <FormField label="Company" hint="Who this meeting is with, leave blank to auto-detect from attendee emails">
                 <input
                   className={inputClass}
                   placeholder="e.g. Acme Corp"

@@ -22,8 +22,8 @@ export function buildFeedbackNotificationEmail(opts: {
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0a0a0a;">
       <p>A customer responded to a review request for a closed ticket.</p>
       <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-        <tr><td style="padding:4px 0;color:#666;">Customer</td><td style="padding:4px 0;font-weight:600;">${customerName || "—"}</td></tr>
-        <tr><td style="padding:4px 0;color:#666;">Ticket</td><td style="padding:4px 0;font-weight:600;">${subject || "—"}</td></tr>
+        <tr><td style="padding:4px 0;color:#666;">Customer</td><td style="padding:4px 0;font-weight:600;">${customerName || "-"}</td></tr>
+        <tr><td style="padding:4px 0;color:#666;">Ticket</td><td style="padding:4px 0;font-weight:600;">${subject || "-"}</td></tr>
         <tr><td style="padding:4px 0;color:#666;">Assigned to</td><td style="padding:4px 0;font-weight:600;">${assigneeName || "Unassigned"}</td></tr>
         <tr><td style="padding:4px 0;color:#666;">Rating</td><td style="padding:4px 0;">${stars}</td></tr>
       </table>
@@ -35,5 +35,5 @@ export function buildFeedbackNotificationEmail(opts: {
     </div>
   `;
 
-  return { subject: `Customer Feedback: ${rating}★ — ${opts.subject || "Ticket"}`, html };
+  return { subject: `Customer Feedback: ${rating}★: ${opts.subject || "Ticket"}`, html };
 }
