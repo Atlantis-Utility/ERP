@@ -4,10 +4,19 @@ export interface NavPage {
   section: string;
 }
 
+// This list is the access-control surface, not just a nav menu: AuthGuard
+// treats any route missing from it as ungated (`isAllowed` returns true when
+// no entry matches), and EditEmployeeDrawer only offers checkboxes for what's
+// here. A new page under app/(dashboard) must be added or it is reachable by
+// everyone regardless of their grants.
+//
+// Deliberately absent: /account, which is the signed-in user's own profile and
+// should never be revocable.
 export const NAV_PAGES: NavPage[] = [
   { href: "/",              label: "Dashboard",     section: "RingLogix"  },
   { href: "/quick-access",  label: "Quick Access",  section: "RingLogix"  },
   { href: "/customers",     label: "Customers",     section: "RingLogix"  },
+  { href: "/tickets",       label: "Tickets",       section: "Support"    },
   { href: "/leads",         label: "Leads",         section: "Sales"      },
   { href: "/subscribers",   label: "Subscribers",   section: "RingLogix"  },
   { href: "/phone-numbers", label: "Phone Numbers", section: "RingLogix"  },
@@ -28,6 +37,7 @@ export const NAV_PAGES: NavPage[] = [
   { href: "/reports",       label: "Reports",       section: "Operations" },
   { href: "/logs",          label: "Logs",          section: "Operations" },
   { href: "/employees",     label: "Employees",     section: "People"     },
+  { href: "/vault",         label: "Vault",         section: "Security"   },
   { href: "/settings",      label: "Settings",      section: "Settings"   },
 ];
 
