@@ -128,7 +128,11 @@ export default function VaultFormDrawer({ open, onClose, entry, onSave }: Props)
     setErrors({});
     setShowPassword(false);
     setShowPin(false);
-  }, [open, entry]);
+  // Keyed on entry?.id rather than the whole `entry` object — not fed by a
+  // live subscription today, but keeping this on the object reference would
+  // re-seed the form (wiping in-progress edits) if that ever changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entry?.id]);
 
   useEffect(() => {
     if (!open) return;

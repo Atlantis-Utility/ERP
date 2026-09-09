@@ -107,11 +107,6 @@ export default function AccountPage() {
       });
   }, [authUser?.employeeId, authUser?.email]);
 
-  // Seed name field when auth user loads
-  useEffect(() => {
-    if (authUser) setName(authUser.displayName);
-  }, [authUser]);
-
   // Activity log
   useEffect(() => {
     const all = getLogs();

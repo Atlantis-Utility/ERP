@@ -93,6 +93,12 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
     }
   }, [open]);
 
+  // Keyed on card?.id rather than the whole `card` object — `card` is
+  // `selectedCard` in the parent pages, sourced from a live subscribeTasks()
+  // feed. It isn't reassigned while this drawer is open today, but depending
+  // on the full object here would silently wipe in-progress edits the moment
+  // the parent starts refreshing `selectedCard` from live data (e.g. to show
+  // concurrent edits) — a very natural future change.
   useEffect(() => {
     if (card && editing) {
       setForm({
@@ -111,7 +117,8 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
         company:     card.company     ?? "",
       });
     }
-  }, [editing, card]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, card?.id]);
 
   function setF<K extends keyof typeof emptyForm>(key: K, val: typeof emptyForm[K]) {
     setForm((p) => ({ ...p, [key]: val }));

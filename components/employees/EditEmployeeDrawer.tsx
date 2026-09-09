@@ -53,7 +53,16 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     }
   }, [saveError, errors]);
 
+  // Keyed on [open, employee.id] rather than the whole `employee` object —
+  // that object comes from a live Supabase subscription in the parent page
+  // and gets a brand-new reference on every unrelated background refetch
+  // (including the reconnect a browser tab does when it regains focus after
+  // being backgrounded). Depending on the whole object meant any of those
+  // incidental updates would silently wipe whatever the admin was mid-typing.
+  // Re-hydrating only when the drawer opens or switches to a different
+  // employee is the actual intent here.
   useEffect(() => {
+    if (!open) return;
     setForm({
       name:       employee.name,
       email:      employee.email,
@@ -66,7 +75,8 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     });
     setErrors({});
     setAccess(employee.access ?? []);
-  }, [employee]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, employee.id]);
 
   function set(field: keyof typeof form, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
