@@ -9,6 +9,7 @@ import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
 import { useAuth } from "@/lib/auth-context";
 import { useEmployees } from "@/lib/db/employees";
+import { useCurrentEmployeeId } from "@/lib/hooks/use-current-employee-id";
 import { useLeads, updateLead, type Lead, type LeadStatus } from "@/lib/db/leads";
 import { useLeadNotes, addLeadNote, updateLeadNote, removeLeadNote, type LeadNote } from "@/lib/db/lead-notes";
 import { STATUS_OPTIONS, STATUS_STYLES, isFollowUpOverdue, formatAddress } from "@/lib/leads-constants";
@@ -113,7 +114,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
 
   const lead = leads.find((l) => l.id === leadId);
 
-  const myId = authUser?.employeeId ?? "";
+  const myId = useCurrentEmployeeId();
   const myName = authUser?.displayName || "Me";
 
   const [editing, setEditing] = useState(false);

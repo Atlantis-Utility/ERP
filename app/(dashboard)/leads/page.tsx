@@ -7,8 +7,8 @@ import ImportLeadsCsvModal from "@/components/leads/ImportLeadsCsvModal";
 import LeadFormModal from "@/components/leads/LeadFormModal";
 import LeadDetailDrawer from "@/components/leads/LeadDetailDrawer";
 import StatusPicker from "@/components/leads/StatusPicker";
-import { useAuth } from "@/lib/auth-context";
 import { useEmployees } from "@/lib/db/employees";
+import { useCurrentEmployeeId } from "@/lib/hooks/use-current-employee-id";
 import { useLeads, removeLead, updateLead, type Lead, type LeadStatus } from "@/lib/db/leads";
 import { STATUS_OPTIONS, isFollowUpOverdue, formatAddress } from "@/lib/leads-constants";
 import { getAvatarColor, getInitials } from "@/lib/utils";
@@ -19,7 +19,6 @@ import {
 const SOURCE_LABELS = { azure_maps: "Azure Maps", linkedin_csv: "LinkedIn", manual: "Manual" } as const;
 
 export default function LeadsPage() {
-  const { authUser } = useAuth();
   const employees = useEmployees();
   const leads = useLeads();
   const [search, setSearch] = useState("");
@@ -29,7 +28,7 @@ export default function LeadsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
 
-  const myId = authUser?.employeeId ?? "";
+  const myId = useCurrentEmployeeId();
 
   const filtered = leads.filter((l) => {
     if (statusFilter && l.status !== statusFilter) return false;
