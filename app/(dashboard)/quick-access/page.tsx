@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Header from "@/components/layout/Header";
 import {
   Phone, Wifi, Cpu, Mail, Cloud, PhoneCall, Smartphone, Router, Tv,
@@ -7,6 +8,14 @@ import {
   Server, Building2, LifeBuoy, Database, GitFork, ShieldCheck, FolderOpen,
 } from "lucide-react";
 import BrandLogo from "@/components/quick-access/BrandLogo";
+import VendorContactsTab from "@/components/quick-access/VendorContactsTab";
+
+type Tab = "links" | "contacts";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "links",    label: "Links"    },
+  { key: "contacts", label: "Contacts" },
+];
 
 interface QuickLink {
   label: string;
@@ -279,11 +288,39 @@ const QUICK_LINK_SECTIONS: QuickLinkSection[] = [
 ];
 
 export default function QuickAccessPage() {
+  const [activeTab, setActiveTab] = useState<Tab>("links");
+
   return (
     <div>
-      <Header title="Quick Access" subtitle="One-click links to the tools you use every day" />
+      <Header
+        title="Quick Access"
+        subtitle={
+          activeTab === "links"
+            ? "One-click links to the tools you use every day"
+            : "Support contacts for the companies we buy from"
+        }
+      />
 
-      <div className="space-y-8">
+      {/* Tabs */}
+      <div className="border-b border-[#eaeaea] mb-6 flex gap-0">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === tab.key
+                ? "border-[#0a0a0a] text-[#0a0a0a]"
+                : "border-transparent text-[#666] hover:text-[#0a0a0a]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "contacts" && <VendorContactsTab />}
+
+      <div className={activeTab === "links" ? "space-y-8" : "hidden"}>
         {QUICK_LINK_SECTIONS.map((section) => (
           <div key={section.title}>
             <p className="text-[11px] font-semibold text-[#999] uppercase tracking-widest mb-3">
