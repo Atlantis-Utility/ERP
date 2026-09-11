@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { statusConfig, priorityConfig } from "@/lib/mock-projects";
 import type { Project, ProjectContact } from "@/lib/mock-projects";
 import { useEmployees } from "@/lib/db/employees";
-import { updateProject } from "@/lib/db/projects";
+import { useCompanyOptions } from "@/lib/hooks/use-company-options";
+import { updateProject, removeProject } from "@/lib/db/projects";
 import { supabase } from "@/lib/supabase/client";
 import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
 import Drawer from "@/components/ui/Drawer";
@@ -16,9 +17,11 @@ import DateTimePicker from "@/components/ui/DateTimePicker";
 import ProjectPhases from "@/components/projects/ProjectPhases";
 import type { PhasesState } from "@/components/projects/ProjectPhases";
 import { PHASE_DEFS } from "@/components/projects/ProjectPhases";
-import { ArrowLeft, Building2, Mail, Phone, MapPin, Users, CalendarDays, BarChart3, Pencil, Wifi, ExternalLink, Check } from "lucide-react";
+import { ArrowLeft, Building2, Mail, Phone, MapPin, Users, CalendarDays, BarChart3, Pencil, Wifi, ExternalLink, Check, Trash2 } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { addNotification } from "@/lib/notifications";
 import { logActivity } from "@/lib/activity-log";
+import { useVisibility } from "@/lib/visibility";
 
 function daysUntil(deadline: string): number {
   return Math.ceil((new Date(deadline).getTime() - Date.now()) / 86_400_000);
@@ -52,9 +55,14 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null | undefined>(undefined); // undefined = loading
   const [computedProgress, setComputedProgress] = useState(0);
   const [phaseStatuses, setPhaseStatuses] = useState<PhasesState | null>(null);
+  const companyOptions = useCompanyOptions();
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState<ReturnType<typeof emptyEdit> | null>(null);
   const employees = useEmployees();
+  const { ownsProject, seesAll } = useVisibility();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     setIsAdmin(!localStorage.getItem("current_user_id"));
@@ -138,6 +146,25 @@ export default function ProjectDetailPage() {
     });
   }
 
+  async function handleDelete() {
+    if (!project) return;
+    setDeleting(true);
+    try {
+      await removeProject(project.id);
+      logActivity({
+        category: "projects",
+        action: "Project deleted",
+        detail: `Deleted project "${project.name}" (${project.status}, ${project.progress}% complete)`,
+        metadata: { projectId: project.id, status: project.status },
+      });
+      router.push("/projects");
+    } catch (err) {
+      console.error("[ProjectDetail] Failed to delete:", err);
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
+
   function handleSave() {
     if (!form || !project) return;
     const filteredContacts = form.contacts.filter(
@@ -200,7 +227,10 @@ export default function ProjectDetailPage() {
     );
   }
 
-  if (project === null) {
+  // A project you're not on reads as "not found" rather than "forbidden" — the
+  // list already hides it, and this closes the direct-URL route in. Same shape
+  // as a genuinely missing id so the page doesn't confirm the project exists.
+  if (project === null || !ownsProject(project)) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <p className="text-lg font-semibold text-[#0a0a0a] mb-2">Project not found</p>
@@ -219,14 +249,26 @@ export default function ProjectDetailPage() {
 
   return (
     <div>
-      {/* Back */}
-      <Link
-        href="/projects"
-        className="inline-flex items-center gap-2 text-sm text-[#666] hover:text-[#0a0a0a] mb-6 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Projects
-      </Link>
+      {/* Back + page-level actions, on one line */}
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <Link
+          href="/projects"
+          className="inline-flex items-center gap-2 text-sm text-[#666] hover:text-[#0a0a0a] transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Projects
+        </Link>
+
+        {isAdmin && (
+          <button
+            onClick={openEdit}
+            className="flex items-center gap-1.5 text-sm font-medium bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg hover:bg-[#333] transition-colors shrink-0"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Edit
+          </button>
+        )}
+      </div>
 
       {/* Header card */}
       <div className="bg-white border border-[#eaeaea] rounded-xl p-6 mb-6">
@@ -243,15 +285,6 @@ export default function ProjectDetailPage() {
               <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: pr.color }} />
               {pr.label} Priority
             </span>
-            {isAdmin && (
-              <button
-                onClick={openEdit}
-                className="flex items-center gap-1.5 text-sm font-medium bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg hover:bg-[#333] transition-colors"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                Edit
-              </button>
-            )}
           </div>
         </div>
 
@@ -530,6 +563,18 @@ export default function ProjectDetailPage() {
           width="lg"
           footer={
             <>
+              {/* Administrators only — deleting a project takes its phases and
+                  history with it and there's no undo. */}
+              {seesAll && (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={deleting}
+                  className="mr-auto flex items-center gap-1.5 text-sm font-medium text-[#999] hover:text-[#dc2626] transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Project
+                </button>
+              )}
               <button
                 onClick={() => setEditOpen(false)}
                 className="border border-[#eaeaea] bg-white text-sm font-medium text-[#444] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors"
@@ -664,8 +709,23 @@ export default function ProjectDetailPage() {
               </p>
             </div>
 
-            <FormField label="Company Name">
-              <input className={inputClass} value={form.clientName} onChange={(e) => setField("clientName", e.target.value)} />
+            <FormField label="Company Name" hint="Pick one we already work with, or type a new name">
+              <div className="space-y-2">
+                <Select
+                  value={companyOptions.some((o) => o.value === form.clientName) ? form.clientName : ""}
+                  onChange={(v) => setField("clientName", v)}
+                  options={companyOptions}
+                  placeholder="Select an existing company…"
+                  searchable
+                  clearable
+                />
+                <input
+                  className={inputClass}
+                  value={form.clientName}
+                  onChange={(e) => setField("clientName", e.target.value)}
+                  placeholder="…or type a company name"
+                />
+              </div>
             </FormField>
             <FormField label="Location">
               <input className={inputClass} value={form.clientLocation} onChange={(e) => setField("clientLocation", e.target.value)} />
@@ -798,6 +858,16 @@ export default function ProjectDetailPage() {
           </div>
         </Drawer>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete project?"
+        description={`"${project.name}" and its phase history will be permanently removed. This can't be undone.`}
+        confirmLabel="Delete Project"
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }

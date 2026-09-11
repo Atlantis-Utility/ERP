@@ -6,6 +6,7 @@ import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
+import { useCompanyOptions } from "@/lib/hooks/use-company-options";
 import { getAvatarColor, getInitials } from "@/lib/utils";
 import type { Project, ProjectContact } from "@/lib/mock-projects";
 import { PHASE_DEFS } from "@/components/projects/ProjectPhases";
@@ -42,6 +43,7 @@ const emptyForm = {
 type FormErrors = Partial<Record<keyof typeof emptyForm, string>>;
 
 export default function AddProjectDrawer({ open, onClose }: Props) {
+  const companyOptions = useCompanyOptions();
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
@@ -336,13 +338,23 @@ export default function AddProjectDrawer({ open, onClose }: Props) {
           </p>
         </div>
 
-        <FormField label="Company Name">
-          <input
-            className={inputClass}
-            placeholder="e.g. Acme Corp"
-            value={form.clientName}
-            onChange={(e) => set("clientName", e.target.value)}
-          />
+        <FormField label="Company Name" hint="Pick one we already work with, or type a new name">
+          <div className="space-y-2">
+            <Select
+              value={companyOptions.some((o) => o.value === form.clientName) ? form.clientName : ""}
+              onChange={(v) => set("clientName", v)}
+              options={companyOptions}
+              placeholder="Select an existing company…"
+              searchable
+              clearable
+            />
+            <input
+              className={inputClass}
+              placeholder="…or type a company name"
+              value={form.clientName}
+              onChange={(e) => set("clientName", e.target.value)}
+            />
+          </div>
         </FormField>
 
         <FormField label="Location" hint="City, Country or full address">
