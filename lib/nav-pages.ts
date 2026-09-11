@@ -29,12 +29,14 @@ export const NAV_PAGES: NavPage[] = [
   { href: "/sites",         label: "Sites",         section: "UniFi"      },
   { href: "/alerts",        label: "Alerts",        section: "UniFi"      },
   { href: "/gdms",          label: "GDMS",          section: "GDMS"       },
-  { href: "/inventory",     label: "Inventory",     section: "Operations" },
+  // Operations order mirrors the sidebar (components/layout/Sidebar.tsx) so the
+  // per-page permission checkboxes read in the same order the user navigates in.
   { href: "/tasks",         label: "Tasks",         section: "Operations" },
-  { href: "/notes",         label: "Notes",         section: "Operations" },
   { href: "/calendar",      label: "Calendar",      section: "Operations" },
   { href: "/projects",      label: "Projects",      section: "Operations" },
+  { href: "/notes",         label: "Notes",         section: "Operations" },
   { href: "/reports",       label: "Reports",       section: "Operations" },
+  { href: "/inventory",     label: "Inventory",     section: "Operations" },
   { href: "/logs",          label: "Logs",          section: "Operations" },
   { href: "/employees",     label: "Employees",     section: "People"     },
   { href: "/vault",         label: "Vault",         section: "Security"   },

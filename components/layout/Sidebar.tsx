@@ -103,13 +103,13 @@ const navSections: { label: string; items: NavItem[] }[] = [
   {
     label: "Operations",
     items: [
+      { label: "Tasks",     href: "/tasks",     icon: KanbanSquare },
+      { label: "Calendar",  href: "/calendar",  icon: CalendarDays },
+      { label: "Projects",  href: "/projects",  icon: FolderKanban },
+      { label: "Notes",     href: "/notes",     icon: StickyNote   },
+      { label: "Reports",   href: "/reports",   icon: FileBarChart },
       { label: "Inventory", href: "/inventory", icon: Boxes       },
-      { label: "Tasks",    href: "/tasks",    icon: KanbanSquare },
-      { label: "Notes",    href: "/notes",    icon: StickyNote   },
-      { label: "Calendar", href: "/calendar", icon: CalendarDays },
-      { label: "Projects", href: "/projects", icon: FolderKanban },
-      { label: "Reports",  href: "/reports",  icon: FileBarChart },
-      { label: "Logs",     href: "/logs",     icon: ScrollText   },
+      { label: "Logs",      href: "/logs",      icon: ScrollText   },
     ],
   },
   {
