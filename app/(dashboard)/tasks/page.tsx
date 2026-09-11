@@ -17,6 +17,8 @@ import AddTaskDrawer, {
 import AddMeetingDrawer from "@/components/tasks/AddMeetingDrawer";
 import { subscribeTasks, addTask, updateTask, removeTask } from "@/lib/db/tasks";
 import { subscribeProjects, updateProject } from "@/lib/db/projects";
+import { useVisibility } from "@/lib/visibility";
+import { upsertTicket, upsertManualTicket, type TicketStatus } from "@/lib/db/tickets";
 import type { Project } from "@/lib/mock-projects";
 import { useUnifiedTickets } from "@/lib/tickets/useUnifiedTickets";
 import { addNotification, isTicketUnread } from "@/lib/notifications";
@@ -32,6 +34,25 @@ const COLUMNS: { id: KanbanColumn; label: string; dot: string }[] = [
   { id: "in-progress", label: "In Progress", dot: "#0070f3" },
   { id: "review",      label: "In Review",   dot: "#f59e0b" },
 ];
+
+// Ticket status <-> board column. Both directions live here so a ticket card
+// and its ticket can't drift apart.
+const TICKET_STATUS_TO_COL: Record<TicketStatus, KanbanColumn> = {
+  open:          "backlog",
+  "in-progress": "in-progress",
+  resolved:      "done",
+  closed:        "done",
+};
+
+// Not a clean inverse: the board's "review" column has no ticket equivalent,
+// and "done" maps to resolved rather than closed on purpose — closing a ticket
+// fires the customer review-request email, which dragging a card should not do.
+const COL_TO_TICKET_STATUS: Record<KanbanColumn, TicketStatus> = {
+  "backlog":     "open",
+  "in-progress": "in-progress",
+  "review":      "in-progress",
+  "done":        "resolved",
+};
 
 const PLATFORM_CONFIG: Record<string, { label: string; color: string; bg: string; letter: string }> = {
   zoom:        { label: "Zoom",            color: "#2D8CFF", bg: "#eff6ff", letter: "Z"  },
@@ -309,6 +330,7 @@ export default function TasksPage() {
   const [cards, setCards]             = useState<KanbanCard[]>([]);
   const [projects, setProjects]       = useState<Project[]>([]);
   const { tickets } = useUnifiedTickets();
+  const { isMine, ownsProject } = useVisibility();
   const notifiedDeadlines             = useRef<Set<string>>(new Set());
   const [view, setView]               = useState<View>("board");
   const [filter, setFilter]           = useState<Filter>("all");
@@ -349,13 +371,15 @@ export default function TasksPage() {
   useEffect(() => {
     const taskId = searchParams.get("task");
     if (!taskId) return;
-    const card = cards.find((c) => c.id === taskId);
+    // Deep links respect visibility too, so pasting a card id doesn't open
+    // someone else's task.
+    const card = cards.find((c) => c.id === taskId && isMine(c.assignees));
     if (card) {
       setSelectedCard(card);
       setDetailOpen(true);
       router.replace("/tasks");
     }
-  }, [cards, searchParams, router]);
+  }, [cards, searchParams, router, isMine]);
 
   useEffect(() => {
     // projects already cached by projects/page.tsx under "sc:projects"
@@ -376,7 +400,9 @@ export default function TasksPage() {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
-    projects.forEach((project) => {
+    // Only notify about projects this user can actually open — otherwise a
+    // contributor gets deadline alerts linking to a project they can't see.
+    projects.filter((p) => ownsProject(p)).forEach((project) => {
       if (project.status === "completed") return;
       const deadlineDate = project.deadline.split("T")[0];
       const storageKey   = `deadline_notified_${project.id}_${deadlineDate}`;
@@ -400,12 +426,43 @@ export default function TasksPage() {
         });
       }
     });
-  }, [projects]);
+  }, [projects, ownsProject]);
 
   /* ─── derived ──────────────────────────────────────────────────── */
 
+  // TicketWatcher persists a ticket's card once, on arrival, with an empty
+  // assignee list and a backlog column, and never revisits it — so assigning
+  // or progressing the ticket afterwards left the board showing a stale
+  // "unassigned, backlog" card forever. The ticket stays the source of truth
+  // for those fields, so re-apply it on read.
+  //
+  // Ordering matters: this runs before the visibility filter below, otherwise
+  // the assignee wouldn't see their own ticket, having been matched against
+  // the empty list that was persisted.
+  const liveTicketByCardId = new Map(tickets.map((t) => [`ticket-${t.id}`, t]));
+  const syncedCards = cards.map((c) => {
+    const t = liveTicketByCardId.get(c.id);
+    if (!t) return c;
+    return {
+      ...c,
+      column: TICKET_STATUS_TO_COL[t.status],
+      // An unassigned ticket leaves whatever the board has, so assigning
+      // someone directly on the card still works.
+      assignees: t.assigneeName ? [t.assigneeName] : c.assignees,
+      priority: t.priority === "urgent" ? ("high" as const) : t.priority,
+    };
+  });
+
+  // Record-level visibility: non-administrators only see what they're assigned.
+  // Filtered per source rather than on the merged list, because a project's
+  // card carries only `team` as its assignees — the owner would otherwise lose
+  // sight of their own project.
+  const visibleCards = syncedCards.filter((c) => isMine(c.assignees));
+  const visibleProjects = projects.filter((p) => ownsProject(p));
+  const visibleTickets = tickets.filter((t) => isMine([t.assigneeName]));
+
   // Project-derived cards (live from Firestore via subscribeProjects)
-  const projectCards: KanbanCard[] = projects.map((p) => {
+  const projectCards: KanbanCard[] = visibleProjects.map((p) => {
     const colMap: Record<Project["status"], KanbanColumn> = {
       active:    "in-progress",
       overdue:   "review",
@@ -432,24 +489,18 @@ export default function TasksPage() {
   // the hook itself already omits email tickets when Microsoft mail isn't connected).
   // Skip tickets TicketWatcher has already synced into a persisted task card
   // (same `ticket-<id>` id scheme) — otherwise both would render with the same key.
-  const persistedCardIds = new Set(cards.map((c) => c.id));
-  const ticketCards: KanbanCard[] = tickets
+  const persistedCardIds = new Set(visibleCards.map((c) => c.id));
+  const ticketCards: KanbanCard[] = visibleTickets
     .filter((t) => !persistedCardIds.has(`ticket-${t.id}`))
     .map(ticketToCard);
 
   function ticketToCard(t: (typeof tickets)[number]): KanbanCard {
-    const colMap: Record<typeof t.status, KanbanColumn> = {
-      open:          "backlog",
-      "in-progress": "in-progress",
-      resolved:      "done",
-      closed:        "done",
-    };
     return {
       id:          `ticket-${t.id}`,
       type:        "ticket" as const,
       title:       t.subject,
       description: t.description ?? t.snippet ?? "",
-      column:      colMap[t.status],
+      column:      TICKET_STATUS_TO_COL[t.status],
       // KanbanPriority has no "urgent" tier — collapse it into "high" and
       // surface the distinction via a tag instead of losing the signal.
       priority:    t.priority === "urgent" ? "high" : t.priority,
@@ -463,9 +514,9 @@ export default function TasksPage() {
   }
 
   // All cards: user-created kanban cards + live project cards + live ticket cards
-  const allCards = [...cards, ...projectCards, ...ticketCards];
+  const allCards = [...visibleCards, ...projectCards, ...ticketCards];
 
-  const todayMeetings = cards.filter((c) => c.type === "meeting" && c.meetingDate === todayStr);
+  const todayMeetings = visibleCards.filter((c) => c.type === "meeting" && c.meetingDate === todayStr);
 
   // Board stats
   const statsOverdue       = allCards.filter((c) => !c.dueDateTbd && c.dueDate && c.dueDate < TODAY && c.column !== "done").length;
@@ -545,6 +596,19 @@ export default function TasksPage() {
       if (id.startsWith("proj-")) {
         const projectId = id.slice(5);
         updateProject(projectId, { status: COL_TO_STATUS[col] }).catch(console.error);
+      } else if (liveTicketByCardId.has(id)) {
+        // The card's column is derived from the ticket, so writing only the
+        // task row would snap straight back on the next render. Move the
+        // ticket instead and let the card follow.
+        const ticket = liveTicketByCardId.get(id)!;
+        const patch = { status: COL_TO_TICKET_STATUS[col] };
+        const write = ticket.source === "email"
+          ? upsertTicket(ticket.id, patch)
+          : upsertManualTicket(ticket.id, patch);
+        write.catch(console.error);
+        // Keep the persisted card's own column in step for anything reading it
+        // directly (search, the completed tab) rather than through the merge.
+        updateTask(id, { column: col }).catch(console.error);
       } else {
         setCards((prev) => prev.map((c) => (c.id === id ? { ...c, column: col } : c)));
         updateTask(id, { column: col }).catch(console.error);

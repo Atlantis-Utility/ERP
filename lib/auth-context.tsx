@@ -19,6 +19,13 @@ export interface AuthUser {
    * it must keep its meaning. Use this one for permissions.
    */
   accessEmployeeId: string | null;
+  /**
+   * Administrator, or a bootstrap admin with no employee record. Gates
+   * record-level visibility too: everyone else sees only what they're assigned
+   * (see lib/visibility.ts). Page-level grants still apply on top — an
+   * unrestricted user can still have an individual page revoked.
+   */
+  isUnrestricted: boolean;
   /** Allowed page hrefs — undefined means unrestricted (Administrator, or no employee record). */
   access: string[] | undefined;
 }
@@ -135,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         employeeRole:       employeeExtra?.role ?? null,
         employeeAccessRole: employeeExtra?.accessRole ?? null,
         accessEmployeeId,
+        isUnrestricted:     unrestricted,
         access:             unrestricted ? undefined : (employeeExtra?.access ?? []),
       });
       setLoading(false);
@@ -206,6 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               ...prev,
               // Promoting someone to Administrator mid-session has to lift the
               // restriction, not pin them to a stale page list.
+              isUnrestricted:     row.data?.accessRole === "Administrator",
               access:             row.data?.accessRole === "Administrator" ? undefined : (row.data?.access ?? []),
               employeeRole:       row.data?.role ?? prev.employeeRole,
               employeeAccessRole: row.data?.accessRole ?? prev.employeeAccessRole,

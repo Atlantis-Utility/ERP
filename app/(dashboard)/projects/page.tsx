@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { formatDate } from "@/lib/utils";
@@ -9,6 +9,7 @@ import { Plus, Building2, Mail, Phone } from "lucide-react";
 import AddProjectDrawer, { type Project } from "@/components/projects/AddProjectDrawer";
 import { statusConfig, priorityConfig } from "@/lib/mock-projects";
 import { subscribeProjects } from "@/lib/db/projects";
+import { useVisibility } from "@/lib/visibility";
 import type { ProjectStatus } from "@/lib/mock-projects";
 
 type Tab = "all" | ProjectStatus;
@@ -22,23 +23,32 @@ const tabs: { key: Tab; label: string }[] = [
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("all");
+  const { ownsProject } = useVisibility();
 
   useEffect(() => {
     // Show last-known projects instantly while Firestore responds
     try {
       const c = localStorage.getItem("sc:projects");
-      if (c) setProjects(JSON.parse(c));
+      if (c) setAllProjects(JSON.parse(c));
     } catch {}
 
     const unsub = subscribeProjects((ps) => {
-      setProjects(ps);
+      setAllProjects(ps);
       try { localStorage.setItem("sc:projects", JSON.stringify(ps)); } catch {}
     });
     return unsub;
   }, []);
+
+  // Non-administrators only see projects they own or are on the team for.
+  // Applied before the tab filter and the counts so the tab badges reflect
+  // what this user can actually open, not the whole company's workload.
+  const projects = useMemo(
+    () => allProjects.filter((p) => ownsProject(p)),
+    [allProjects, ownsProject],
+  );
 
   const filtered = activeTab === "all" ? projects : projects.filter((p) => p.status === activeTab);
 
