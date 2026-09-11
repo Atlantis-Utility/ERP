@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Mail, User, Calendar, RefreshCw, ExternalLink } from "lucide-react";
 import Header from "@/components/layout/Header";
 import Select from "@/components/ui/Select";
+import FeedbackRequestDialog from "@/components/tickets/FeedbackRequestDialog";
+import type { ReviewRequestTarget } from "@/lib/tickets/review-request";
 import { upsertTicket, subscribeAllTicketMeta } from "@/lib/db/tickets";
 import type { TicketStatus, TicketPriority, TicketMeta } from "@/lib/db/tickets";
 import { subscribeEmployees } from "@/lib/db/employees";
@@ -116,6 +118,7 @@ export default function TicketDetailPage() {
   const [metaMap, setMetaMap]     = useState<Record<string, TicketMeta>>({});
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
+  const [feedbackTarget, setFeedbackTarget] = useState<ReviewRequestTarget | null>(null);
 
   const meta = metaMap[id];
 
@@ -164,6 +167,9 @@ export default function TicketDetailPage() {
 
   async function handleSave() {
     setSaving(true);
+    // Captured before the write, since metaMap only catches up via its
+    // subscription — this is what makes it a transition rather than a re-save.
+    const justClosed = status === "closed" && meta?.status !== "closed";
     const assignee = employees.find((e) => e.id === assigneeId);
     const patch: Partial<Omit<TicketMeta, "id">> = {
       status,
@@ -179,20 +185,16 @@ export default function TicketDetailPage() {
       detail: `Ticket "${email?.subject ?? id}": status ${status}, assignee ${assignee?.name ?? "unassigned"}`,
     });
 
-    // Fire the "how did we do" review-request email — mirrors the list
-    // page's logic. The route dedupes by ticket id, so it's safe to call
-    // on every save where the ticket is closed, not just the transition.
-    if (status === "closed") {
-      fetch(`/api/tickets/${id}/review-request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerEmail: email?.from, customerName: email?.fromName, subject: email?.subject }),
-      })
-        .then(async (res) => {
-          const data = await res.json().catch(() => ({}));
-          if (!data.reviewSent) console.error("[review-request] not sent:", data.reason ?? data.error ?? res.status);
-        })
-        .catch((err) => console.error("[review-request] request failed:", err));
+    // Offer the "how did we do" email instead of sending it silently —
+    // mirrors the list page.
+    if (justClosed) {
+      setFeedbackTarget({
+        id,
+        isManual: false,
+        subject: email?.subject ?? "",
+        customerName: email?.fromName ?? "",
+        customerEmail: email?.from,
+      });
     }
 
     setSaving(false);
@@ -392,6 +394,8 @@ export default function TicketDetailPage() {
           </div>
         </div>
       </div>
+
+      <FeedbackRequestDialog target={feedbackTarget} onClose={() => setFeedbackTarget(null)} />
     </div>
   );
 }

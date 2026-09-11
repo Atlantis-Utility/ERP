@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Search, RefreshCw, TicketCheck, X, Plus, Mail, Phone, Globe, Pencil } from "lucide-react";
 import Header from "@/components/layout/Header";
 import Select from "@/components/ui/Select";
+import FeedbackRequestDialog from "@/components/tickets/FeedbackRequestDialog";
+import type { ReviewRequestTarget } from "@/lib/tickets/review-request";
 import { subscribeEmployees } from "@/lib/db/employees";
 import { upsertTicket, subscribeAllTicketMeta, createManualTicket, upsertManualTicket, subscribeManualTickets } from "@/lib/db/tickets";
 import type { TicketStatus, TicketPriority, TicketMeta, ManualTicket, TicketSource } from "@/lib/db/tickets";
@@ -38,6 +40,12 @@ interface UnifiedTicket {
   assigneeId?: string;
   assigneeName?: string;
   notes?: string;
+  /**
+   * Kept separate from `from`, which for a manual ticket falls back to the
+   * phone number — the feedback prompt needs to know whether there's actually
+   * an email address to send to.
+   */
+  customerEmail?: string;
   // email-only
   threadId?: string;
   // manual-only
@@ -373,6 +381,7 @@ export default function TicketsPage() {
   const [statusFilter, setStatusFilter]   = useState<TicketStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | "all">("all");
   const [assignModal, setAssignModal]     = useState<UnifiedTicket | null>(null);
+  const [feedbackTarget, setFeedbackTarget] = useState<ReviewRequestTarget | null>(null);
 
   const applyResponse = useCallback((data: { tickets: EmailTicket[]; total?: number; nextPageToken?: string | null }) => {
     setNotConfigured(false);
@@ -468,6 +477,7 @@ export default function TicketsPage() {
         assigneeId:   meta?.assigneeId,
         assigneeName: meta?.assigneeName,
         notes:        meta?.notes,
+        customerEmail: t.from,
       };
     });
     const fromManual: UnifiedTicket[] = manualTickets.map((t) => ({
@@ -486,6 +496,7 @@ export default function TicketsPage() {
       assigneeId:   t.assigneeId,
       assigneeName: t.assigneeName,
       notes:        t.notes,
+      customerEmail: t.customerEmail,
     }));
     return [...fromEmail, ...fromManual].sort(
       (a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()
@@ -510,29 +521,10 @@ export default function TicketsPage() {
     unassigned: unified.filter((t) => !t.assigneeId).length,
   }), [unified]);
 
-  // Fire the "how did we do" review-request email. Both routes dedupe by
-  // ticket id, so it's safe to call this any time the ticket is closed —
-  // on creation already-closed, on a later edit, or after being reopened
-  // and re-closed. Manual tickets look their customer info up server-side
-  // (from Supabase); email tickets only exist in the mailbox, so we pass
-  // along what the page already has loaded from Microsoft Graph.
-  function fireReviewRequest(opts: { id: string; isManual: boolean; subject: string; customerEmail?: string; customerName?: string }) {
-    const { id, isManual, subject, customerEmail, customerName } = opts;
-    const url = isManual ? `/api/tickets/manual/${id}/review-request` : `/api/tickets/${id}/review-request`;
-    fetch(url, {
-      method: "POST",
-      ...(isManual ? {} : {
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerEmail, customerName, subject }),
-      }),
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!data.reviewSent) console.error("[review-request] not sent:", data.reason ?? data.error ?? res.status);
-      })
-      .catch((err) => console.error("[review-request] request failed:", err));
-  }
-
+  // Offer the "how did we do" feedback email rather than sending it silently.
+  // Only on an actual transition into closed — re-saving an already-closed
+  // ticket shouldn't re-ask. Declining records nothing, so closing the ticket
+  // again later offers it again.
   async function handleCreateTicket(data: Omit<ManualTicket, "id" | "ticketNumber" | "createdAt" | "updatedAt">) {
     const id = await createManualTicket(data);
     logActivity({
@@ -542,13 +534,20 @@ export default function TicketsPage() {
     });
 
     if (data.status === "closed") {
-      fireReviewRequest({ id, isManual: true, subject: data.subject, customerEmail: data.customerEmail, customerName: data.customerName });
+      setFeedbackTarget({
+        id,
+        isManual: true,
+        subject: data.subject,
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
+      });
     }
   }
 
   async function handleSave(ticket: UnifiedTicket, patch: Partial<TicketMeta>) {
     const isManual = ticket.source !== "email";
     const { id, subject } = ticket;
+    const justClosed = patch.status === "closed" && ticket.status !== "closed";
     if (isManual) {
       await upsertManualTicket(id, patch);
     } else {
@@ -560,8 +559,14 @@ export default function TicketsPage() {
       detail: `Ticket "${subject}" updated, status: ${patch.status ?? "unchanged"}, assignee: ${patch.assigneeName ?? "unassigned"}`,
     });
 
-    if (patch.status === "closed") {
-      fireReviewRequest({ id, isManual, subject, customerEmail: ticket.from, customerName: ticket.fromName });
+    if (justClosed) {
+      setFeedbackTarget({
+        id,
+        isManual,
+        subject,
+        customerName: ticket.fromName,
+        customerEmail: ticket.customerEmail,
+      });
     }
   }
 
@@ -808,6 +813,8 @@ export default function TicketsPage() {
           onClose={() => setShowNewTicket(false)}
         />
       )}
+
+      <FeedbackRequestDialog target={feedbackTarget} onClose={() => setFeedbackTarget(null)} />
     </div>
   );
 }
