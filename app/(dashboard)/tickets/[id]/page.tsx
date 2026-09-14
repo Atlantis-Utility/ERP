@@ -92,7 +92,7 @@ function EmailBody({ html, text }: { html: string | null; text: string | null })
 
   if (text) {
     return (
-      <pre className="whitespace-pre-wrap font-sans text-sm text-[#333] leading-relaxed p-6">
+      <pre className="whitespace-pre-wrap wrap-break-word font-sans text-sm text-[#333] leading-relaxed p-4 sm:p-6">
         {text}
       </pre>
     );

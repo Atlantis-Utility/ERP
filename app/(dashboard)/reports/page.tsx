@@ -69,14 +69,14 @@ export default function ReportsPage() {
       <Header title="Reports" subtitle="Completion reports for finished projects" />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-6 overflow-hidden">
+      <div className="grid grid-cols-2 md:flex md:items-stretch gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-6 overflow-hidden">
         {[
           { label: "Completed Projects",    value: stats.total,              sub: "With a generated report", valueColor: undefined as string | undefined },
           { label: "Completed This Month",  value: stats.completedThisMonth, sub: "By completion date",      valueColor: undefined as string | undefined },
           { label: "Departments",           value: stats.departments,        sub: "Represented",              valueColor: undefined as string | undefined },
           { label: "Contributors",          value: stats.teamMembers,        sub: "Across completed projects", valueColor: undefined as string | undefined },
-        ].map(({ label, value, sub, valueColor }, i, arr) => (
-          <div key={label} className={`flex-1 px-5 py-5 hover:bg-[#fafafa] transition-colors ${i < arr.length - 1 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""}`}>
+        ].map(({ label, value, sub, valueColor }) => (
+          <div key={label} className="bg-white md:flex-1 px-4 py-4 md:px-5 md:py-5 hover:bg-[#fafafa] transition-colors">
             <p className={`text-2xl font-bold tabular-nums leading-none ${valueColor ?? "text-[#0a0a0a]"}`}>{value}</p>
             <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{label}</p>
             <p className="text-[10px] mt-0.5 text-[#bbb]">{sub}</p>

@@ -151,7 +151,7 @@ export default function InventoryItemDrawer({ open, onClose, item }: Props) {
             />
           </FormField>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Category">
               <Select
                 value={draft.category}
@@ -168,7 +168,7 @@ export default function InventoryItemDrawer({ open, onClose, item }: Props) {
             </FormField>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Carrier / Provider">
               <input
                 className={inputClass}
@@ -192,7 +192,7 @@ export default function InventoryItemDrawer({ open, onClose, item }: Props) {
               {isSim ? "SIM Details" : "Identifiers"}
             </p>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="ICCID" hint={isSim ? "The number printed on the SIM." : undefined}>
                   <input
                     className={inputClass}
@@ -210,7 +210,7 @@ export default function InventoryItemDrawer({ open, onClose, item }: Props) {
                   />
                 </FormField>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="IMEI">
                   <input
                     className={inputClass}
@@ -242,7 +242,7 @@ export default function InventoryItemDrawer({ open, onClose, item }: Props) {
           <div className="border-t border-[#f7f7f7] pt-4">
             <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3">Placement</p>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Assigned To" hint="Customer or site, once it leaves the shelf.">
                   <input
                     className={inputClass}
@@ -260,7 +260,7 @@ export default function InventoryItemDrawer({ open, onClose, item }: Props) {
                   />
                 </FormField>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField label="Quantity">
                   <input
                     type="number"

@@ -139,7 +139,7 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
         </div>
 
         <div className="p-5 space-y-3 overflow-y-auto flex-1">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Company Name *</label>
               <input className={inputClass} value={form.companyName} onChange={(e) => set("companyName", e.target.value)} />
@@ -155,7 +155,7 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
             <input className={inputClass} value={form.businessType} onChange={(e) => set("businessType", e.target.value)} placeholder="e.g. HVAC Contractor" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Point of Contact</label>
               <input className={inputClass} value={form.pocName} onChange={(e) => set("pocName", e.target.value)} placeholder="Name" />
@@ -166,7 +166,7 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Phone</label>
               <input className={inputClass} value={form.phone} onChange={(e) => set("phone", e.target.value)} />
@@ -186,7 +186,7 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
             <label className={labelClass}>Street</label>
             <input className={inputClass} value={form.street} onChange={(e) => set("street", e.target.value)} />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>City</label>
               <input className={inputClass} value={form.city} onChange={(e) => set("city", e.target.value)} />
@@ -206,7 +206,7 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
             <input className={inputClass} value={form.companySize} onChange={(e) => set("companySize", e.target.value)} placeholder="e.g. 11-50" />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>LinkedIn</label>
               <input className={inputClass} value={form.linkedinUrl} onChange={(e) => set("linkedinUrl", e.target.value)} placeholder="linkedin.com/…" />
@@ -221,7 +221,7 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Assigned To</label>
               <Select

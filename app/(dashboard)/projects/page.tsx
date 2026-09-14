@@ -77,15 +77,15 @@ export default function ProjectsPage() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-6 overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:items-stretch gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-6 overflow-hidden">
         {[
           { label: "Total Projects", value: projects.length,    sub: "All time",                                                          valueColor: undefined as string | undefined, subColor: undefined as string | undefined },
           { label: "Active",         value: counts.active,      sub: "In progress",                                                       valueColor: counts.active > 0 ? "text-[#0070f3]" : undefined, subColor: undefined },
           { label: "Completed",      value: counts.completed,   sub: "Finished",                                                          valueColor: counts.completed > 0 ? "text-[#17c964]" : undefined, subColor: undefined },
           { label: "On Hold",        value: counts["on-hold"],  sub: "Paused",                                                            valueColor: undefined, subColor: undefined },
           { label: "Overdue",        value: counts.overdue,     sub: counts.overdue > 0 ? "Needs attention" : "All on track",             valueColor: counts.overdue > 0 ? "text-[#f31260]" : undefined, subColor: counts.overdue > 0 ? "text-[#f31260]" : undefined },
-        ].map(({ label, value, sub, valueColor, subColor }, i, arr) => (
-          <div key={label} className={`flex-1 px-5 py-5 hover:bg-[#fafafa] transition-colors ${i < arr.length - 1 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""}`}>
+        ].map(({ label, value, sub, valueColor, subColor }) => (
+          <div key={label} className="bg-white md:flex-1 px-4 py-4 md:px-5 md:py-5 hover:bg-[#fafafa] transition-colors last:col-span-2 md:last:col-span-1">
             <p className={`text-2xl font-bold tabular-nums leading-none ${valueColor ?? "text-[#0a0a0a]"}`}>{value}</p>
             <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{label}</p>
             <p className={`text-[10px] mt-0.5 ${subColor ?? "text-[#bbb]"}`}>{sub}</p>

@@ -358,7 +358,7 @@ export default function WakeUpCallsPage() {
                 </div>
               )}
               {scheduleMode === "relative" && (
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Days</label>
                     <input type="number" min="0" value={relDays} onChange={(e) => setRelDays(e.target.value)} className="text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors w-full" />

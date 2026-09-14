@@ -208,7 +208,7 @@ export default function VaultFormDrawer({ open, onClose, entry, onSave }: Props)
           />
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Category">
             <Select
               value={form.category}
@@ -227,7 +227,7 @@ export default function VaultFormDrawer({ open, onClose, entry, onSave }: Props)
           </FormField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Email">
             <input
               className={inputClass}
@@ -248,7 +248,7 @@ export default function VaultFormDrawer({ open, onClose, entry, onSave }: Props)
           </FormField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             label="Password"
             required={!isEdit}
@@ -323,7 +323,7 @@ export default function VaultFormDrawer({ open, onClose, entry, onSave }: Props)
 
         <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest pt-2">Links & Contact</p>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <MultiTextField
             label="Phone Numbers"
             values={form.phoneNumbers}
@@ -339,7 +339,7 @@ export default function VaultFormDrawer({ open, onClose, entry, onSave }: Props)
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Linked Company" hint="Which customer this key belongs to, if any">
             <Select
               value={form.customerId}

@@ -253,7 +253,7 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
                 <span className="font-medium text-[#0a0a0a]">{fileName}</span>: {rawRows.length} row{rawRows.length !== 1 ? "s" : ""} found.
                 Match each field below to a column from your file.
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {MAPPING_FIELDS.map((f) => (
                   <div key={f.key} className="flex flex-col gap-1">
                     <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">

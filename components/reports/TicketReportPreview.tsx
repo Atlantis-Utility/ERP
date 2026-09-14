@@ -10,7 +10,7 @@ export default function TicketReportPreview({ tickets }: { tickets: UnifiedTicke
   return (
     <div className="space-y-8">
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="bg-[#fafafa] border border-[#eaeaea] rounded-lg p-3 text-center">
           <p className="text-xl font-semibold text-[#0a0a0a]">{data.summary.totalCompleted}</p>
           <p className="text-[10px] text-[#999] uppercase tracking-wide mt-0.5">Resolved / Closed</p>

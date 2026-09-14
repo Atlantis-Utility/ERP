@@ -615,7 +615,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-5 border-t border-[#f0f0f0]">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
             <Field
               label="Internet Service Provider"
               value={overlay?.isp || billedPrimary?.name || ""}

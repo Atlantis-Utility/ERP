@@ -45,6 +45,17 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* iOS Safari zooms the viewport whenever a focused control's text is under
+   16px, which this UI's text-xs/text-sm fields would trigger on every tap.
+   Scoped below the sm breakpoint so desktop keeps its denser type. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

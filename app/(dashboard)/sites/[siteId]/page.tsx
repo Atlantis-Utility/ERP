@@ -173,7 +173,7 @@ export default function SiteDetailPage() {
 
   if (loading) {
     return (
-      <div className="-mx-8 -mt-8 -mb-8 min-h-screen bg-[#fafafa] flex items-center justify-center">
+      <div className="-mx-4 -mt-6 -mb-6 md:-mx-8 md:-mt-8 md:-mb-8 min-h-screen bg-[#fafafa] flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="w-4 h-4 animate-spin text-[#ccc] mx-auto mb-3" />
           <p className="text-sm text-[#999]">Loading site…</p>
@@ -507,7 +507,7 @@ export default function SiteDetailPage() {
         <main className="flex-1 overflow-y-auto flex flex-col">
 
           {/* Tabs */}
-          <div className="flex items-center gap-1 px-6 pt-3.5 border-b border-[#eeeeee] bg-white shrink-0">
+          <div className="flex items-center gap-1 px-4 sm:px-6 pt-3.5 border-b border-[#eeeeee] bg-white shrink-0">
             {([
               { key: "overview", label: "Overview" },
               { key: "topology", label: "Topology" },
@@ -590,7 +590,7 @@ export default function SiteDetailPage() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <div className="min-w-160">
+                    <div className="min-w-190">
                       <div className="grid grid-cols-[20px_1fr_140px_110px_120px_130px_80px] px-6 py-3 border-b border-[#f5f5f5] bg-[#fafafa]">
                         {["", "Name", "Model", "IP Address", "MAC Address", "Version", "Status"].map((h, i) => (
                           <span key={i} className="text-[10px] font-semibold text-[#aaa] uppercase tracking-wider">

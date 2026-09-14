@@ -312,7 +312,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
         {editing ? (
           <div className="space-y-4">
             <p className={sectionLabelClass}>Company Details</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Status">
                 <Select
                   value={form.status}
@@ -324,7 +324,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
                 <input value={form.companySize} onChange={(e) => set("companySize", e.target.value)} className={inputClass} placeholder="e.g. 11-50" />
               </FormField>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="DBA">
                 <input value={form.dba} onChange={(e) => set("dba", e.target.value)} className={inputClass} placeholder="Trade name, if different" />
               </FormField>
@@ -335,7 +335,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
             <FormField label="Street">
               <input value={form.street} onChange={(e) => set("street", e.target.value)} className={inputClass} />
             </FormField>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <FormField label="City">
                 <input value={form.city} onChange={(e) => set("city", e.target.value)} className={inputClass} />
               </FormField>
@@ -350,7 +350,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
             <div className="border-t border-[#f7f7f7] pt-4">
               <p className={sectionLabelClass}>Contact</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Point of Contact">
                 <input value={form.pocName} onChange={(e) => set("pocName", e.target.value)} className={inputClass} />
               </FormField>
@@ -358,7 +358,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
                 <input value={form.pocTitle} onChange={(e) => set("pocTitle", e.target.value)} className={inputClass} />
               </FormField>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Phone">
                 <input value={form.phone} onChange={(e) => set("phone", e.target.value)} className={inputClass} />
               </FormField>
@@ -373,7 +373,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
             <FormField label="Website">
               <input value={form.website} onChange={(e) => set("website", e.target.value)} className={inputClass} placeholder="https://" />
             </FormField>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <FormField label="LinkedIn">
                 <input value={form.linkedinUrl} onChange={(e) => set("linkedinUrl", e.target.value)} className={inputClass} placeholder="linkedin.com/…" />
               </FormField>
@@ -388,7 +388,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
             <div className="border-t border-[#f7f7f7] pt-4">
               <p className={sectionLabelClass}>Assignment</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Assigned To">
                 <Select
                   value={form.assignedTo}
@@ -428,12 +428,12 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
             {address && <ViewField label="Address" value={address} />}
 
             {narrowDetailFields.length > 0 && (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                 {narrowDetailFields.map((f) => <ViewField key={f.label} {...f} />)}
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-4 border-t border-[#f5f5f5]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 pt-4 border-t border-[#f5f5f5]">
               <ViewField label="Assigned To" value={assignedEmployee?.name ?? "Unassigned"} muted={!assignedEmployee} />
               <div>
                 <p className={viewLabelClass}>Follow Up By</p>

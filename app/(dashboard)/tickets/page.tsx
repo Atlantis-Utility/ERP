@@ -163,7 +163,7 @@ function NewTicketDrawer({ employees, onSave, onClose }: NewTicketDrawerProps) {
             <label className="block text-xs font-medium text-[#444] mb-1.5">Customer Name <span className="text-red-500">*</span></label>
             <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Full name" className={inputClass} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-[#444] mb-1.5">Email</label>
               <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="customer@email.com" type="email" className={inputClass} />
@@ -177,7 +177,7 @@ function NewTicketDrawer({ employees, onSave, onClose }: NewTicketDrawerProps) {
             <label className="block text-xs font-medium text-[#444] mb-1.5">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Detailed description…" className={inputClass + " resize-none"} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-[#444] mb-1.5">Priority</label>
               <Select
@@ -631,15 +631,15 @@ export default function TicketsPage() {
       )}
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:items-stretch gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
         {[
           { label: "Total",       value: kpis.total      },
           { label: "Open",        value: kpis.open       },
           { label: "In Progress", value: kpis.inProgress },
           { label: "Resolved",    value: kpis.resolved   },
           { label: "Unassigned",  value: kpis.unassigned },
-        ].map(({ label, value }, i) => (
-          <div key={label} className={`px-4 py-4 md:flex-1 md:px-5 md:py-5 ${i < 4 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""}`}>
+        ].map(({ label, value }) => (
+          <div key={label} className="bg-white px-4 py-4 md:flex-1 md:px-5 md:py-5 last:col-span-2 md:last:col-span-1">
             <p className="text-2xl font-bold tabular-nums leading-none text-[#0a0a0a]">{value}</p>
             <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{label}</p>
           </div>
@@ -648,7 +648,7 @@ export default function TicketsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1 min-w-52 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999]" />
           <input
             type="text"

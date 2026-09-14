@@ -299,9 +299,9 @@ export default function SitesPage() {
       />
 
       {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:items-stretch md:divide-x divide-[#f0f0f0] bg-white border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
-        {stats.map(({ label, value, accent }, i) => (
-          <div key={label} className={`px-4 py-3 md:flex-1 md:px-5 md:py-4 border-b sm:border-b md:border-b-0 border-[#f0f0f0]`}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:items-stretch gap-px bg-[#f0f0f0] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
+        {stats.map(({ label, value, accent }) => (
+          <div key={label} className="bg-white px-4 py-3 md:flex-1 md:px-5 md:py-4 last:col-span-2 md:last:col-span-1">
             <p className={`text-xl md:text-[22px] font-bold leading-none tabular-nums ${accent ?? "text-[#111]"} ${state !== "ok" ? "opacity-30" : ""}`}>
               {state === "ok" ? value : "-"}
             </p>

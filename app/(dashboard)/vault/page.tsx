@@ -174,7 +174,7 @@ export default function VaultPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1 min-w-52 max-w-sm">
           <Search className="w-4 h-4 text-[#bbb] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             className="w-full border border-[#eaeaea] rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-[#0070f3] transition-colors bg-white"
@@ -214,8 +214,8 @@ export default function VaultPage() {
           </p>
         </div>
       ) : (
-        <div className="border border-[#eaeaea] rounded-xl overflow-hidden bg-white">
-          <table className="w-full text-sm">
+        <div className="border border-[#eaeaea] rounded-xl overflow-x-auto bg-white">
+          <table className="w-full min-w-160 text-sm">
             <thead>
               <tr className="border-b border-[#eaeaea] bg-[#fafafa] text-left">
                 <th className="px-4 py-2.5 text-[10px] font-semibold text-[#999] uppercase tracking-wider">Name</th>

@@ -348,7 +348,7 @@ export default function ContactsPage() {
               </button>
             </div>
             <div className="p-5 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">First Name *</label>
                   <input type="text" value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors" />

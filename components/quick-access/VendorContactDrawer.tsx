@@ -76,7 +76,7 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
       }
     >
       <div className="space-y-5">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Company" required>
             <input
               className={inputClass}
@@ -94,7 +94,7 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
           </FormField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Website">
             <input
               className={inputClass}
@@ -113,7 +113,7 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
           </FormField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Account number" hint="As printed on their invoice">
             <input
               className={inputClass}
@@ -136,7 +136,7 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
           <p className="text-[11px] font-semibold text-[#999] uppercase tracking-widest mb-3 mt-3">
             General support
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Support phone">
               <input
                 className={inputClass}
@@ -160,7 +160,7 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
           <p className="text-[11px] font-semibold text-[#999] uppercase tracking-widest mb-3 mt-3">
             Point of contact
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Name">
               <input
                 className={inputClass}

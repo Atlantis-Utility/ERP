@@ -9,7 +9,7 @@ import { useNotes, addNote, updateNote, removeNote, type Note } from "@/lib/db/n
 import { useCurrentEmployeeId } from "@/lib/hooks/use-current-employee-id";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import {
-  Plus, Search, Send, Trash2, Check, AlertCircle, X, StickyNote as StickyNoteIcon,
+  Plus, Search, Send, Trash2, Check, AlertCircle, X, ChevronLeft, StickyNote as StickyNoteIcon,
 } from "lucide-react";
 
 type ViewFilter = "mine" | "shared";
@@ -222,9 +222,10 @@ export default function NotesPage() {
         </div>
       )}
 
-      <div className="bg-white border border-[#eaeaea] rounded-xl flex h-[calc(100vh-220px)] min-h-[480px] overflow-hidden">
-        {/* List pane */}
-        <div className="w-[300px] lg:w-[340px] shrink-0 border-r border-[#eaeaea] flex flex-col">
+      <div className="bg-white border border-[#eaeaea] rounded-xl flex h-[calc(100vh-220px)] min-h-120 overflow-hidden">
+        {/* List pane — below md only one pane is on screen at a time, so the
+            list steps aside once a note is open. */}
+        <div className={`w-full md:w-75 lg:w-85 shrink-0 border-r border-[#eaeaea] flex-col ${selected ? "hidden md:flex" : "flex"}`}>
           <div className="p-3 border-b border-[#eaeaea] space-y-2.5 shrink-0">
             <div className="flex items-center gap-0.5 bg-[#f5f5f5] rounded-lg p-0.5">
               {([
@@ -327,7 +328,7 @@ export default function NotesPage() {
         </div>
 
         {/* Editor pane */}
-        <div className="flex-1 flex flex-col min-w-0 bg-white">
+        <div className={`flex-1 flex-col min-w-0 bg-white ${selected ? "flex" : "hidden md:flex"}`}>
           {!selected ? (
             <div className="flex-1 flex items-center justify-center p-6">
               <div className="text-center">
@@ -349,8 +350,15 @@ export default function NotesPage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 px-6 py-3 border-b border-[#eaeaea] shrink-0">
+              <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-[#eaeaea] shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    onClick={() => setSelectedId(null)}
+                    className="md:hidden -ml-1.5 p-1.5 shrink-0 rounded-lg text-[#666] hover:bg-[#f5f5f5] transition-colors"
+                    aria-label="Back to notes"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
                   {!isMine && <Avatar name={selected.authorName || "Unknown"} size="md" />}
                   <p className="text-[11px] text-[#999] truncate">
                     {isMine
@@ -434,7 +442,7 @@ export default function NotesPage() {
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
                 <div className="max-w-3xl">
                   {isMine ? (
                     <>

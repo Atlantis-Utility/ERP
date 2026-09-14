@@ -180,6 +180,7 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
       {profiles.length === 0 ? (
         <p className="text-sm text-[#999] text-center py-8">No users yet.</p>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full min-w-130">
           <thead>
             <tr className="border-b border-[#f4f4f4] bg-[#fafafa]">
@@ -248,6 +249,7 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -273,12 +275,12 @@ export default function SettingsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-[#eaeaea] mb-6 flex gap-0">
+      <div className="border-b border-[#eaeaea] mb-6 flex gap-0 overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === tab.key
                 ? "border-[#0a0a0a] text-[#0a0a0a]"
                 : "border-transparent text-[#666] hover:text-[#0a0a0a]"

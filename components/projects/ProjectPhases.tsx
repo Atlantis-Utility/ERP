@@ -722,7 +722,7 @@ function AddForm({ adding, onFormChange, onFileSelect, onSave, onCancel }: AddFo
           <>
             <input className={fieldCls} placeholder="Full name" value={form.contactName ?? ""} onChange={(e) => set("contactName", e.target.value)} autoFocus />
             <input className={fieldCls} placeholder="Role / Title" value={form.contactRole ?? ""} onChange={(e) => set("contactRole", e.target.value)} />
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input className={fieldCls} type="email" placeholder="Email" value={form.contactEmail ?? ""} onChange={(e) => set("contactEmail", e.target.value)} />
               <input className={fieldCls} type="tel" placeholder="Phone" value={form.contactPhone ?? ""} onChange={(e) => set("contactPhone", e.target.value)} />
             </div>

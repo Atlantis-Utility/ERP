@@ -158,7 +158,7 @@ export default function AddTaskDrawer({ open, onClose, onAdd, defaultColumn }: P
           />
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Column">
             <Select
               value={defaultColumn ?? form.column}

@@ -124,7 +124,7 @@ export default function AlertsPage() {
       />
 
       {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-6 overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:items-stretch gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-6 overflow-hidden">
         {[
           { value: state === "ok" ? alerts.length   : "-", label: "Total",    color: undefined },
           { value: state === "ok" ? open.length      : "-", label: "Open",     color: open.length     > 0 ? "#dc2626" : undefined },
@@ -132,7 +132,7 @@ export default function AlertsPage() {
           { value: state === "ok" ? high.length      : "-", label: "High",     color: high.length     > 0 ? "#d97706" : undefined },
           { value: state === "ok" ? resolved.length  : "-", label: "Resolved", color: resolved.length > 0 ? "#16a34a" : undefined },
         ].map(({ value, label, color }) => (
-          <div key={label} className="px-4 py-3 md:flex-1 md:px-5 md:py-4 border-b md:border-b-0 border-[#f4f4f4]">
+          <div key={label} className="bg-white px-4 py-3 md:flex-1 md:px-5 md:py-4 last:col-span-2 md:last:col-span-1">
             <p className="text-2xl font-bold tabular-nums leading-none" style={{ color: color ?? "#0a0a0a" }}>
               {value}
             </p>

@@ -203,7 +203,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
           <input className={inputClass} value={form.name} onChange={(e) => set("name", e.target.value)} />
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Email" required error={errors.email}>
             <input className={inputClass} type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
           </FormField>
@@ -216,7 +216,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
           <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3">Role</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Job Title / Role" required error={errors.role}>
             <input className={inputClass} value={form.role} onChange={(e) => set("role", e.target.value)} />
           </FormField>
@@ -233,7 +233,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
           </FormField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Access Role" hint={isAdmin ? "Workspace permissions" : "Only admins can change this"}>
             {isAdmin ? (
               <Select

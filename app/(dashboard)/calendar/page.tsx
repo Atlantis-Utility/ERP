@@ -192,8 +192,10 @@ export default function CalendarPage() {
     setCursor(d);
   }
 
+  // Below lg the month grid and the day panel stack, so the page scrolls
+  // normally instead of being pinned to the viewport height.
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col lg:h-full">
       <div className="shrink-0 flex items-center h-10 -mt-3 md:-mt-4">
         <Header title="Calendar" className="mb-0" />
       </div>
@@ -210,9 +212,9 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 flex gap-4 mt-4">
-      <div className="flex-1 min-h-0 flex flex-col bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#f4f4f4] shrink-0">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 mt-4">
+      <div className="h-115 lg:h-auto lg:flex-1 min-h-0 flex flex-col bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-4 border-b border-[#f4f4f4] shrink-0">
           <p className="text-sm font-semibold text-[#0a0a0a]">{monthLabel}</p>
           <div className="flex items-center gap-2">
             <button
@@ -304,13 +306,13 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div className="w-80 shrink-0 flex flex-col bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
+      <div className="w-full lg:w-80 shrink-0 flex flex-col max-h-96 lg:max-h-none bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-[#f4f4f4] shrink-0">
           <p className="text-sm font-semibold text-[#0a0a0a]">{selectedDateLabel}</p>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {selectedMeetings.length === 0 && selectedOutlook.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-sm text-[#999] text-center px-4">
+            <div className="min-h-24 h-full flex items-center justify-center text-sm text-[#999] text-center px-4">
               No meetings scheduled this day
             </div>
           ) : (

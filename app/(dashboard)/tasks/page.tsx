@@ -670,7 +670,7 @@ export default function TasksPage() {
             {todayMeetings.map((m) => {
               const cfg = m.platform ? PLATFORM_CONFIG[m.platform] : null;
               return (
-                <div key={m.id} className="flex items-center gap-2 bg-[#fffbeb] border border-[#fde68a] rounded-lg px-3 py-1.5">
+                <div key={m.id} className="flex items-center gap-2 max-w-full bg-[#fffbeb] border border-[#fde68a] rounded-lg px-3 py-1.5">
                   {cfg && (
                     <span
                       className="w-3.5 h-3.5 rounded-full text-white text-[8px] font-bold flex items-center justify-center shrink-0"
@@ -679,9 +679,9 @@ export default function TasksPage() {
                       {cfg.letter === "📍" ? "📍" : cfg.letter}
                     </span>
                   )}
-                  <span className="text-xs font-medium text-[#0a0a0a]">{m.title}</span>
+                  <span className="text-xs font-medium text-[#0a0a0a] truncate">{m.title}</span>
                   {m.meetingTime && (
-                    <span className="text-[10px] text-[#666]">{formatTime(m.meetingTime)}</span>
+                    <span className="text-[10px] text-[#666] shrink-0">{formatTime(m.meetingTime)}</span>
                   )}
                   {m.meetingUrl && (
                     <a
@@ -701,14 +701,14 @@ export default function TasksPage() {
       )}
 
       {/* ── Stats row ───────────────────────────────────────────────── */}
-      <div className="flex items-center divide-x divide-[#f0f0f0] bg-white border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-4 sm:flex sm:items-center gap-px bg-[#f0f0f0] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
         {[
           { value: statsOverdue,       label: "Overdue",        valueColor: statsOverdue > 0 ? "text-[#ef4444]" : "text-[#0a0a0a]" },
           { value: statsDueToday,      label: "Due Today",      valueColor: statsDueToday > 0 ? "text-[#f59e0b]" : "text-[#0a0a0a]" },
           { value: statsInProgress,    label: "In Progress",    valueColor: "text-[#0070f3]" },
           { value: statsMeetingsToday, label: "Meetings Today", valueColor: statsMeetingsToday > 0 ? "text-[#5c5fc9]" : "text-[#0a0a0a]" },
         ].map(({ value, label, valueColor }) => (
-          <div key={label} className="flex-1 px-5 py-3 text-center">
+          <div key={label} className="bg-white sm:flex-1 px-4 sm:px-5 py-3 text-center">
             <p className={`text-xl font-bold tabular-nums leading-none ${valueColor}`}>{value}</p>
             <p className="text-[10px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{label}</p>
           </div>

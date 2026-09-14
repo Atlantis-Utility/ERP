@@ -22,7 +22,7 @@ export default function ProjectReportPreview({ project, tasks = [] }: { project:
       {/* Overview */}
       <div>
         <p className="text-xs font-semibold text-[#999] uppercase tracking-wider mb-2">Project Overview</p>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 bg-[#fafafa] border border-[#eaeaea] rounded-lg p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 bg-[#fafafa] border border-[#eaeaea] rounded-lg p-4">
           {data.meta.map((row) => (
             <div key={row.label}>
               <p className="text-[10px] text-[#999] uppercase tracking-wide">{row.label}</p>

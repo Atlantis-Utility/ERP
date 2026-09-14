@@ -231,14 +231,14 @@ export default function LogsPage() {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:flex md:items-stretch gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
         {[
           { label: "Total entries",  value: logs.length },
           { label: "Today",          value: logs.filter((e) => withinDateFilter(e.timestamp, "today")).length },
           { label: "This week",      value: logs.filter((e) => withinDateFilter(e.timestamp, "7d")).length },
           { label: "Unique users",   value: new Set(logs.map((e) => e.userId ?? "admin")).size },
-        ].map(({ label, value }, i) => (
-          <div key={label} className={`px-4 py-4 md:flex-1 md:px-5 md:py-5 ${i < 3 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""}`}>
+        ].map(({ label, value }) => (
+          <div key={label} className="bg-white px-4 py-4 md:flex-1 md:px-5 md:py-5">
             <p className="text-2xl font-bold tabular-nums leading-none text-[#0a0a0a]">{value}</p>
             <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{label}</p>
           </div>

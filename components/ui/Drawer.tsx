@@ -45,32 +45,32 @@ export default function Drawer({
         onClick={onClose}
       />
 
-      {/* Panel */}
+      {/* Panel — full-bleed on phones, fixed width once there's room for it */}
       <div
-        className={`absolute right-0 top-0 h-full bg-white border-l border-[#eaeaea] shadow-2xl flex flex-col ${
-          width === "lg" ? "w-[600px]" : "w-[480px]"
+        className={`absolute right-0 top-0 h-full w-full bg-white border-l border-[#eaeaea] shadow-2xl flex flex-col ${
+          width === "lg" ? "sm:max-w-150" : "sm:max-w-120"
         }`}
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-5 border-b border-[#eaeaea] shrink-0">
-          <div>
-            <h2 className="text-base font-semibold text-[#0a0a0a]">{title}</h2>
-            {subtitle && <p className="text-xs text-[#999] mt-0.5">{subtitle}</p>}
+        <div className="flex items-start justify-between gap-3 px-4 sm:px-6 py-4 sm:py-5 border-b border-[#eaeaea] shrink-0">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-[#0a0a0a] wrap-break-word">{title}</h2>
+            {subtitle && <p className="text-xs text-[#999] mt-0.5 wrap-break-word">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[#999] hover:bg-[#f1f1f1] hover:text-[#0a0a0a] transition-colors"
+            className="p-1.5 -mr-1.5 shrink-0 rounded-lg text-[#999] hover:bg-[#f1f1f1] hover:text-[#0a0a0a] transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5">{children}</div>
 
-        {/* Footer */}
+        {/* Footer — buttons stretch full width when they'd otherwise be cramped */}
         {footer && (
-          <div className="shrink-0 border-t border-[#eaeaea] px-6 py-4 flex items-center justify-end gap-3">
+          <div className="shrink-0 border-t border-[#eaeaea] px-4 sm:px-6 py-4 flex flex-wrap items-center justify-end gap-2 sm:gap-3 [&>button]:flex-1 sm:[&>button]:flex-none">
             {footer}
           </div>
         )}

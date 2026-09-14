@@ -508,14 +508,14 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI strip ─────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-4 overflow-hidden">
-        {kpiCards.map((k, i, arr) => (
+      {/* gap-px over the container's border colour draws the dividers, so they
+          stay correct however the cells reflow across breakpoints. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:items-stretch gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-4 overflow-hidden">
+        {kpiCards.map((k) => (
           <Link
             key={k.key}
             href={k.href}
-            className={`px-4 py-4 md:flex-1 md:px-5 md:py-5 hover:bg-[#fafafa] transition-colors ${
-              i < arr.length - 1 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""
-            }`}
+            className="bg-white px-4 py-4 lg:flex-1 lg:px-5 lg:py-5 hover:bg-[#fafafa] transition-colors last:col-span-2"
           >
             {loading ? (
               <div className="h-7 w-12 bg-[#f1f1f1] rounded animate-pulse mb-1.5" />

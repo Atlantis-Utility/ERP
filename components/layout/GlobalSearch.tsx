@@ -1,9 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Search, LayoutGrid, Building2, CheckSquare, FolderKanban } from "lucide-react";
 import { NAV_PAGES } from "@/lib/nav-pages";
+
+// The shortcut badge has to match the platform: the handler below takes either
+// modifier, but "⌘" on Windows is both the wrong key and a glyph Geist doesn't
+// carry, so it falls back to a symbol font and renders cramped and misaligned.
+//
+// useSyncExternalStore rather than an effect: it gives a server snapshot
+// (non-Mac) distinct from the client one without a hydration warning, and
+// without a setState-in-effect.
+const subscribeNoop = () => () => {};
+const isMacClient = () =>
+  /mac|iphone|ipad|ipod/i.test(
+    // `||` not `??`: some privacy modes report an empty platform string, which
+    // should fall through to the next source rather than count as an answer.
+    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ||
+      navigator.platform ||
+      navigator.userAgent ||
+      "",
+  );
+
+function useIsMac(): boolean {
+  return useSyncExternalStore(subscribeNoop, isMacClient, () => false);
+}
 
 interface PortalCustomer {
   id: string;
@@ -136,6 +158,8 @@ export default function GlobalSearch({ allowedHrefs }: { allowedHrefs?: string[]
     }
   }
 
+  const isMac = useIsMac();
+
   let lastGroup: string | null = null;
 
   return (
@@ -149,10 +173,17 @@ export default function GlobalSearch({ allowedHrefs }: { allowedHrefs?: string[]
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder="Search pages, customers, tasks, projects…"
-          className="w-full h-9 pl-9 pr-14 rounded-lg border border-[#eaeaea] bg-[#fafafa] text-sm text-[#0a0a0a] placeholder:text-[#999] focus:outline-none focus:ring-2 focus:ring-[#0070f3]/30 focus:border-[#0070f3] focus:bg-white transition-colors"
+          className={`w-full h-9 pl-9 rounded-lg border border-[#eaeaea] bg-[#fafafa] text-sm text-[#0a0a0a] placeholder:text-[#999] focus:outline-none focus:ring-2 focus:ring-[#0070f3]/30 focus:border-[#0070f3] focus:bg-white transition-colors ${isMac ? "pr-14" : "pr-20"}`}
         />
-        <kbd className="hidden lg:flex items-center gap-0.5 whitespace-nowrap absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[#999] bg-white border border-[#eaeaea] rounded px-1.5 py-0.5">
-          ⌘K
+        {/* pointer-events-none so a click on the badge still lands on the input */}
+        <kbd
+          aria-hidden
+          className="hidden lg:flex items-center justify-center gap-1 whitespace-nowrap absolute right-2 top-1/2 -translate-y-1/2 h-5 px-1.5 rounded-md border border-[#eaeaea] bg-white text-[#999] font-sans leading-none select-none pointer-events-none"
+        >
+          <span className={isMac ? "text-[13px]" : "text-[10px] font-medium"}>
+            {isMac ? "⌘" : "Ctrl"}
+          </span>
+          <span className="text-[10px] font-medium">K</span>
         </kbd>
       </div>
 

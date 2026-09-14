@@ -12,7 +12,7 @@ export default function Header({ title, subtitle, actions, compact, className }:
   const margin = className ?? (compact ? "mb-3" : "mb-6 md:mb-8");
   return (
     <div className={`flex flex-wrap items-start justify-between gap-3 ${margin}`}>
-      <div>
+      <div className="min-w-0">
         <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-[#0a0a0a]">{title}</h1>
         {subtitle && (
           <p className="text-sm text-[#666] mt-1">{subtitle}</p>

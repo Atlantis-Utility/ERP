@@ -143,15 +143,15 @@ export default function CustomersPage() {
       />
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:flex md:items-stretch md:divide-x divide-[#f4f4f4] bg-white border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:flex md:items-stretch gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
         {[
           { label: "Total Customers", value: state === "ok" ? customers.length : "-" },
           { label: "Open", value: state === "ok" ? openCount : "-" },
           { label: "Terminated", value: state === "ok" ? terminatedCount : "-" },
           { label: "Balance Owed", value: state === "ok" ? `$${totalOwed.toFixed(2)}` : "-" },
-        ].map((k, i, arr) => (
-          <div key={k.label} className={`px-4 py-4 md:flex-1 md:px-5 md:py-5 ${i < arr.length - 1 ? "border-b md:border-b-0 border-[#f4f4f4]" : ""}`}>
-            <p className="text-2xl font-bold tabular-nums leading-none text-[#0a0a0a]">{k.value}</p>
+        ].map((k) => (
+          <div key={k.label} className="bg-white px-4 py-4 md:flex-1 md:px-5 md:py-5">
+            <p className="text-2xl font-bold tabular-nums leading-none text-[#0a0a0a] truncate">{k.value}</p>
             <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{k.label}</p>
           </div>
         ))}
@@ -159,7 +159,7 @@ export default function CustomersPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1 min-w-52 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999]" />
           <input
             type="text"

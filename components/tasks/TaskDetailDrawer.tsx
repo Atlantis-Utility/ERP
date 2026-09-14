@@ -245,7 +245,7 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
             />
           </FormField>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Column">
               <Select
                 value={form.column}
@@ -322,7 +322,7 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
                   onChange={(v) => setF("meetingDate", v)}
                 />
               </FormField>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Time">
                   <input
                     type="time"

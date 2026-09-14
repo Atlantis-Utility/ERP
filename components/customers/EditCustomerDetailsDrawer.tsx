@@ -165,7 +165,7 @@ export default function EditCustomerDetailsDrawer({
       <div className="space-y-4">
         <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3">Internet Service</p>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Internet Service Provider">
             <input
               className={inputClass}
@@ -210,7 +210,7 @@ export default function EditCustomerDetailsDrawer({
                     Remove
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField label="IP Address">
                     <input
                       className={inputClass}
@@ -228,7 +228,7 @@ export default function EditCustomerDetailsDrawer({
                     />
                   </FormField>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField label="Gateway">
                     <input
                       className={inputClass}
@@ -246,7 +246,7 @@ export default function EditCustomerDetailsDrawer({
                     />
                   </FormField>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField label="DNS Primary">
                     <input
                       className={inputClass}
@@ -343,7 +343,7 @@ export default function EditCustomerDetailsDrawer({
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormField label="Full Name">
                   <input
                     className={inputClass}
@@ -361,7 +361,7 @@ export default function EditCustomerDetailsDrawer({
                   />
                 </FormField>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormField label="Phone">
                   <input
                     className={inputClass}

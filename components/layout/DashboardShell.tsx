@@ -92,7 +92,8 @@ export default function DashboardShell({ children }: { children: React.ReactNode
           collapsed ? "md:ml-16" : "md:ml-60"
         }`}
       >
-        {/* Mobile top bar */}
+        {/* Mobile top bar — search moves to its own row below, since the
+            desktop bar it normally lives in is hidden at this width. */}
         <div className="md:hidden sticky top-0 z-20 flex items-center h-14 px-4 bg-white border-b border-[#eaeaea]">
           <button
             onClick={() => setMobileOpen(true)}
@@ -126,6 +127,10 @@ export default function DashboardShell({ children }: { children: React.ReactNode
               <LogOut className="w-4 h-4 text-[#666]" />
             </button>
           </div>
+        </div>
+
+        <div className="md:hidden px-4 py-2.5 bg-white border-b border-[#eaeaea]">
+          <GlobalSearch allowedHrefs={allowedHrefs} />
         </div>
 
         {/* Desktop user bar at top (visible in desktop when sidebar is shown) */}

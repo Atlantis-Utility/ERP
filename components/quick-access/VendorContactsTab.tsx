@@ -224,7 +224,7 @@ export default function VendorContactsTab() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-4 pt-3 border-t border-[#f7f7f7]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mt-4 pt-3 border-t border-[#f7f7f7]">
                 <div className="space-y-2 min-w-0">
                   <p className="text-[10px] font-semibold text-[#bbb] uppercase tracking-wider">Support</p>
                   <ContactLine icon={Phone} value={c.supportPhone} href={c.supportPhone ? `tel:${c.supportPhone.replace(/[^\d+]/g, "")}` : undefined} />

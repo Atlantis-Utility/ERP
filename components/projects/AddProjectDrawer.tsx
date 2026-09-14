@@ -235,7 +235,7 @@ export default function AddProjectDrawer({ open, onClose }: Props) {
           />
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Primary ISP" required error={errors.ispPrimary}>
             <input
               className={inputClass}
@@ -254,7 +254,7 @@ export default function AddProjectDrawer({ open, onClose }: Props) {
           </FormField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Status" error={errors.status}>
             <Select
               value={form.status}
@@ -402,7 +402,7 @@ export default function AddProjectDrawer({ open, onClose }: Props) {
                     )}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField label="Full Name">
                     <input
                       className={inputClass}
@@ -420,7 +420,7 @@ export default function AddProjectDrawer({ open, onClose }: Props) {
                     />
                   </FormField>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField label="Phone">
                     <input
                       className={inputClass}

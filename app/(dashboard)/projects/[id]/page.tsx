@@ -610,7 +610,7 @@ export default function ProjectDetailPage() {
               />
             </FormField>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Status">
                 <Select
                   value={form.status}
@@ -637,7 +637,7 @@ export default function ProjectDetailPage() {
               </FormField>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Primary ISP" required>
                 <input
                   className={inputClass}
@@ -766,7 +766,7 @@ export default function ProjectDetailPage() {
                         )}
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <FormField label="Full Name">
                         <input
                           className={inputClass}
@@ -784,7 +784,7 @@ export default function ProjectDetailPage() {
                         />
                       </FormField>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <FormField label="Phone">
                         <input
                           className={inputClass}
