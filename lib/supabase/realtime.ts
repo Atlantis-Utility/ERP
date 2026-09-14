@@ -15,12 +15,68 @@ import { supabase } from "./client";
 // tears down once the last subscriber unmounts.
 const subscriptions = new Map<string, { channel: ReturnType<typeof supabase.channel>; listeners: Set<() => void> }>();
 
+// Every table here is behind an `auth.role() = 'authenticated'` RLS policy, and
+// a SELECT that misses it comes back as zero rows with NO error — indis-
+// tinguishable from a genuinely empty table. So a fetch issued before the
+// session is restored (or while it's being refreshed) silently reports "there
+// is nothing here", and callers dutifully render an empty page and write that
+// emptiness into their localStorage cache, which then survives the reload.
+//
+// That's the tasks board filling in from cache and then blanking a moment
+// later. Waiting for a session first keeps a missing token from being read as
+// a missing row: a real empty table still publishes, an unauthenticated one
+// no longer does.
+async function hasSession(): Promise<boolean> {
+  // getSession() returns the persisted session and refreshes it if expired.
+  const { data } = await supabase.auth.getSession();
+  if (data.session) return true;
+
+  // Not signed in *yet* — a page can mount before the session is rehydrated.
+  // Wait briefly for the next auth event rather than publishing a false empty.
+  return new Promise<boolean>((resolve) => {
+    // `unsubscribe` is assigned after onAuthStateChange returns, but the
+    // callback can in principle fire before that — so finish() tolerates it
+    // being unset rather than throwing on a temporal-dead-zone reference.
+    let settled = false;
+    let unsubscribe: (() => void) | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      unsubscribe?.();
+      resolve(value);
+    };
+
+    timer = setTimeout(() => finish(false), 10_000);
+    const listener = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) finish(true);
+    });
+    unsubscribe = () => listener.data.subscription.unsubscribe();
+    // Covers the callback having already fired synchronously above.
+    if (settled) unsubscribe();
+  });
+}
+
 export function subscribeTable<T>(
   table: string,
   fetchAll: () => Promise<T[]>,
   cb: (rows: T[]) => void
 ): () => void {
-  fetchAll().then(cb).catch((err) => console.error(`[${table}]`, err));
+  let cancelled = false;
+
+  const load = async () => {
+    try {
+      if (!(await hasSession())) return;
+      const rows = await fetchAll();
+      if (!cancelled) cb(rows);
+    } catch (err) {
+      console.error(`[${table}]`, err);
+    }
+  };
+
+  load();
 
   let sub = subscriptions.get(table);
   if (!sub) {
@@ -34,10 +90,11 @@ export function subscribeTable<T>(
     subscriptions.set(table, sub);
   }
 
-  const onChange = () => fetchAll().then(cb).catch((err) => console.error(`[${table}]`, err));
+  const onChange = () => { load(); };
   sub.listeners.add(onChange);
 
   return () => {
+    cancelled = true;
     sub!.listeners.delete(onChange);
     if (sub!.listeners.size === 0) {
       supabase.removeChannel(sub!.channel);
