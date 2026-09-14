@@ -109,8 +109,8 @@ export default function InventoryPage() {
         <StatTile label="SIM Cards" value={counts.sims} />
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      {/* Search left, filters right */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="relative flex-1 min-w-52 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999]" />
           <input
@@ -121,11 +121,16 @@ export default function InventoryPage() {
             className="w-full border border-[#eaeaea] rounded-lg pl-9 pr-3 py-2 text-sm text-[#0a0a0a] placeholder:text-[#999] focus:outline-none focus:border-[#0070f3] transition-colors"
           />
         </div>
-        <div className="w-44">
-          <Select value={category} onChange={setCategory} options={categoryOptions} />
-        </div>
-        <div className="w-40">
-          <Select value={status} onChange={setStatus} options={statusOptions} />
+        {/* Even wrapped onto their own row the two fixed widths total 348px,
+            5px more than a 375px screen has — so share the row evenly on
+            phones and only take their natural widths once they both fit. */}
+        <div className="grid grid-cols-2 gap-3 w-full sm:flex sm:items-center sm:w-auto">
+          <div className="w-full sm:w-44">
+            <Select value={category} onChange={setCategory} options={categoryOptions} />
+          </div>
+          <div className="w-full sm:w-40">
+            <Select value={status} onChange={setStatus} options={statusOptions} />
+          </div>
         </div>
       </div>
 

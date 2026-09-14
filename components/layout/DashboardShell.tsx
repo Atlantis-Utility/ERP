@@ -103,11 +103,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             <Menu className="w-5 h-5 text-[#0a0a0a]" />
           </button>
           <div className="flex items-center gap-2 ml-2 flex-1">
-            <div className="w-6 h-6 rounded-lg bg-[#0a0a0a] flex items-center justify-center shrink-0">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-                <path d="M8 2L14 13H2L8 2Z" fill="white" fillOpacity="0.9" />
-              </svg>
-            </div>
             <span className="text-[13px] font-semibold text-[#0a0a0a]">Atlantis Utility</span>
           </div>
           <div className="flex items-center gap-1">

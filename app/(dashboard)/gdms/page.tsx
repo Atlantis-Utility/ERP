@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Header from "@/components/layout/Header";
-import { RefreshCw, AlertCircle, Laptop } from "lucide-react";
+import { RefreshCw, AlertCircle, Laptop, Search } from "lucide-react";
 import type { GdmsDevice, GdmsDeviceStatus } from "@/lib/gdms";
 
 type ViewState = "loading" | "unconfigured" | "error" | "ok";
@@ -21,6 +21,7 @@ export default function GdmsPage() {
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     setState("loading");
@@ -58,10 +59,17 @@ export default function GdmsPage() {
     return ["all", "online", "offline", ...extra];
   }, [counts]);
 
-  const visible = useMemo(
-    () => (statusFilter === "all" ? devices : devices.filter((d) => d.status === statusFilter)),
-    [devices, statusFilter],
-  );
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return devices.filter((d) => {
+      const matchesStatus = statusFilter === "all" || d.status === statusFilter;
+      const matchesSearch =
+        !q ||
+        [d.name, d.mac, d.sn, d.model, d.siteName, d.publicIp, d.privateIp, d.firmwareVersion]
+          .some((f) => f?.toLowerCase().includes(q));
+      return matchesStatus && matchesSearch;
+    });
+  }, [devices, statusFilter, search]);
 
   // The pills follow the app's convention and carry no counts, so the headline
   // is where the online/offline split stays visible.
@@ -88,9 +96,21 @@ export default function GdmsPage() {
         }
       />
 
-      {/* Filters */}
+      {/* Search left, status filters right — stacked on phones, where the
+          search box's 240px floor would otherwise leave the pills too little
+          room and collapse them into a narrow vertical column. */}
       {state === "ok" && devices.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 mb-4">
+          <div className="relative w-full sm:flex-1 sm:min-w-60 sm:max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999]" />
+            <input
+              type="text"
+              placeholder="Search name, MAC, serial, model, site, IP…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full border border-[#eaeaea] rounded-lg pl-9 pr-3 py-2 text-sm text-[#0a0a0a] placeholder:text-[#999] focus:outline-none focus:border-[#0070f3] transition-colors"
+            />
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
             {filters.map((f) => (
               <button
@@ -156,16 +176,32 @@ export default function GdmsPage() {
 
         {state === "ok" && devices.length > 0 && visible.length === 0 && (
           <div className="py-20 text-center">
-            <p className="text-sm font-medium text-[#0a0a0a] mb-1">No {statusFilter} devices</p>
-            <p className="text-xs text-[#999]">
-              None of the {devices.length} enrolled devices are {statusFilter}.
-            </p>
+            {/* A search that matches nothing needs its own wording — the status
+                message reads as "No all devices" once a query is involved. */}
+            {search.trim() ? (
+              <>
+                <p className="text-sm font-medium text-[#0a0a0a] mb-1 px-4 wrap-break-word">No devices match “{search.trim()}”</p>
+                <p className="text-xs text-[#999]">
+                  Searched {devices.length} enrolled device{devices.length === 1 ? "" : "s"}
+                  {statusFilter !== "all" ? ` with status ${statusFilter}` : ""}.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-[#0a0a0a] mb-1">No {statusFilter} devices</p>
+                <p className="text-xs text-[#999]">
+                  None of the {devices.length} enrolled devices are {statusFilter}.
+                </p>
+              </>
+            )}
           </div>
         )}
 
         {state === "ok" && visible.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            {/* Without a floor the six columns squeeze to ~57px each on a
+                phone rather than letting the wrapper scroll. */}
+            <table className="w-full min-w-180">
               <thead>
                 <tr className="border-b border-[#eaeaea]">
                   <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Device</th>

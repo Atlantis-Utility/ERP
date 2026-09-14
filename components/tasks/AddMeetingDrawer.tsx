@@ -14,11 +14,13 @@ interface Props {
   onAdd: (card: KanbanCard) => void;
 }
 
+// Webex is intentionally absent — it stays in MeetingPlatform and in the badge
+// lookups so meetings already scheduled on it still render, it just isn't
+// offered for new ones.
 const PLATFORMS: { value: MeetingPlatform; label: string; color: string }[] = [
   { value: "zoom", label: "Zoom", color: "#2D8CFF" },
   { value: "meet", label: "Google Meet", color: "#34A853" },
   { value: "teams", label: "Microsoft Teams", color: "#6264A7" },
-  { value: "webex", label: "Cisco Webex", color: "#00BEF3" },
   { value: "in-person", label: "In Person", color: "#f5a524" },
 ];
 

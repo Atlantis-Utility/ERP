@@ -184,21 +184,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
         {/* Logo row */}
         <div className="h-14 flex items-center border-b border-[#eaeaea] shrink-0 px-4">
           {collapsed ? (
-            <div className="mx-auto w-7 h-7 rounded-lg bg-[#0a0a0a] flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M8 2L14 13H2L8 2Z" fill="white" fillOpacity="0.9" />
-              </svg>
-            </div>
+            // The full name doesn't fit the 64px rail, so it shortens to
+            // initials rather than falling back to the mark.
+            <p className="mx-auto text-base font-semibold text-[#0a0a0a] leading-none" title="Atlantis Utility">AU</p>
           ) : (
             <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-lg bg-[#0a0a0a] flex items-center justify-center shrink-0">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 2L14 13H2L8 2Z" fill="white" fillOpacity="0.9" />
-                  </svg>
-                </div>
-                <p className="text-base font-semibold text-[#0a0a0a] leading-none whitespace-nowrap">Atlantis Utility</p>
-              </div>
+              <p className="text-base font-semibold text-[#0a0a0a] leading-none whitespace-nowrap">Atlantis Utility</p>
               {/* Mobile close button */}
               <button
                 onClick={onMobileClose}
