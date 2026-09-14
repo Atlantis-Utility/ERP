@@ -22,7 +22,6 @@ import { upsertTicket, upsertManualTicket, type TicketStatus } from "@/lib/db/ti
 import type { Project } from "@/lib/mock-projects";
 import { useUnifiedTickets } from "@/lib/tickets/useUnifiedTickets";
 import { addNotification, isTicketUnread } from "@/lib/notifications";
-import { useAuth } from "@/lib/auth-context";
 import TaskDetailDrawer from "@/components/tasks/TaskDetailDrawer";
 import { PHASE_DEFS } from "@/components/projects/ProjectPhases";
 
@@ -323,14 +322,13 @@ const VIEW_CONFIG: Record<View, { label: string; icon: typeof LayoutGrid }> = {
 
 export default function TasksPage() {
   const TODAY = todayString();
-  const { authUser } = useAuth();
   const searchParams = useSearchParams();
   const router       = useRouter();
 
   const [cards, setCards]             = useState<KanbanCard[]>([]);
   const [projects, setProjects]       = useState<Project[]>([]);
   const { tickets } = useUnifiedTickets();
-  const { isMine, ownsProject } = useVisibility();
+  const { isMine, ownsProject, myName } = useVisibility();
   const notifiedDeadlines             = useRef<Set<string>>(new Set());
   const [view, setView]               = useState<View>("board");
   const [filter, setFilter]           = useState<Filter>("all");
@@ -524,7 +522,17 @@ export default function TasksPage() {
   const statsInProgress    = allCards.filter((c) => c.column === "in-progress").length;
   const statsMeetingsToday = todayMeetings.length;
 
-  const myName = authUser?.displayName ?? "";
+  // "My Tasks" compares against the employee-row name from useVisibility, not
+  // authUser.displayName. Assignees are stored as employees.name, while
+  // displayName prefers the Supabase user_metadata value — they coincide only
+  // while that metadata is unset, so keying off it meant the tab would quietly
+  // match nothing the moment anyone set a display name on their account.
+  //
+  // Deliberately not isMine(): that returns true for everything an
+  // administrator can see, which is the wrong answer for a "just mine" filter.
+  const assignedToMe = (c: KanbanCard) =>
+    myName !== "" &&
+    c.assignees.some((a) => a?.trim().toLowerCase() === myName.trim().toLowerCase());
 
   function matchesSearch(c: KanbanCard) {
     const q = search.toLowerCase();
@@ -544,7 +552,7 @@ export default function TasksPage() {
       filter === "meeting" ? c.type === "meeting" :
       filter === "project" ? c.type === "project" :
       filter === "high"    ? c.priority === "high" :
-      filter === "mine"    ? (myName !== "" && c.assignees.includes(myName)) :
+      filter === "mine"    ? assignedToMe(c) :
       true;
     return matchesType && matchesSearch(c);
   });

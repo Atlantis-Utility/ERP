@@ -49,9 +49,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Tracks whether we've completed at least one profile load for the current
   // session — see the silent-reload guard below.
   const initializedRef = useRef(false);
+  // The user id a profile load is currently running for, so the two startup
+  // triggers below can't both run one.
+  const inFlightRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // On startup getSession() and onAuthStateChange's INITIAL_SESSION both
+    // fire for the same user, and `initializedRef` is only set once a load
+    // *finishes* — so the second used to start before the first had resolved,
+    // duplicating every profile query and racing the user_profiles insert in
+    // loadProfileInner (one of the two then loses on the unique key).
+    // Collapse concurrent loads for the same user into the one already
+    // running; it would fetch exactly the same rows.
     async function loadProfile(user: User, silent: boolean) {
+      if (inFlightRef.current === user.id) return;
+      inFlightRef.current = user.id;
+      try {
+        await loadProfileInner(user, silent);
+      } finally {
+        inFlightRef.current = null;
+      }
+    }
+
+    async function loadProfileInner(user: User, silent: boolean) {
       // Keep loading true while we fetch the profile — prevents AuthGuard
       // from redirecting to /login during the async lookup. Skipped once
       // we already have a loaded session: see the call site below for why.
