@@ -33,6 +33,10 @@ export default function GlobalError({
           >
             Try again
           </button>
+          {/* A plain anchor, not <Link>: this is the error boundary, so a
+              client-side navigation would keep the broken React tree that got
+              us here. A full document load is the point. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a
             href="/"
             className="bg-[#0a0a0a] text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-[#333] transition-colors"

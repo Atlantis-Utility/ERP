@@ -614,7 +614,6 @@ export default function CampaignSheetPage() {
               onChange={(v) => applyFilters({ outcome: v })}
               placeholder="Any outcome"
               options={CALL_OUTCOME_OPTIONS}
-              className="py-1.5"
               clearable
             />
           </div>
@@ -624,7 +623,6 @@ export default function CampaignSheetPage() {
               onChange={(v) => applyFilters({ rep: v })}
               placeholder="Any rep"
               options={repOptions}
-              className="py-1.5"
               searchable
               clearable
             />
