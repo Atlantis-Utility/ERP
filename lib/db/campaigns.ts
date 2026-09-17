@@ -398,14 +398,41 @@ export interface LeadFacet {
   count: number;
 }
 
-/** Distinct values with counts, for the criteria pickers. */
+/**
+ * Distinct values with counts, for the criteria pickers and the Leads page's
+ * city filter.
+ *
+ * Case variants are merged, because everything that *matches* on these
+ * fields does so case-insensitively (leads_matches and
+ * campaign_selection_matches both compare lower() to lower()). The SQL
+ * groups by the stored text, so a bulk-imported "CONTRACTORS" and a
+ * hand-typed "Contractors" arrive as two entries, and picking either one
+ * returns the rows for both: the list showed the same value twice and each
+ * count was short by the other's. Merged here rather than in SQL so the
+ * function stays an honest report of what's stored.
+ *
+ * The label keeps the most common spelling, since that's the one that
+ * matches how the rest of the list reads.
+ */
 export async function fetchLeadFieldValues(field: LeadFacetField): Promise<LeadFacet[]> {
   const { data, error } = await withTimeout(supabase.rpc("leads_field_values", { p_field: field, p_limit: 300 }));
   if (error) throw error;
-  return ((data ?? []) as { value: string; n: number }[]).map((r) => ({
-    value: r.value,
-    count: Number(r.n),
-  }));
+
+  const merged = new Map<string, LeadFacet>();
+  for (const row of (data ?? []) as { value: string; n: number }[]) {
+    const key = row.value.toLowerCase();
+    const count = Number(row.n);
+    const seen = merged.get(key);
+    if (!seen) {
+      merged.set(key, { value: row.value, count });
+      continue;
+    }
+    merged.set(key, {
+      value: count > seen.count ? row.value : seen.value,
+      count: seen.count + count,
+    });
+  }
+  return [...merged.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
 /* ─── The sheet ─────────────────────────────────────────────────────────── */
