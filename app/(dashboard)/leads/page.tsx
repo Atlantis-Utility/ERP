@@ -24,6 +24,7 @@ import { useEmployees } from "@/lib/db/employees";
 import { useAuth } from "@/lib/auth-context";
 import { hasPageAccess } from "@/lib/nav-pages";
 import { useLeadsAccess } from "@/lib/leads-access";
+import { useIsOwner } from "@/lib/db/ownership";
 import {
   queryLeadsPage,
   queryLeadsBoard,
@@ -108,6 +109,7 @@ const SORT_LABELS: Record<LeadSortKey, string> = {
 export default function LeadsPage() {
   const employees = useEmployees();
   const access = useLeadsAccess();
+  const isOwner = useIsOwner();
   const { authUser } = useAuth();
   // Campaigns is a separate page grant, so the tab is only offered to
   // someone who could actually open a campaign. Without this the tab would
@@ -686,13 +688,19 @@ export default function LeadsPage() {
                   <Megaphone className="w-3.5 h-3.5" /> Add to campaign
                 </button>
               )}
-              <button
-                onClick={bulkDelete}
-                disabled={busy}
-                className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#f31260] px-3 py-1.5 rounded-lg hover:bg-[#fff0f3] transition-colors disabled:opacity-50"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Delete
-              </button>
+              {/* Deleting leads takes their notes and history with them, so
+                  it's the owner's to do rather than every administrator's.
+                  The policy in SQL decides; this keeps the action from being
+                  offered to someone it would refuse. */}
+              {isOwner && (
+                <button
+                  onClick={bulkDelete}
+                  disabled={busy}
+                  className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#f31260] px-3 py-1.5 rounded-lg hover:bg-[#fff0f3] transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+              )}
               <button onClick={clearSelection} className="text-xs text-[#666] hover:text-[#0a0a0a] underline">
                 Clear selection
               </button>
@@ -967,7 +975,7 @@ export default function LeadsPage() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {access.canDelete && (
+                            {access.canDelete && isOwner && (
                               <button
                                 onClick={() => deleteOne(l)}
                                 className="p-1.5 rounded-lg text-[#999] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"

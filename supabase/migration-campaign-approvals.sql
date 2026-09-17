@@ -464,23 +464,13 @@ begin
     return 'unchanged';
   end if;
 
-  -- An administrator is the reviewer, so their own edit needs no review.
-  if v_admin then
-    update leads
-       set data = data || jsonb_build_object(p_field, v_new, 'updatedAt', to_jsonb(now())),
-           updated_at = now()
-     where id = p_lead_id;
-
-    insert into lead_activity (lead_id, actor_id, actor_name, kind, summary, detail)
-    values (p_lead_id, v_actor, v_name, 'field',
-      format('%s changed on a campaign sheet', lead_field_label(p_field)),
-      jsonb_build_object('field', p_field, 'from', v_old, 'to', v_new, 'campaignId', p_campaign_id));
-
-    delete from lead_change_requests
-     where lead_id = p_lead_id and field = p_field and status = 'pending';
-    return 'applied';
-  end if;
-
+  -- Every edit is recorded, whoever made it, including an administrator's.
+  -- An earlier version wrote an administrator's straight through on the
+  -- grounds that they are the reviewer, which left the two things this
+  -- feature exists for missing from their own view: the row wasn't marked as
+  -- changed, and there was nothing to approve. A correction on a shared sheet
+  -- should be visible as a correction regardless of who typed it, and an
+  -- administrator clears their own with the same Approve all.
   insert into lead_change_requests (lead_id, campaign_id, field, old_value, new_value,
     requested_by, requested_by_name)
   values (p_lead_id, p_campaign_id, p_field, v_old, v_new, v_actor, v_name)
@@ -756,3 +746,149 @@ begin
     when undefined_object then null;
   end;
 end $$;
+
+-- ── 12. Deleting is the owner's call, not every administrator's ──────────
+--
+-- Deleting leads or a campaign destroys work: the lead's notes and history
+-- go with it, a campaign takes its whole sheet. That shouldn't be one
+-- mis-click away for anyone who happens to hold the Administrator role, so
+-- it's reserved for whoever owns the workspace.
+--
+-- Ownership is a flag on the employee record (data.isOwner), not a new
+-- access role, so nothing that already reads accessRole changes behaviour.
+-- Until somebody is marked, administrators keep the rights they have today,
+-- otherwise installing this migration would leave nobody able to delete.
+create or replace function erp_is_owner() returns boolean
+language sql stable security definer set search_path = public, auth
+as $$
+  select case
+    when exists (select 1 from employees e where e.data->>'isOwner' = 'true')
+      then exists (select 1 from employees e
+                    where e.id = (select erp_actor_employee_id())
+                      and e.data->>'isOwner' = 'true')
+    else (select erp_is_admin())
+  end;
+$$;
+
+drop policy if exists "admin can delete" on leads;
+drop policy if exists "owner can delete" on leads;
+create policy "owner can delete" on leads
+  for delete using ((select erp_is_owner()));
+
+drop policy if exists "admin can delete campaigns" on campaigns;
+drop policy if exists "owner can delete campaigns" on campaigns;
+create policy "owner can delete campaigns" on campaigns
+  for delete using ((select erp_is_owner()));
+
+-- ── 13. Who a campaign is assigned to ───────────────────────────────────
+--
+-- Handing a campaign to someone is how the calling gets delegated, so the
+-- sheet should say so rather than showing "Unassigned" on every row while
+-- that person works it.
+--
+-- Only when there is exactly one editor: with two, "assigned to" has no
+-- single answer, and picking one would be worse than leaving it blank. Rows
+-- that already name someone are left alone, because that was a decision made
+-- per row and a grant shouldn't overwrite it.
+create or replace function campaign_fill_assigned_rep(p_campaign_id uuid)
+returns bigint
+language plpgsql security definer set search_path = public, auth
+as $$
+declare
+  v_editor  text;
+  v_name    text;
+  v_editors int;
+  v_count   bigint;
+begin
+  select count(*), min(g.employee_id) into v_editors, v_editor
+    from campaign_grants g
+   where g.campaign_id = p_campaign_id and g.level = 'editor';
+
+  if v_editors <> 1 or v_editor is null then
+    return 0;
+  end if;
+
+  select e.data->>'name' into v_name from employees e where e.id = v_editor;
+
+  -- Announces itself to campaign_leads_guard_rep below: this is the handover
+  -- filling in blank rows, not somebody reassigning work.
+  perform set_config('erp.filling_reps', 'on', true);
+
+  with filled as (
+    update campaign_leads cl
+       set assigned_rep = v_editor,
+           assigned_rep_name = v_name
+     where cl.campaign_id = p_campaign_id
+       and cl.assigned_rep is null
+    returning 1
+  )
+  select count(*) into v_count from filled;
+  perform set_config('erp.filling_reps', 'off', true);
+  return v_count;
+end;
+$$;
+
+create or replace function campaign_grants_fill_rep() returns trigger
+language plpgsql security definer set search_path = public, auth
+as $$
+begin
+  perform campaign_fill_assigned_rep(new.campaign_id);
+  return null;
+end;
+$$;
+
+drop trigger if exists campaign_grants_fill_rep_trg on campaign_grants;
+create trigger campaign_grants_fill_rep_trg
+  after insert or update of level, employee_id on campaign_grants
+  for each row execute function campaign_grants_fill_rep();
+
+-- Leads added after the campaign was handed over get the same treatment.
+-- Per statement, not per row: adding 10,000 leads would otherwise run the
+-- whole-campaign update ten thousand times.
+create or replace function campaign_leads_fill_rep() returns trigger
+language plpgsql security definer set search_path = public, auth
+as $$
+declare
+  r record;
+begin
+  for r in select distinct campaign_id from inserted loop
+    perform campaign_fill_assigned_rep(r.campaign_id);
+  end loop;
+  return null;
+end;
+$$;
+
+drop trigger if exists campaign_leads_fill_rep_trg on campaign_leads;
+create trigger campaign_leads_fill_rep_trg
+  after insert on campaign_leads
+  referencing new table as inserted
+  for each statement execute function campaign_leads_fill_rep();
+
+-- ── 14. Reassignment stays with administrators ──────────────────────────
+--
+-- Who works a row is a management decision, so someone filling in the sheet
+-- can't hand rows to another rep, or to themselves. The same rule leads
+-- already have (see leads_guard_reassign in migration-record-access.sql),
+-- applied to the campaign sheet's Assigned Rep column, because otherwise the
+-- sheet was a way around it.
+--
+-- The exception is campaign_fill_assigned_rep above, which fills blank rows
+-- when a campaign is handed to a single editor. It sets erp.filling_reps for
+-- the transaction so this can tell the two apart.
+create or replace function campaign_leads_guard_rep() returns trigger
+language plpgsql security definer set search_path = public, auth
+as $$
+begin
+  if coalesce(new.assigned_rep, '') <> coalesce(old.assigned_rep, '')
+     and coalesce(current_setting('erp.filling_reps', true), 'off') <> 'on'
+     and not erp_is_admin() then
+    raise exception 'Only an administrator can change who a row is assigned to';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists campaign_leads_guard_rep_trg on campaign_leads;
+create trigger campaign_leads_guard_rep_trg
+  before update on campaign_leads
+  for each row execute function campaign_leads_guard_rep();

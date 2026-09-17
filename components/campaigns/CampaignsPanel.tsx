@@ -9,6 +9,7 @@ import { useCampaigns, deleteCampaign, updateCampaign, type Campaign, type Campa
 import { CAMPAIGN_STATUS_OPTIONS, CAMPAIGN_STATUS_STYLES, calledPercent } from "@/lib/campaign-constants";
 import Select from "@/components/ui/Select";
 import { getErrorMessage } from "@/lib/utils";
+import { useIsOwner } from "@/lib/db/ownership";
 
 /**
  * The Campaigns tab: every campaign the user can see, with progress, and the
@@ -23,6 +24,7 @@ export default function CampaignsPanel({
   actor: { id: string; name: string } | null;
 }) {
   const { campaigns, loading, error: loadError } = useCampaigns();
+  const isOwner = useIsOwner();
   const [showCreate, setShowCreate] = useState(false);
   const [accessFor, setAccessFor] = useState<Campaign | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -111,87 +113,110 @@ export default function CampaignsPanel({
             const percent = calledPercent(c.calledCount, c.leadCount);
             const busy = busyId === c.id;
             return (
-              <li key={c.id} className="group flex items-center gap-4 px-5 py-4 hover:bg-[#fafafa] transition-colors">
-                <Link href={`/leads/campaigns/${c.id}`} className="min-w-0 flex-1">
+              <li
+                key={c.id}
+                className="group relative flex items-center gap-3 px-5 py-4 transition-colors hover:bg-[#fafafa]"
+              >
+                {/* The row is the target, so the whole of it is clickable
+                    rather than just the title. The link sits underneath as a
+                    full-bleed overlay and the text above it ignores pointer
+                    events, which leaves the controls on the right clickable
+                    without nesting anything inside a link. */}
+                <Link href={`/leads/campaigns/${c.id}`} className="absolute inset-0" aria-label={`Open ${c.name}`} />
+
+                <div className="relative min-w-0 flex-1 pointer-events-none">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-[#0a0a0a] truncate group-hover:text-[#0070f3] transition-colors">
-                      {c.name}
-                    </p>
+                    <p className="text-[13px] font-medium text-[#0a0a0a] truncate">{c.name}</p>
                     <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${CAMPAIGN_STATUS_STYLES[c.status]}`}
+                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${CAMPAIGN_STATUS_STYLES[c.status]}`}
                     >
-                      {c.status.toUpperCase()}
+                      {c.status}
                     </span>
-                    {/* A viewer should know before they open it that they
-                        can't fill anything in. */}
+                    {/* Worth knowing before opening it that you can't fill
+                        anything in. Only shown when it isn't obvious: an
+                        administrator's own level says nothing useful. */}
                     {c.myLevel === "viewer" && (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold text-[#999] shrink-0">
-                        <Eye className="w-2.5 h-2.5" /> READ-ONLY
+                      <span className="flex items-center gap-1 text-[10px] text-[#999] shrink-0">
+                        <Eye className="w-2.5 h-2.5" /> read-only
                       </span>
                     )}
                     {c.myLevel === "editor" && (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold text-[#999] shrink-0">
-                        <Pencil className="w-2.5 h-2.5" /> CAN EDIT
+                      <span className="flex items-center gap-1 text-[10px] text-[#999] shrink-0">
+                        <Pencil className="w-2.5 h-2.5" /> can edit
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-[#999] mt-1 truncate">
-                    {[
-                      `${c.leadCount.toLocaleString()} lead${c.leadCount !== 1 ? "s" : ""}`,
-                      c.leadCount > 0 && `${c.calledCount.toLocaleString()} called (${percent}%)`,
-                      c.description,
-                      c.createdByName && `by ${c.createdByName}`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                  {/* Progress as a hairline rather than a chart: it's a
-                      glance, not a report. */}
-                  {c.leadCount > 0 && (
-                    <div className="h-0.5 bg-[#f0f0f0] rounded-full mt-2 max-w-64 overflow-hidden">
-                      <div
-                        className="h-full bg-[#0a0a0a] rounded-full transition-all"
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                  )}
-                </Link>
 
-                {isAdmin && (
-                  <>
-                    <div className="w-28 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                      <Select
-                        value={c.status}
-                        onChange={(v) => setStatus(c, v as CampaignStatus)}
-                        options={CAMPAIGN_STATUS_OPTIONS}
-                        disabled={busy}
-                      />
-                    </div>
-                    <button
-                      onClick={() => setAccessFor(c)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-[#666] hover:text-[#0a0a0a] px-2 py-1.5 rounded-md hover:bg-[#f5f5f5] transition-colors shrink-0"
-                      title="Manage who works this campaign"
-                    >
-                      <Users className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Access</span>
-                    </button>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <p className="text-[11px] text-[#999] tabular-nums shrink-0">
+                      {c.leadCount.toLocaleString()} lead{c.leadCount !== 1 ? "s" : ""}
+                    </p>
+                    {c.leadCount > 0 && (
+                      <>
+                        <span className="text-[#e5e5e5]">·</span>
+                        {/* Progress reads as one thing: the bar and the number
+                            together, rather than a bar on its own line. */}
+                        <div className="h-1 w-24 bg-[#f0f0f0] rounded-full overflow-hidden shrink-0">
+                          <div
+                            className="h-full bg-[#0a0a0a] rounded-full transition-all"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                        <p className="text-[11px] text-[#999] tabular-nums shrink-0">
+                          {c.calledCount.toLocaleString()} called
+                        </p>
+                      </>
+                    )}
+                    {c.createdByName && (
+                      <>
+                        <span className="text-[#e5e5e5]">·</span>
+                        <p className="text-[11px] text-[#bbb] truncate">{c.createdByName}</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Muted until the row is hovered, rather than appearing from
+                    nothing: the row keeps its shape and the controls are
+                    still discoverable. */}
+                <div className="relative flex items-center gap-1 shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                  {isAdmin && (
+                    <>
+                      <div className="w-24">
+                        <Select
+                          value={c.status}
+                          onChange={(v) => setStatus(c, v as CampaignStatus)}
+                          options={CAMPAIGN_STATUS_OPTIONS}
+                          disabled={busy}
+                        />
+                      </div>
+                      <button
+                        onClick={() => setAccessFor(c)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-[#666] hover:text-[#0a0a0a] px-2.5 py-2 rounded-md hover:bg-[#f0f0f0] transition-colors"
+                        title="Manage who works this campaign"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Access</span>
+                      </button>
+                    </>
+                  )}
+                  {/* Deleting a campaign takes its whole sheet with it, so it
+                      is the owner's to do, not every administrator's. The
+                      policy in SQL is what actually decides; this only keeps
+                      the button from being offered to someone it would
+                      refuse. */}
+                  {isOwner && (
                     <button
                       onClick={() => remove(c)}
                       disabled={busy}
-                      className="p-1.5 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fef2f2] transition-colors shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
+                      className="p-2 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fef2f2] transition-colors disabled:opacity-50"
                       title={`Delete ${c.name}`}
                     >
                       {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                     </button>
-                  </>
-                )}
-                <Link
-                  href={`/leads/campaigns/${c.id}`}
-                  className="p-1.5 rounded-md text-[#ccc] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] transition-colors shrink-0"
-                  aria-label={`Open ${c.name}`}
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Link>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-[#ddd] group-hover:text-[#999] transition-colors" />
+                </div>
               </li>
             );
           })}

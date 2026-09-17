@@ -13,6 +13,7 @@ import type { TicketStatus, TicketPriority, TicketMeta, ManualTicket, TicketSour
 import { logActivity } from "@/lib/activity-log";
 import { isTicketUnread, markLegacyTicketNotificationsRead } from "@/lib/notifications";
 import type { Employee } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
 
 interface EmailTicket {
   id: string;
@@ -357,6 +358,7 @@ function writeCache(data: { tickets: EmailTicket[]; total: number; nextPageToken
 
 export default function TicketsPage() {
   const router = useRouter();
+  const { authUser } = useAuth();
   const [emailTickets, setEmailTickets]   = useState<EmailTicket[]>([]);
   const [manualTickets, setManualTickets] = useState<ManualTicket[]>([]);
   const [emailTotal, setEmailTotal]       = useState<number | null>(null);
@@ -503,23 +505,42 @@ export default function TicketsPage() {
     );
   }, [emailTickets, manualTickets, metaMap]);
 
+  /**
+   * Scoped to the reader: an administrator sees the whole queue, everyone
+   * else sees the tickets assigned to them.
+   *
+   * This is the list the counts and the filters both work from, so a member
+   * doesn't see "312 open" above three rows.
+   *
+   * Scoping, not enforcement: tickets are a Microsoft mailbox read through
+   * /api/tickets, not rows behind RLS like leads and tasks, so that route
+   * still returns the mailbox to anyone signed in. Worth closing if the
+   * assignment is meant to be a boundary rather than a view.
+   */
+  const visible = useMemo(() => {
+    if (authUser?.isUnrestricted) return unified;
+    const mine = authUser?.accessEmployeeId;
+    if (!mine) return [];
+    return unified.filter((t) => t.assigneeId === mine);
+  }, [unified, authUser?.isUnrestricted, authUser?.accessEmployeeId]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return unified.filter((t) => {
+    return visible.filter((t) => {
       if (q && !t.subject.toLowerCase().includes(q) && !t.from.toLowerCase().includes(q) && !t.fromName.toLowerCase().includes(q)) return false;
       if (statusFilter !== "all" && t.status !== statusFilter) return false;
       if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
       return true;
     });
-  }, [unified, search, statusFilter, priorityFilter]);
+  }, [visible, search, statusFilter, priorityFilter]);
 
   const kpis = useMemo(() => ({
-    total:      unified.length,
-    open:       unified.filter((t) => t.status === "open").length,
-    inProgress: unified.filter((t) => t.status === "in-progress").length,
-    resolved:   unified.filter((t) => t.status === "resolved").length,
-    unassigned: unified.filter((t) => !t.assigneeId).length,
-  }), [unified]);
+    total:      visible.length,
+    open:       visible.filter((t) => t.status === "open").length,
+    inProgress: visible.filter((t) => t.status === "in-progress").length,
+    resolved:   visible.filter((t) => t.status === "resolved").length,
+    unassigned: visible.filter((t) => !t.assigneeId).length,
+  }), [visible]);
 
   // Offer the "how did we do" feedback email rather than sending it silently.
   // Only on an actual transition into closed — re-saving an already-closed

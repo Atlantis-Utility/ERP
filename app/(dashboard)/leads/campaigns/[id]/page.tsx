@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -67,7 +67,6 @@ const PAGE_SIZE = 100;
 // same height with a hairline border and no rounded corners: the editable
 // ones only differ by being focusable.
 const CELL = "border-r border-b border-[#f0f0f0] px-2 h-9 align-middle";
-const READ_CELL = `${CELL} text-[12px] text-[#666] whitespace-nowrap truncate`;
 
 /**
  * Every column's width in pixels, in the order they appear.
@@ -95,7 +94,6 @@ const COL = {
   phone: 140,
   email: 184,
   category: 168,
-  source: 128,
   callDate: 148,
   attempts: 76,
   outcome: 180,
@@ -122,7 +120,6 @@ function sheetColumnWidths(canEdit: boolean): number[] {
     COL.phone,
     COL.email,
     COL.category,
-    COL.source,
     COL.callDate,
     COL.attempts,
     COL.outcome,
@@ -306,6 +303,19 @@ export default function CampaignSheetPage() {
     [actor],
   );
 
+  // A queued correction changes the pending count the Review button reads,
+  // and that count comes from the server. Refetched on a short delay rather
+  // than per cell, so typing across a row is one refresh at the end of it.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => setRevision((r) => r + 1), 1500);
+  }, []);
+
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+  }, []);
+
   /**
    * What a lead-fact cell should show, and whether it's waiting on a review.
    *
@@ -353,13 +363,14 @@ export default function CampaignSheetPage() {
         );
         if (outcome === "pending") {
           setNotice(`${LEAD_FIELD_LABELS[field]} change sent for review.`);
+          scheduleRefresh();
         }
       } catch (err) {
         setSaveState((prev) => ({ ...prev, [row.rowId]: "error" }));
         setError(changesError(err, "Couldn't send that correction"));
       }
     },
-    [campaignId, factCell],
+    [campaignId, factCell, scheduleRefresh],
   );
 
   /**
@@ -649,7 +660,10 @@ export default function CampaignSheetPage() {
       <div className="bg-white border border-[#eaeaea] rounded-xl">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-[#eaeaea]">
-          <div className="relative flex-1 min-w-48 max-w-xs">
+          {/* Search anchored left, filters anchored right, with the spacer
+              between them doing the pushing: a filter bar that drifts with
+              the width of whatever is beside it is hard to aim at. */}
+          <div className="relative w-full sm:w-72 shrink-0">
             <Search className="w-3.5 h-3.5 text-[#bbb] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -659,6 +673,21 @@ export default function CampaignSheetPage() {
               className="text-sm border border-[#eaeaea] rounded-md pl-9 pr-3 py-1.5 w-full outline-none focus:border-[#0070f3] transition-colors"
             />
           </div>
+
+          {/* Acting on a selection, so it belongs with the search rather than
+              in among the filters, which stay put. */}
+          {canEdit && selected.size > 0 && (
+            <button
+              onClick={deleteSelected}
+              disabled={busy}
+              className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#f31260] px-3 py-1.5 rounded-md hover:bg-[#fff0f3] transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Remove {selected.size}
+            </button>
+          )}
+
+          <div className="flex-1" />
+
           <button
             onClick={() => applyFilters({ uncalled: !filters.uncalled })}
             className={`text-xs font-medium px-3 py-1.5 rounded-md border transition-colors ${
@@ -699,16 +728,6 @@ export default function CampaignSheetPage() {
             />
           </div>
           {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#999]" />}
-          <div className="flex-1" />
-          {canEdit && selected.size > 0 && (
-            <button
-              onClick={deleteSelected}
-              disabled={busy}
-              className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#f31260] px-3 py-1.5 rounded-md hover:bg-[#fff0f3] transition-colors disabled:opacity-50"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Remove {selected.size}
-            </button>
-          )}
         </div>
 
         {loading && !result && (
@@ -775,7 +794,6 @@ export default function CampaignSheetPage() {
                     "Phone",
                     "Email",
                     "Category",
-                    "Source",
                     "Call Date",
                     "Attempts",
                     "Call Outcome",
@@ -925,7 +943,6 @@ export default function CampaignSheetPage() {
                         ) : null,
                       )}
                       {factTd(row, "category")}
-                      <td className={READ_CELL}>{row.source ?? ""}</td>
 
                       {/* Call results: the editable half of the sheet. The
                           pickers are the app's own, floating out of the
@@ -1065,7 +1082,11 @@ export default function CampaignSheetPage() {
                           floating
                           searchable
                           clearable
-                          disabled={!canEdit}
+                          // Who works a row is a management decision, not part
+                          // of filling the sheet in. Enforced by
+                          // campaign_leads_guard_rep, this only stops the
+                          // control being offered to someone it would refuse.
+                          disabled={!isAdmin}
                         />
                       </td>
                       <td className={`${CELL} text-center`}>

@@ -163,7 +163,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         employeeAccessRole: employeeExtra?.accessRole ?? null,
         accessEmployeeId,
         isUnrestricted:     unrestricted,
-        access:             unrestricted ? undefined : (employeeExtra?.access ?? []),
+        // Page grants apply to administrators too: being an administrator
+        // decides what *records* you can see, not which pages exist for you,
+        // and an admin who was never given the GDMS page has no business
+        // seeing it in the sidebar.
+        //
+        // `undefined` means unrestricted and is kept for the case of an
+        // employee row with no access key at all: a brand-new administrator
+        // would otherwise land on a shell with nothing in it, including the
+        // Employees page they'd need to grant themselves anything. Anyone
+        // non-admin still defaults to [], i.e. nothing until granted.
+        access:             employeeExtra?.access ?? (unrestricted ? undefined : []),
       });
       setLoading(false);
     }
@@ -235,7 +245,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // Promoting someone to Administrator mid-session has to lift the
               // restriction, not pin them to a stale page list.
               isUnrestricted:     row.data?.accessRole === "Administrator",
-              access:             row.data?.accessRole === "Administrator" ? undefined : (row.data?.access ?? []),
+              // Same rule as the initial load above: the grant list wins for
+              // everyone, and only its absence means unrestricted.
+              access:
+                row.data?.access ?? (row.data?.accessRole === "Administrator" ? undefined : []),
               employeeRole:       row.data?.role ?? prev.employeeRole,
               employeeAccessRole: row.data?.accessRole ?? prev.employeeAccessRole,
             } : prev
