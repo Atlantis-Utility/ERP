@@ -1,13 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  X, FileSpreadsheet, UploadCloud, AlertCircle, Loader2, CheckCircle2,
-} from "lucide-react";
+import { X, FileSpreadsheet, UploadCloud, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import Select from "@/components/ui/Select";
 import { parseCsv, guessColumnMapping } from "@/lib/csv";
-import { addLeads, type Lead } from "@/lib/db/leads";
-import { buildCompanyIndex, findExistingMatch, computeMerge, applyResolutions, type MergeResult } from "@/lib/leads-merge";
+import { addLeads, fetchDedupeIndex, fetchLeadsByIds, type Lead } from "@/lib/db/leads";
+import type { ActivityActor } from "@/lib/db/lead-activity";
+import { getErrorMessage } from "@/lib/utils";
+import {
+  buildCompanyIndex,
+  findExistingMatch,
+  computeMerge,
+  applyResolutions,
+  type MergeResult,
+} from "@/lib/leads-merge";
 
 type Step = "upload" | "map" | "review" | "conflicts";
 type Resolution = "existing" | "new";
@@ -17,8 +23,12 @@ interface ParsedRow {
   companyName: string;
   dba: string;
   businessType: string;
+  description: string;
   fullName: string;
   title: string;
+  phone: string;
+  email: string;
+  companySize: string;
   website: string;
   street: string;
   city: string;
@@ -35,8 +45,14 @@ const MAPPING_FIELDS: { key: string; label: string; required: boolean }[] = [
   { key: "companyName", label: "Company Name", required: true },
   { key: "dba", label: "DBA", required: false },
   { key: "businessType", label: "Business Type", required: false },
-  { key: "fullName", label: "Full Name", required: false },
+  { key: "description", label: "Description", required: false },
+  { key: "fullName", label: "Contact Name", required: false },
   { key: "title", label: "Title / Designation", required: false },
+  // Phone and email were missing here entirely, so a file that carried them
+  // had no column to map them to and the values were dropped on import.
+  { key: "phone", label: "Phone", required: false },
+  { key: "email", label: "Email", required: false },
+  { key: "companySize", label: "Company Size", required: false },
   { key: "website", label: "Website", required: false },
   { key: "street", label: "Street", required: false },
   { key: "city", label: "City", required: false },
@@ -53,7 +69,23 @@ function rowLocation(r: ParsedRow): string {
   return structured || r.location;
 }
 
-export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads }: { onClose: () => void; onImported: () => void; existingLeads: Lead[] }) {
+export default function ImportLeadsCsvModal({
+  onClose,
+  onImported,
+  actor,
+  submitLabel,
+}: {
+  onClose: () => void;
+  /**
+   * How many leads were written, and which ones, the ids let a caller do
+   * something with exactly this import (a campaign built from a file adds
+   * them to its sheet).
+   */
+  onImported: (count: number, leadIds: string[]) => void;
+  actor: ActivityActor | null;
+  /** Wording for the confirm button when the import feeds something else. */
+  submitLabel?: string;
+}) {
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState<string[]>([]);
@@ -63,6 +95,9 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
 
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [importing, setImporting] = useState(false);
+  const [matching, setMatching] = useState(false);
+  const [skippedDuplicates, setSkippedDuplicates] = useState(0);
+  const [progress, setProgress] = useState<{ written: number; total: number } | null>(null);
   const [importError, setImportError] = useState("");
 
   const [mergeResults, setMergeResults] = useState<MergeResult[]>([]);
@@ -96,24 +131,30 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
       return i >= 0 ? (r[i] ?? "").trim() : "";
     };
 
-    const built: ParsedRow[] = rawRows.map((r, i) => ({
-      id: `row-${i}-${Date.now()}`,
-      companyName: get(r, "companyName"),
-      dba: get(r, "dba"),
-      businessType: get(r, "businessType"),
-      fullName: get(r, "fullName"),
-      title: get(r, "title"),
-      website: get(r, "website"),
-      street: get(r, "street"),
-      city: get(r, "city"),
-      state: get(r, "state"),
-      zip: get(r, "zip"),
-      location: get(r, "location"),
-      linkedinUrl: get(r, "linkedinUrl"),
-      instagramUrl: get(r, "instagramUrl"),
-      facebookUrl: get(r, "facebookUrl"),
-      included: true,
-    })).filter((r) => r.companyName);
+    const built: ParsedRow[] = rawRows
+      .map((r, i) => ({
+        id: `row-${i}-${Date.now()}`,
+        companyName: get(r, "companyName"),
+        dba: get(r, "dba"),
+        businessType: get(r, "businessType"),
+        description: get(r, "description"),
+        fullName: get(r, "fullName"),
+        title: get(r, "title"),
+        phone: get(r, "phone"),
+        email: get(r, "email"),
+        companySize: get(r, "companySize"),
+        website: get(r, "website"),
+        street: get(r, "street"),
+        city: get(r, "city"),
+        state: get(r, "state"),
+        zip: get(r, "zip"),
+        location: get(r, "location"),
+        linkedinUrl: get(r, "linkedinUrl"),
+        instagramUrl: get(r, "instagramUrl"),
+        facebookUrl: get(r, "facebookUrl"),
+        included: true,
+      }))
+      .filter((r) => r.companyName);
 
     setRows(built);
     setStep("review");
@@ -121,40 +162,56 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
 
   function buildCandidateLeads(): Lead[] {
     const now = new Date().toISOString();
-    return rows.filter((r) => r.included).map((r) => ({
-      id: `lead-${crypto.randomUUID()}`,
-      companyName: r.companyName,
-      dba: r.dba || undefined,
-      businessType: r.businessType || undefined,
-      pocName: r.fullName || undefined,
-      pocTitle: r.title || undefined,
-      website: r.website || undefined,
-      street: r.street || undefined,
-      city: r.city || undefined,
-      state: r.state || undefined,
-      zip: r.zip || undefined,
-      location: r.location || undefined,
-      linkedinUrl: r.linkedinUrl || undefined,
-      instagramUrl: r.instagramUrl || undefined,
-      facebookUrl: r.facebookUrl || undefined,
-      source: "linkedin_csv",
-      status: "new",
-      createdAt: now,
-      updatedAt: now,
-    }));
+    return rows
+      .filter((r) => r.included)
+      .map((r) => ({
+        id: `lead-${crypto.randomUUID()}`,
+        companyName: r.companyName,
+        dba: r.dba || undefined,
+        businessType: r.businessType || undefined,
+        description: r.description || undefined,
+        pocName: r.fullName || undefined,
+        pocTitle: r.title || undefined,
+        phone: r.phone || undefined,
+        email: r.email || undefined,
+        companySize: r.companySize || undefined,
+        website: r.website || undefined,
+        street: r.street || undefined,
+        city: r.city || undefined,
+        state: r.state || undefined,
+        zip: r.zip || undefined,
+        location: r.location || undefined,
+        linkedinUrl: r.linkedinUrl || undefined,
+        instagramUrl: r.instagramUrl || undefined,
+        facebookUrl: r.facebookUrl || undefined,
+        source: "linkedin_csv",
+        status: "new",
+        createdAt: now,
+        updatedAt: now,
+      }));
   }
 
   async function commitImport(leads: Lead[]) {
     setImporting(true);
     setImportError("");
+    setProgress(null);
     try {
-      await addLeads(leads);
-      onImported();
+      // A ten-thousand-row import takes a while and goes up in chunks, so
+      // report how far it's got rather than showing a spinner for a minute.
+      await addLeads(leads, actor, (written, total) => setProgress(total > 500 ? { written, total } : null));
+      onImported(
+        leads.length,
+        leads.map((l) => l.id),
+      );
       onClose();
     } catch (e) {
-      setImportError(e instanceof Error ? e.message : "Failed to import leads");
+      // Imported leads have no owner, and only an administrator may create an
+      // unowned lead, so a permission error here is a real, explainable
+      // outcome rather than an unexpected failure.
+      setImportError(getErrorMessage(e, "Failed to import leads"));
     } finally {
       setImporting(false);
+      setProgress(null);
     }
   }
 
@@ -164,31 +221,81 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
   // immediately, no prompt needed. Only genuine conflicts (a field set to
   // different values on both sides) stop short of writing and go to the
   // conflict-resolution step instead.
-  function handleImportClick() {
+  // Dedupe runs against the live table, in two passes, so this works the
+  // same whether there are 200 leads on file or 20,000:
+  //   1. pull a slim index (id + company + contact name only) and find which
+  //      incoming rows collide with something already there;
+  //   2. fetch just those colliding leads in full, which is what the
+  //      field-level merge actually needs.
+  // Matching against a full client-side copy of the table (the old approach)   // both moved megabytes and, once the page stopped syncing every lead, would
+  // have silently compared against only the rows that happened to be loaded
+  // and re-imported everything else as a duplicate.
+  async function handleImportClick() {
     setImportError("");
-    const candidates = buildCandidateLeads();
-    const index = buildCompanyIndex(existingLeads);
-    const results = candidates.map((c) => computeMerge(findExistingMatch(index, c.companyName, c.pocName), c));
-    const withConflicts = results.filter((r) => r.conflicts.length > 0);
+    setMatching(true);
+    try {
+      const candidates = buildCandidateLeads();
+      const index = buildCompanyIndex(await fetchDedupeIndex());
 
-    if (withConflicts.length === 0) {
-      commitImport(results.map((r) => r.base));
-      return;
-    }
+      // First row to match a given lead claims it. Two rows matching the same
+      // lead can't both be imported: they'd share a target id, which makes the
+      // upsert hit the same row twice ("ON CONFLICT DO UPDATE command cannot
+      // affect row a second time") and collapses their resolutions into one.
+      // The later rows are duplicates within the file, and are reported
+      // rather than silently dropped.
+      const matchedIds = new Map<string, string>(); // candidate id → existing lead id
+      const claimed = new Set<string>();
+      const duplicateKeys = new Set<string>();
+      for (const c of candidates) {
+        const hit = findExistingMatch(index, c.companyName, c.pocName);
+        if (!hit) continue;
+        if (claimed.has(hit.id)) {
+          duplicateKeys.add(c.id);
+          continue;
+        }
+        claimed.add(hit.id);
+        matchedIds.set(c.id, hit.id);
+      }
+      setSkippedDuplicates(duplicateKeys.size);
 
-    setMergeResults(results);
-    const initial: Record<string, Record<string, Resolution>> = {};
-    for (const r of withConflicts) {
-      initial[r.id] = Object.fromEntries(r.conflicts.map((c) => [c.key, "existing" as Resolution]));
+      const existingById = new Map((await fetchLeadsByIds([...new Set(matchedIds.values())])).map((l) => [l.id, l]));
+
+      const results = candidates
+        .filter((c) => !duplicateKeys.has(c.id))
+        .map((c) => {
+          const existingId = matchedIds.get(c.id);
+          return computeMerge(existingId ? existingById.get(existingId) : undefined, c);
+        });
+      const withConflicts = results.filter((r) => r.conflicts.length > 0);
+
+      if (withConflicts.length === 0) {
+        commitImport(results.map((r) => r.base));
+        return;
+      }
+
+      setMergeResults(results);
+      const initial: Record<string, Record<string, Resolution>> = {};
+      for (const r of withConflicts) {
+        initial[r.key] = Object.fromEntries(r.conflicts.map((c) => [c.key, "existing" as Resolution]));
+      }
+      setResolutions(initial);
+      setStep("conflicts");
+    } catch (e) {
+      setImportError(getErrorMessage(e, "Failed to check for duplicates"));
+    } finally {
+      setMatching(false);
     }
-    setResolutions(initial);
-    setStep("conflicts");
   }
 
   function setFieldResolution(resultId: string, field: string, choice: Resolution) {
     setResolutions((prev) => ({ ...prev, [resultId]: { ...prev[resultId], [field]: choice } }));
   }
 
+  // "Keep existing" only decides the *conflicts* listed here. Fields the
+  // existing lead had nothing in were already filled from the file by
+  // computeMerge, which is why there's no third "fill blanks" mode, that
+  // part isn't optional, and offering it as a choice would imply the
+  // alternative is to leave good data on the floor.
   function setAllResolutions(choice: Resolution) {
     setResolutions((prev) => {
       const next: Record<string, Record<string, Resolution>> = {};
@@ -200,7 +307,9 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
   }
 
   function applyResolutionsAndImport() {
-    const finalLeads = mergeResults.map((r) => (r.conflicts.length > 0 ? applyResolutions(r, resolutions[r.id] ?? {}) : r.base));
+    const finalLeads = mergeResults.map((r) =>
+      r.conflicts.length > 0 ? applyResolutions(r, resolutions[r.key] ?? {}) : r.base,
+    );
     commitImport(finalLeads);
   }
 
@@ -224,9 +333,8 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
           {step === "upload" && (
             <div>
               <p className="text-xs text-[#666] mb-4">
-                Export a saved lead list from Sales Navigator to CSV, then upload it here.
-                Whatever the export gives you (company, contact, address, socials) gets mapped
-                straight in, fill in anything else by hand afterward.
+                Export a saved lead list from Sales Navigator to CSV, then upload it here. Whatever the export gives you
+                (company, contact, address, socials) gets mapped straight in, fill in anything else by hand afterward.
               </p>
               <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[#eaeaea] rounded-xl p-10 cursor-pointer hover:border-[#0070f3] hover:bg-[#fafafa] transition-colors">
                 <UploadCloud className="w-6 h-6 text-[#999]" />
@@ -236,7 +344,10 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
                   type="file"
                   accept=".csv,text/csv"
                   className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFile(f);
+                  }}
                 />
               </label>
               {parseError && (
@@ -250,14 +361,15 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
           {step === "map" && (
             <div>
               <p className="text-xs text-[#666] mb-4">
-                <span className="font-medium text-[#0a0a0a]">{fileName}</span>: {rawRows.length} row{rawRows.length !== 1 ? "s" : ""} found.
-                Match each field below to a column from your file.
+                <span className="font-medium text-[#0a0a0a]">{fileName}</span>: {rawRows.length} row
+                {rawRows.length !== 1 ? "s" : ""} found. Match each field below to a column from your file.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {MAPPING_FIELDS.map((f) => (
                   <div key={f.key} className="flex flex-col gap-1">
                     <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">
-                      {f.label}{f.required && " *"}
+                      {f.label}
+                      {f.required && " *"}
                     </label>
                     <Select
                       value={mapping[f.key] ?? ""}
@@ -284,9 +396,15 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
                     <thead>
                       <tr className="border-b border-[#eaeaea] bg-[#fafafa]">
                         <th className="w-8 px-3 py-2"></th>
-                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-3 py-2">Contact</th>
-                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-3 py-2">Company</th>
-                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-3 py-2">Location</th>
+                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-3 py-2">
+                          Contact
+                        </th>
+                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-3 py-2">
+                          Company
+                        </th>
+                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-3 py-2">
+                          Location
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -296,22 +414,34 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
                             <input
                               type="checkbox"
                               checked={r.included}
-                              onChange={(e) => setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, included: e.target.checked } : x))}
+                              onChange={(e) =>
+                                setRows((prev) =>
+                                  prev.map((x) => (x.id === r.id ? { ...x, included: e.target.checked } : x)),
+                                )
+                              }
                             />
                           </td>
                           <td className="px-3 py-2">
                             <p className="text-sm text-[#0a0a0a]">{r.fullName || "-"}</p>
                             <p className="text-xs text-[#999]">{r.title || "-"}</p>
+                            {/* Shown so a wrong column mapping is obvious here
+                                rather than after thousands of rows are in. */}
+                            {(r.phone || r.email) && (
+                              <p className="text-xs text-[#666] mt-0.5 truncate max-w-48">
+                                {[r.phone, r.email].filter(Boolean).join(" · ")}
+                              </p>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             <p className="text-sm text-[#0a0a0a]">{r.companyName || "-"}</p>
                             <p className="text-xs text-[#999]">
                               {[r.dba && `DBA: ${r.dba}`, r.businessType].filter(Boolean).join(" · ") || "-"}
                             </p>
+                            {r.description && (
+                              <p className="text-xs text-[#999] mt-0.5 line-clamp-2 max-w-sm">{r.description}</p>
+                            )}
                           </td>
-                          <td className="px-3 py-2 text-xs text-[#666]">
-                            {rowLocation(r) || "-"}
-                          </td>
+                          <td className="px-3 py-2 text-xs text-[#666]">{rowLocation(r) || "-"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -328,30 +458,53 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
 
           {step === "conflicts" && (
             <div>
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <p className="text-xs text-[#666]">
-                  {conflictingResults.length} lead{conflictingResults.length !== 1 ? "s" : ""} already on file have
-                  conflicting data. Choose which value to keep for each field, or apply one choice to everything.
-                </p>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => setAllResolutions("existing")} className="text-xs font-medium text-[#0a0a0a] border border-[#eaeaea] rounded-lg px-2.5 py-1 hover:bg-[#fafafa] transition-colors">
-                    Keep existing for all
+              <div className="mb-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs text-[#666] leading-relaxed">
+                    {conflictingResults.length} lead{conflictingResults.length !== 1 ? "s" : ""} already on file have a
+                    <em> different</em> value in these fields. Only genuine disagreements are listed, anything the
+                    existing lead was missing has already been filled in from the file.
+                    {skippedDuplicates > 0 && (
+                      <>
+                        {" "}
+                        <span className="text-[#f5a524]">
+                          {skippedDuplicates.toLocaleString()} row{skippedDuplicates !== 1 ? "s" : ""} in the file
+                          {skippedDuplicates !== 1 ? " are duplicates" : " is a duplicate"} of another row and
+                          {skippedDuplicates !== 1 ? " were" : " was"} skipped.
+                        </span>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* The first option is what most imports want, so it reads
+                      as the whole rule rather than "discard the new file". */}
+                  <button
+                    onClick={() => setAllResolutions("existing")}
+                    className="text-xs font-medium text-white bg-[#0a0a0a] rounded-lg px-2.5 py-1.5 hover:bg-[#333] transition-colors"
+                  >
+                    Keep existing, fill blanks only
                   </button>
-                  <button onClick={() => setAllResolutions("new")} className="text-xs font-medium text-white bg-[#0070f3] rounded-lg px-2.5 py-1 hover:bg-[#005fcc] transition-colors">
+                  <button
+                    onClick={() => setAllResolutions("new")}
+                    className="text-xs font-medium text-[#0a0a0a] border border-[#eaeaea] rounded-lg px-2.5 py-1.5 hover:bg-[#fafafa] transition-colors"
+                  >
                     Use new data for all
                   </button>
+                  <span className="text-[11px] text-[#bbb]">or choose per field below</span>
                 </div>
               </div>
 
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {conflictingResults.map((r) => (
-                  <div key={r.id} className="border border-[#eaeaea] rounded-lg p-3">
+                  <div key={r.key} className="border border-[#eaeaea] rounded-lg p-3">
                     <p className="text-sm font-medium text-[#0a0a0a] mb-2">
-                      {r.base.companyName}{r.base.pocName ? `, ${r.base.pocName}` : ""}
+                      {r.base.companyName}
+                      {r.base.pocName ? `, ${r.base.pocName}` : ""}
                     </p>
                     <div className="space-y-2">
                       {r.conflicts.map((c) => {
-                        const choice = resolutions[r.id]?.[c.key] ?? "existing";
+                        const choice = resolutions[r.key]?.[c.key] ?? "existing";
                         return (
                           <div key={c.key} className="flex items-center gap-3 text-xs">
                             <span className="text-[#999] w-28 shrink-0">{c.label}</span>
@@ -359,7 +512,9 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
                               <button
                                 onClick={() => setFieldResolution(r.id, c.key, "existing")}
                                 className={`flex-1 min-w-0 truncate text-left px-2.5 py-1.5 rounded-lg border transition-colors ${
-                                  choice === "existing" ? "border-[#0070f3] bg-[#e8f2ff] text-[#0a0a0a]" : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
+                                  choice === "existing"
+                                    ? "border-[#0070f3] bg-[#e8f2ff] text-[#0a0a0a]"
+                                    : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
                                 }`}
                                 title={c.existingValue}
                               >
@@ -368,7 +523,9 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
                               <button
                                 onClick={() => setFieldResolution(r.id, c.key, "new")}
                                 className={`flex-1 min-w-0 truncate text-left px-2.5 py-1.5 rounded-lg border transition-colors ${
-                                  choice === "new" ? "border-[#0070f3] bg-[#e8f2ff] text-[#0a0a0a]" : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
+                                  choice === "new"
+                                    ? "border-[#0070f3] bg-[#e8f2ff] text-[#0a0a0a]"
+                                    : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
                                 }`}
                                 title={c.newValue}
                               >
@@ -404,7 +561,17 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="text-sm border border-[#eaeaea] bg-white text-[#0a0a0a] font-medium px-4 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors">
+            {(progress || matching) && (
+              <p className="text-xs text-[#666] tabular-nums">
+                {matching
+                  ? "Checking for duplicates…"
+                  : `Writing ${progress!.written.toLocaleString()} of ${progress!.total.toLocaleString()}…`}
+              </p>
+            )}
+            <button
+              onClick={onClose}
+              className="text-sm border border-[#eaeaea] bg-white text-[#0a0a0a] font-medium px-4 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+            >
               Cancel
             </button>
             {step === "map" && (
@@ -419,11 +586,15 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
             {step === "review" && (
               <button
                 onClick={handleImportClick}
-                disabled={importing || includedCount === 0}
+                disabled={importing || matching || includedCount === 0}
                 className="flex items-center gap-2 text-sm bg-[#0070f3] text-white font-medium px-4 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50"
               >
-                {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                Import {includedCount} lead{includedCount !== 1 ? "s" : ""}
+                {importing || matching ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+                {submitLabel ?? `Import ${includedCount.toLocaleString()} lead${includedCount !== 1 ? "s" : ""}`}
               </button>
             )}
             {step === "conflicts" && (
@@ -432,7 +603,11 @@ export default function ImportLeadsCsvModal({ onClose, onImported, existingLeads
                 disabled={importing}
                 className="flex items-center gap-2 text-sm bg-[#0070f3] text-white font-medium px-4 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50"
               >
-                {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                {importing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
                 Apply &amp; Import
               </button>
             )}

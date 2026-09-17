@@ -2,29 +2,44 @@
 
 import { useState } from "react";
 import { Search, Loader2, AlertCircle, Globe, Plus, Check } from "lucide-react";
-import { addLead, type Lead } from "@/lib/db/leads";
+import { addLead, fetchExistingLeadIds, type Lead } from "@/lib/db/leads";
+import type { ActivityActor } from "@/lib/db/lead-activity";
 import type { PlaceResult } from "@/lib/azure-maps";
 import { formatAddress } from "@/lib/leads-constants";
+import { getErrorMessage } from "@/lib/utils";
 
 type SearchState = "idle" | "loading" | "unconfigured" | "error" | "ok";
 
-export default function DiscoverPanel({ savedPlaceIds, onSaved }: { savedPlaceIds: Set<string>; onSaved: () => void }) {
+// Discovered places are saved under a deterministic id, which is also how
+// "is this already a lead?" is answered without scanning the table.
+const leadIdForPlace = (placeId: string) => `place-${placeId}`;
+
+export default function DiscoverPanel({ actor, onSaved }: { actor: ActivityActor | null; onSaved: () => void }) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<SearchState>("idle");
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savedPlaceIds, setSavedPlaceIds] = useState<Set<string>>(new Set());
 
   async function search() {
     if (!query.trim()) return;
     setState("loading");
     try {
       const res = await fetch(`/api/leads/places-search?q=${encodeURIComponent(query)}`);
-      if (res.status === 503) { setState("unconfigured"); return; }
+      if (res.status === 503) {
+        setState("unconfigured");
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Search failed");
-      setResults(data.places ?? []);
+      const places: PlaceResult[] = data.places ?? [];
+      setResults(places);
       setState("ok");
+      // Asked per search, for just these results, the page no longer holds
+      // every lead to check against.
+      setSavedPlaceIds(await fetchExistingLeadIds(places.map((p) => leadIdForPlace(p.placeId))));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Search failed");
       setState("error");
@@ -33,10 +48,11 @@ export default function DiscoverPanel({ savedPlaceIds, onSaved }: { savedPlaceId
 
   async function save(place: PlaceResult) {
     setSavingId(place.placeId);
+    setSaveError("");
     try {
       const now = new Date().toISOString();
       const lead: Lead = {
-        id: `place-${place.placeId}`,
+        id: leadIdForPlace(place.placeId),
         companyName: place.name,
         street: place.street,
         city: place.city,
@@ -52,8 +68,15 @@ export default function DiscoverPanel({ savedPlaceIds, onSaved }: { savedPlaceId
         createdAt: now,
         updatedAt: now,
       };
-      await addLead(lead);
+      await addLead(lead, actor);
+      // Flip this result to "Saved" without re-running the search.
+      setSavedPlaceIds((prev) => new Set(prev).add(lead.id));
       onSaved();
+    } catch (e) {
+      // Surfaced separately from `state`: flipping state to "error" would
+      // unmount the results list, throwing away the search just because one
+      // save failed.
+      setSaveError(getErrorMessage(e, "Failed to save this place as a lead"));
     } finally {
       setSavingId(null);
     }
@@ -63,7 +86,9 @@ export default function DiscoverPanel({ savedPlaceIds, onSaved }: { savedPlaceId
     <div className="bg-white border border-[#eaeaea] rounded-xl p-4 mb-5">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1 flex-1 min-w-64">
-          <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Discover with Azure Maps</label>
+          <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">
+            Discover with Azure Maps
+          </label>
           <input
             type="text"
             placeholder="e.g. HVAC contractors in Boston, MA"
@@ -86,11 +111,21 @@ export default function DiscoverPanel({ savedPlaceIds, onSaved }: { savedPlaceId
       {state === "unconfigured" && (
         <p className="text-xs text-[#f5a524] mt-3 flex items-center gap-1.5">
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-          Add <code className="bg-[#f1f1f1] px-1 rounded">AZURE_MAPS_KEY</code> to <code className="bg-[#f1f1f1] px-1 rounded">.env.local</code> (an Azure Maps account subscription key) to use discovery, then restart the server.
+          Add <code className="bg-[#f1f1f1] px-1 rounded">AZURE_MAPS_KEY</code> to{" "}
+          <code className="bg-[#f1f1f1] px-1 rounded">.env.local</code> (an Azure Maps account subscription key) to use
+          discovery, then restart the server.
         </p>
       )}
       {state === "error" && (
-        <p className="text-xs text-[#f31260] mt-3 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5 shrink-0" /> {error}</p>
+        <p className="text-xs text-[#f31260] mt-3 flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {error}
+        </p>
+      )}
+
+      {saveError && (
+        <p className="text-xs text-[#f31260] mt-3 flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {saveError}
+        </p>
       )}
 
       {state === "ok" && (
@@ -100,16 +135,24 @@ export default function DiscoverPanel({ savedPlaceIds, onSaved }: { savedPlaceId
           ) : (
             <div className="space-y-1 max-h-80 overflow-y-auto">
               {results.map((p) => {
-                const already = savedPlaceIds.has(p.placeId);
+                const already = savedPlaceIds.has(leadIdForPlace(p.placeId));
                 return (
-                  <div key={p.placeId} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-[#fafafa] transition-colors">
+                  <div
+                    key={p.placeId}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+                  >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-[#0a0a0a] truncate">{p.name}</p>
                       <p className="text-xs text-[#999] truncate">{formatAddress(p)}</p>
                       <div className="flex items-center gap-3 mt-0.5">
                         {p.phone && <span className="text-xs text-[#666] font-mono">{p.phone}</span>}
                         {p.website && (
-                          <a href={p.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-[#0070f3] hover:underline truncate">
+                          <a
+                            href={p.website}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1 text-xs text-[#0070f3] hover:underline truncate"
+                          >
                             <Globe className="w-3 h-3" /> Website
                           </a>
                         )}
@@ -127,9 +170,13 @@ export default function DiscoverPanel({ savedPlaceIds, onSaved }: { savedPlaceId
                       {savingId === p.placeId ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : already ? (
-                        <><Check className="w-3.5 h-3.5" /> Saved</>
+                        <>
+                          <Check className="w-3.5 h-3.5" /> Saved
+                        </>
                       ) : (
-                        <><Plus className="w-3.5 h-3.5" /> Save as Lead</>
+                        <>
+                          <Plus className="w-3.5 h-3.5" /> Save as Lead
+                        </>
                       )}
                     </button>
                   </div>

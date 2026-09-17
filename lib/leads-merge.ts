@@ -14,6 +14,13 @@ export interface FieldConflict {
 }
 
 export interface MergeResult {
+  /**
+   * Identifies this CSV *row*. Always unique, which `id` is not: two rows in
+   * one file can match the same lead already on file, and keying the UI or
+   * the per-field resolutions on `id` made them share state.
+   */
+  key: string;
+  /** The lead id that will be written, the existing one, or a new one. */
   id: string;
   isNew: boolean;
   // Company/POC + every non-conflicting field already resolved (existing
@@ -29,6 +36,7 @@ export interface MergeResult {
 const MERGEABLE_FIELDS: { key: keyof Lead; label: string }[] = [
   { key: "dba", label: "DBA" },
   { key: "businessType", label: "Business Type" },
+  { key: "description", label: "Description" },
   { key: "pocName", label: "Point of Contact" },
   { key: "pocTitle", label: "Title" },
   { key: "phone", label: "Phone" },
@@ -45,14 +53,27 @@ const MERGEABLE_FIELDS: { key: keyof Lead; label: string }[] = [
   { key: "facebookUrl", label: "Facebook" },
 ];
 
+/**
+ * Everything duplicate *detection* needs from an existing lead. Deliberately
+ * narrower than Lead: at ten thousand leads, matching an import against the
+ * table pulls only these three fields per row (a few hundred KB) rather than
+ * whole records, and the handful that actually match are then fetched in
+ * full for the field-level merge below. A full `Lead` satisfies this too.
+ */
+export interface DedupeCandidate {
+  id: string;
+  companyName: string;
+  pocName?: string;
+}
+
 function normalizeKey(s?: string): string {
   return (s ?? "").trim().toLowerCase();
 }
 
 // Groups existing leads by normalized company name so matching a CSV row
 // against thousands of leads is a map lookup, not a full-table scan per row.
-export function buildCompanyIndex(existing: Lead[]): Map<string, Lead[]> {
-  const index = new Map<string, Lead[]>();
+export function buildCompanyIndex<T extends DedupeCandidate>(existing: T[]): Map<string, T[]> {
+  const index = new Map<string, T[]>();
   for (const lead of existing) {
     const key = normalizeKey(lead.companyName);
     const bucket = index.get(key);
@@ -68,7 +89,11 @@ export function buildCompanyIndex(existing: Lead[]): Map<string, Lead[]> {
 // same-company lead that has no point of contact recorded yet (a bare
 // company record absorbing its first named contact), and only default to
 // "the one same-company lead" when there's no ambiguity.
-export function findExistingMatch(index: Map<string, Lead[]>, companyName: string, pocName?: string): Lead | undefined {
+export function findExistingMatch<T extends DedupeCandidate>(
+  index: Map<string, T[]>,
+  companyName: string,
+  pocName?: string,
+): T | undefined {
   const candidates = index.get(normalizeKey(companyName));
   if (!candidates || candidates.length === 0) return undefined;
 
@@ -82,7 +107,7 @@ export function findExistingMatch(index: Map<string, Lead[]>, companyName: strin
 
 export function computeMerge(existing: Lead | undefined, candidate: Lead): MergeResult {
   if (!existing) {
-    return { id: candidate.id, isNew: true, base: candidate, conflicts: [], newValues: {} };
+    return { key: candidate.id, id: candidate.id, isNew: true, base: candidate, conflicts: [], newValues: {} };
   }
 
   const base: Lead = { ...existing };
@@ -114,7 +139,7 @@ export function computeMerge(existing: Lead | undefined, candidate: Lead): Merge
   }
 
   base.updatedAt = new Date().toISOString();
-  return { id: existing.id, isNew: false, base, conflicts, newValues };
+  return { key: candidate.id, id: existing.id, isNew: false, base, conflicts, newValues };
 }
 
 // Bakes a per-field "existing" | "new" decision into the final Lead object

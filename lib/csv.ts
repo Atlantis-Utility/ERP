@@ -7,8 +7,15 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][] } 
   let field = "";
   let inQuotes = false;
 
-  const pushField = () => { row.push(field); field = ""; };
-  const pushRow = () => { pushField(); rows.push(row); row = []; };
+  const pushField = () => {
+    row.push(field);
+    field = "";
+  };
+  const pushRow = () => {
+    pushField();
+    rows.push(row);
+    row = [];
+  };
 
   // Normalize line endings so \r\n doesn't leave a trailing \r in the last field.
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -17,8 +24,10 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][] } 
     const c = normalized[i];
     if (inQuotes) {
       if (c === '"') {
-        if (normalized[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
+        if (normalized[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
       } else {
         field += c;
       }
@@ -46,8 +55,55 @@ const FIELD_ALIASES: Record<string, string[]> = {
   companyName: ["company", "company name", "account name", "current company", "organization"],
   dba: ["dba", "d/b/a", "doing business as", "trade name"],
   businessType: ["business type", "type of business", "industry", "category", "vertical"],
+  description: [
+    "description",
+    "about",
+    "summary",
+    "company description",
+    "notes",
+    "note",
+    "details",
+    "overview",
+    "comments",
+    "remarks",
+  ],
   fullName: ["full name", "name", "contact name", "person name", "lead name"],
   title: ["title", "designation", "position", "job title", "headline"],
+  phone: [
+    "phone",
+    "phone number",
+    "telephone",
+    "tel",
+    "mobile",
+    "mobile number",
+    "cell",
+    "cell phone",
+    "work phone",
+    "direct phone",
+    "business phone",
+    "contact number",
+    "primary phone",
+  ],
+  email: [
+    "email",
+    "e-mail",
+    "email address",
+    "e-mail address",
+    "work email",
+    "business email",
+    "contact email",
+    "primary email",
+  ],
+  companySize: [
+    "company size",
+    "size",
+    "employees",
+    "employee count",
+    "# employees",
+    "number of employees",
+    "headcount",
+    "company headcount",
+  ],
   website: ["website", "company website", "web address", "site", "url"],
   street: ["street", "street address", "address line 1", "address 1"],
   city: ["city", "town"],
