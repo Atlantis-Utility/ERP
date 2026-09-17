@@ -1,19 +1,31 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  Trash2, Send, Check, AlertTriangle, Loader2, MessageSquare, Pencil,
-} from "lucide-react";
+import { Trash2, Send, Check, AlertTriangle, Loader2, MessageSquare, Pencil, Eye, Lock } from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
+import DateTimePicker from "@/components/ui/DateTimePicker";
+import LeadAccessPanel from "@/components/leads/LeadAccessPanel";
+import LeadActivityFeed from "@/components/leads/LeadActivityFeed";
 import { useAuth } from "@/lib/auth-context";
 import { useEmployees } from "@/lib/db/employees";
-import { useCurrentEmployeeId } from "@/lib/hooks/use-current-employee-id";
-import { useLeads, updateLead, type Lead, type LeadStatus } from "@/lib/db/leads";
+import { useLeadsAccess } from "@/lib/leads-access";
+import { useLead, updateLead, type Lead, type LeadStatus, type LeadPriority } from "@/lib/db/leads";
 import { useLeadNotes, addLeadNote, updateLeadNote, removeLeadNote, type LeadNote } from "@/lib/db/lead-notes";
-import { STATUS_OPTIONS, STATUS_STYLES, isFollowUpOverdue, formatAddress } from "@/lib/leads-constants";
-import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
+import {
+  STATUS_OPTIONS,
+  SETTABLE_STATUS_OPTIONS,
+  STATUS_STYLES,
+  STATUS_LABELS,
+  STATUS_ICONS,
+  PRIORITY_OPTIONS,
+  PRIORITY_STYLES,
+  isFollowUpOverdue,
+  isTerminalStatus,
+  formatAddress,
+} from "@/lib/leads-constants";
+import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref } from "@/lib/utils";
 import { useDraft } from "@/lib/use-draft";
 
 // Matches FormField's own label styling (components/ui/FormField.tsx), so
@@ -28,6 +40,7 @@ type EditFormState = {
   status: LeadStatus;
   dba: string;
   businessType: string;
+  description: string;
   pocName: string;
   pocTitle: string;
   phone: string;
@@ -43,6 +56,10 @@ type EditFormState = {
   facebookUrl: string;
   assignedTo: string;
   followUpDate: string;
+  priority: LeadPriority | "";
+  nextStep: string;
+  lostReason: string;
+  tags: string;
 };
 
 function toEditForm(lead: Lead): EditFormState {
@@ -50,6 +67,7 @@ function toEditForm(lead: Lead): EditFormState {
     status: lead.status,
     dba: lead.dba ?? "",
     businessType: lead.businessType ?? "",
+    description: lead.description ?? "",
     pocName: lead.pocName ?? "",
     pocTitle: lead.pocTitle ?? "",
     phone: lead.phone ?? "",
@@ -65,19 +83,61 @@ function toEditForm(lead: Lead): EditFormState {
     facebookUrl: lead.facebookUrl ?? "",
     assignedTo: lead.assignedTo ?? "",
     followUpDate: lead.followUpDate ?? "",
+    priority: lead.priority ?? "",
+    nextStep: lead.nextStep ?? "",
+    lostReason: lead.lostReason ?? "",
+    tags: (lead.tags ?? []).join(", "),
   };
 }
 
 const EMPTY_EDIT_FORM: EditFormState = {
-  status: "new", dba: "", businessType: "", pocName: "", pocTitle: "", phone: "", email: "",
-  website: "", street: "", city: "", state: "", zip: "", companySize: "",
-  linkedinUrl: "", instagramUrl: "", facebookUrl: "", assignedTo: "", followUpDate: "",
+  status: "new",
+  dba: "",
+  businessType: "",
+  description: "",
+  pocName: "",
+  pocTitle: "",
+  phone: "",
+  email: "",
+  website: "",
+  street: "",
+  city: "",
+  state: "",
+  zip: "",
+  companySize: "",
+  linkedinUrl: "",
+  instagramUrl: "",
+  facebookUrl: "",
+  assignedTo: "",
+  followUpDate: "",
+  priority: "",
+  nextStep: "",
+  lostReason: "",
+  tags: "",
 };
+
+function parseTags(input: string): string[] | undefined {
+  const tags = [
+    ...new Set(
+      input
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    ),
+  ];
+  return tags.length > 0 ? tags : undefined;
+}
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function newNoteId() {
@@ -93,7 +153,14 @@ function ViewField({ label, value, href, muted }: { label: string; value: string
     <div className="min-w-0">
       <p className={viewLabelClass}>{label}</p>
       {href ? (
-        <a href={href} target="_blank" rel="noreferrer" className="text-sm font-medium text-[#0070f3] hover:underline truncate block">{value}</a>
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium text-[#0070f3] hover:underline truncate block"
+        >
+          {value}
+        </a>
       ) : (
         <p className={`text-sm truncate ${muted ? "text-[#bbb]" : "font-medium text-[#0a0a0a]"}`}>{value}</p>
       )}
@@ -109,13 +176,18 @@ function withScheme(url?: string): string | undefined {
 export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }) {
   const { authUser } = useAuth();
   const employees = useEmployees();
-  const leads = useLeads();
+  // Just this lead, kept live, the drawer used to pick its lead out of a
+  // full-table subscription, which is no longer how the page loads leads.
+  const { lead, loading: leadLoading, error: leadError } = useLead(leadId);
   const allNotes = useLeadNotes();
+  const access = useLeadsAccess();
 
-  const lead = leads.find((l) => l.id === leadId);
-
-  const myId = useCurrentEmployeeId();
+  const myId = access.myEmployeeId;
   const myName = authUser?.displayName || "Me";
+  const actor = useMemo(
+    () => (myId ? { id: myId, name: access.myName || myName } : null),
+    [myId, access.myName, myName],
+  );
 
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
@@ -124,7 +196,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
   // accidental refresh mid-edit doesn't lose anything either.
   const [form, setForm, clearFormDraft] = useDraft<EditFormState>(
     `atlantis-lead-edit-draft:${leadId}`,
-    lead ? toEditForm(lead) : EMPTY_EDIT_FORM
+    lead ? toEditForm(lead) : EMPTY_EDIT_FORM,
   );
   const [savingEdits, setSavingEdits] = useState(false);
   // A half-typed note is easy to lose to a tab switch otherwise, it's not
@@ -134,24 +206,40 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
   const [shareOpenFor, setShareOpenFor] = useState<string | null>(null);
 
   const visibleNotes = useMemo(
-    () => allNotes
-      .filter((n) => n.leadId === leadId && (n.authorId === myId || n.recipientIds.includes(myId)))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    [allNotes, leadId, myId]
+    () =>
+      allNotes
+        .filter((n) => n.leadId === leadId && (n.authorId === myId || n.recipientIds.includes(myId)))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [allNotes, leadId, myId],
   );
 
   if (!lead) {
     return (
       <Drawer open onClose={onClose} title="Lead" width="lg">
-        <p className="text-sm text-[#999]">This lead was deleted.</p>
+        {leadLoading ? (
+          <p className="flex items-center gap-2 text-sm text-[#999]">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading lead…
+          </p>
+        ) : (
+          <p className="text-sm text-[#999]">
+            {leadError || "This lead is no longer available, it may have been deleted, or reassigned to someone else."}
+          </p>
+        )}
       </Drawer>
     );
   }
+
+  const canEdit = access.canEdit(lead);
+  const canAssign = access.canAssign;
+  const accessLevel = access.levelFor(lead);
 
   const set = <K extends keyof EditFormState>(key: K, value: EditFormState[K]) => setForm({ ...form, [key]: value });
 
   function startEditing() {
     setError("");
+    // Re-seed from the live lead: the draft may predate someone else's edit,
+    // and saving a stale draft would quietly revert their change.
+    if (lead) setForm(toEditForm(lead));
     setEditing(true);
   }
 
@@ -167,28 +255,45 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
     setSavingEdits(true);
     setError("");
     try {
-      const assignedEmployee = employees.find((e) => e.id === form.assignedTo);
-      await updateLead(lead.id, {
-        status: form.status,
-        dba: form.dba.trim() || undefined,
-        businessType: form.businessType.trim() || undefined,
-        pocName: form.pocName.trim() || undefined,
-        pocTitle: form.pocTitle.trim() || undefined,
-        phone: form.phone.trim() || undefined,
-        email: form.email.trim() || undefined,
-        website: form.website.trim() || undefined,
-        street: form.street.trim() || undefined,
-        city: form.city.trim() || undefined,
-        state: form.state.trim() || undefined,
-        zip: form.zip.trim() || undefined,
-        companySize: form.companySize.trim() || undefined,
-        linkedinUrl: form.linkedinUrl.trim() || undefined,
-        instagramUrl: form.instagramUrl.trim() || undefined,
-        facebookUrl: form.facebookUrl.trim() || undefined,
-        assignedTo: form.assignedTo || undefined,
-        assignedToName: assignedEmployee?.name,
-        followUpDate: form.followUpDate || undefined,
-      });
+      // Reassignment is administrator-only (enforced by a DB trigger), so a
+      // member's save must not carry an owner change at all, including the
+      // no-op that a stale draft could otherwise send.
+      const ownerPatch = canAssign
+        ? {
+            assignedTo: form.assignedTo || undefined,
+            assignedToName: employees.find((e) => e.id === form.assignedTo)?.name,
+          }
+        : {};
+
+      await updateLead(
+        lead.id,
+        {
+          status: form.status,
+          dba: form.dba.trim() || undefined,
+          businessType: form.businessType.trim() || undefined,
+          description: form.description.trim() || undefined,
+          pocName: form.pocName.trim() || undefined,
+          pocTitle: form.pocTitle.trim() || undefined,
+          phone: form.phone.trim() || undefined,
+          email: form.email.trim() || undefined,
+          website: form.website.trim() || undefined,
+          street: form.street.trim() || undefined,
+          city: form.city.trim() || undefined,
+          state: form.state.trim() || undefined,
+          zip: form.zip.trim() || undefined,
+          companySize: form.companySize.trim() || undefined,
+          linkedinUrl: form.linkedinUrl.trim() || undefined,
+          instagramUrl: form.instagramUrl.trim() || undefined,
+          facebookUrl: form.facebookUrl.trim() || undefined,
+          followUpDate: form.followUpDate || undefined,
+          priority: form.priority || undefined,
+          nextStep: form.nextStep.trim() || undefined,
+          lostReason: isTerminalStatus(form.status) ? form.lostReason.trim() || undefined : undefined,
+          tags: parseTags(form.tags),
+          ...ownerPatch,
+        },
+        actor,
+      );
       clearFormDraft();
       setEditing(false);
     } catch (err) {
@@ -201,13 +306,14 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
   async function handleAddNote() {
     if (!lead || !newNoteBody.trim() || !myId) return;
     setSavingNote(true);
+    setError("");
     try {
       const now = new Date().toISOString();
       const note: LeadNote = {
         id: newNoteId(),
         leadId: lead.id,
         authorId: myId,
-        authorName: myName,
+        authorName: access.myName || myName,
         body: newNoteBody.trim(),
         recipientIds: [],
         createdAt: now,
@@ -236,7 +342,9 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
     const next = note.recipientIds.includes(employeeId)
       ? note.recipientIds.filter((id) => id !== employeeId)
       : [...note.recipientIds, employeeId];
-    updateLeadNote(note.id, { recipientIds: next }).catch((err) => setError(getErrorMessage(err, "Failed to update sharing")));
+    updateLeadNote(note.id, { recipientIds: next }).catch((err) =>
+      setError(getErrorMessage(err, "Failed to update sharing")),
+    );
   }
 
   const overdue = isFollowUpOverdue(lead.followUpDate, lead.status);
@@ -251,7 +359,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
     lead.businessType && { label: "Business Type", value: lead.businessType },
     lead.pocName && { label: "Point of Contact", value: lead.pocName },
     lead.pocTitle && { label: "Title", value: lead.pocTitle },
-    lead.phone && { label: "Phone", value: lead.phone },
+    lead.phone && { label: "Phone", value: formatPhone(lead.phone), href: telHref(lead.phone) },
     lead.email && { label: "Email", value: lead.email, href: `mailto:${lead.email}` },
     lead.companySize && { label: "Company Size", value: lead.companySize },
     lead.linkedinUrl && { label: "LinkedIn", value: "View profile", href: withScheme(lead.linkedinUrl) },
@@ -266,46 +374,59 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
       title={lead.companyName}
       subtitle={`Added ${formatTimestamp(lead.createdAt)}`}
       width="lg"
-      footer={editing ? (
-        <>
-          <button
-            onClick={cancelEditing}
-            className="border border-[#eaeaea] bg-white text-sm font-medium text-[#444] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={saveEdits}
-            disabled={savingEdits}
-            className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#333] transition-colors disabled:opacity-50"
-          >
-            {savingEdits && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Save Changes
-          </button>
-        </>
-      ) : undefined}
+      footer={
+        editing ? (
+          <>
+            <button
+              onClick={cancelEditing}
+              className="border border-[#eaeaea] bg-white text-sm font-medium text-[#444] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveEdits}
+              disabled={savingEdits}
+              className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#333] transition-colors disabled:opacity-50"
+            >
+              {savingEdits && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Save Changes
+            </button>
+          </>
+        ) : undefined
+      }
     >
-      {/* Toolbar: status badge + Edit, exactly matching the Edit Project
+      {/* Toolbar: stage badge + Edit, exactly matching the Edit Project
           header (static status pill, labeled black Edit button, no delete
           here, that only lives on the table row). */}
       <div className="flex items-center justify-end gap-2 pb-4 border-b border-[#f0f0f0] mb-5 -mt-1">
-        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLES[lead.status]}`}>
-          {STATUS_OPTIONS.find((s) => s.value === lead.status)?.label ?? lead.status}
+        {accessLevel === "viewer" && (
+          <span className="flex items-center gap-1 mr-auto text-[10px] font-semibold px-2 py-1 rounded-full bg-[#f1f1f1] text-[#666]">
+            <Eye className="w-2.5 h-2.5" /> READ-ONLY
+          </span>
+        )}
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap ${STATUS_STYLES[lead.status]}`}
+        >
+          {(() => {
+            const Icon = STATUS_ICONS[lead.status];
+            return Icon ? <Icon className="w-3 h-3 shrink-0" /> : null;
+          })()}
+          {STATUS_LABELS[lead.status]}
         </span>
-        {!editing && (
-          <button
-            onClick={startEditing}
-            className="flex items-center gap-1.5 text-sm font-medium bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg hover:bg-[#333] transition-colors"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Edit
-          </button>
+        {!editing && canEdit && (
+          <>
+            <button
+              onClick={startEditing}
+              className="flex items-center gap-1.5 text-sm font-medium bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg hover:bg-[#333] transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Edit
+            </button>
+          </>
         )}
       </div>
 
-      {error && (
-        <div className="mb-5 px-4 py-2.5 rounded-lg bg-[#fdeaea] text-[#f31260] text-sm">{error}</div>
-      )}
+      {error && <div className="mb-5 px-4 py-2.5 rounded-lg bg-[#fdeaea] text-[#f31260] text-sm">{error}</div>}
 
       {/* Fields */}
       <div className="pb-5 mb-5 border-b border-[#f0f0f0]">
@@ -313,25 +434,50 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
           <div className="space-y-4">
             <p className={sectionLabelClass}>Company Details</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="Status">
+              <FormField label="Stage">
                 <Select
                   value={form.status}
                   onChange={(v) => set("status", v as LeadStatus)}
-                  options={STATUS_OPTIONS}
+                  // A lead at New can still be seen at New here; it just
+                  // isn't a stage you move something to.
+                  options={form.status === "new" ? STATUS_OPTIONS : SETTABLE_STATUS_OPTIONS}
                 />
               </FormField>
               <FormField label="Company Size">
-                <input value={form.companySize} onChange={(e) => set("companySize", e.target.value)} className={inputClass} placeholder="e.g. 11-50" />
+                <input
+                  value={form.companySize}
+                  onChange={(e) => set("companySize", e.target.value)}
+                  className={inputClass}
+                  placeholder="e.g. 11-50"
+                />
               </FormField>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="DBA">
-                <input value={form.dba} onChange={(e) => set("dba", e.target.value)} className={inputClass} placeholder="Trade name, if different" />
+                <input
+                  value={form.dba}
+                  onChange={(e) => set("dba", e.target.value)}
+                  className={inputClass}
+                  placeholder="Trade name, if different"
+                />
               </FormField>
               <FormField label="Business Type">
-                <input value={form.businessType} onChange={(e) => set("businessType", e.target.value)} className={inputClass} placeholder="e.g. HVAC Contractor" />
+                <input
+                  value={form.businessType}
+                  onChange={(e) => set("businessType", e.target.value)}
+                  className={inputClass}
+                  placeholder="e.g. HVAC Contractor"
+                />
               </FormField>
             </div>
+            <FormField label="Description">
+              <textarea
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+                className={inputClass + " min-h-20 resize-none"}
+                placeholder="What they do, why they're a lead, anything worth knowing"
+              />
+            </FormField>
             <FormField label="Street">
               <input value={form.street} onChange={(e) => set("street", e.target.value)} className={inputClass} />
             </FormField>
@@ -363,7 +509,12 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
                 <input value={form.phone} onChange={(e) => set("phone", e.target.value)} className={inputClass} />
               </FormField>
               <FormField label="Email">
-                <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputClass} />
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => set("email", e.target.value)}
+                  className={inputClass}
+                />
               </FormField>
             </div>
 
@@ -371,43 +522,126 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
               <p className={sectionLabelClass}>Online Presence</p>
             </div>
             <FormField label="Website">
-              <input value={form.website} onChange={(e) => set("website", e.target.value)} className={inputClass} placeholder="https://" />
+              <input
+                value={form.website}
+                onChange={(e) => set("website", e.target.value)}
+                className={inputClass}
+                placeholder="https://"
+              />
             </FormField>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <FormField label="LinkedIn">
-                <input value={form.linkedinUrl} onChange={(e) => set("linkedinUrl", e.target.value)} className={inputClass} placeholder="linkedin.com/…" />
+                <input
+                  value={form.linkedinUrl}
+                  onChange={(e) => set("linkedinUrl", e.target.value)}
+                  className={inputClass}
+                  placeholder="linkedin.com/…"
+                />
               </FormField>
               <FormField label="Instagram">
-                <input value={form.instagramUrl} onChange={(e) => set("instagramUrl", e.target.value)} className={inputClass} placeholder="instagram.com/…" />
+                <input
+                  value={form.instagramUrl}
+                  onChange={(e) => set("instagramUrl", e.target.value)}
+                  className={inputClass}
+                  placeholder="instagram.com/…"
+                />
               </FormField>
               <FormField label="Facebook">
-                <input value={form.facebookUrl} onChange={(e) => set("facebookUrl", e.target.value)} className={inputClass} placeholder="facebook.com/…" />
+                <input
+                  value={form.facebookUrl}
+                  onChange={(e) => set("facebookUrl", e.target.value)}
+                  className={inputClass}
+                  placeholder="facebook.com/…"
+                />
               </FormField>
             </div>
+
+            <div className="border-t border-[#f7f7f7] pt-4">
+              <p className={sectionLabelClass}>Tracking</p>
+            </div>
+            <FormField label="Priority">
+              <Select
+                value={form.priority}
+                onChange={(v) => set("priority", v as LeadPriority | "")}
+                placeholder="Not set"
+                options={PRIORITY_OPTIONS}
+                clearable
+              />
+            </FormField>
+            <FormField label="Next Step">
+              <input
+                value={form.nextStep}
+                onChange={(e) => set("nextStep", e.target.value)}
+                className={inputClass}
+                placeholder="e.g. Send pricing for 20 handsets"
+              />
+            </FormField>
+            <FormField label="Tags">
+              <input
+                value={form.tags}
+                onChange={(e) => set("tags", e.target.value)}
+                className={inputClass}
+                placeholder="Comma separated, e.g. VoIP, Boston, Q3 campaign"
+              />
+            </FormField>
+            {/* Only meaningful once the lead is closed out, asking "why did
+                they say no" about an active lead is noise. */}
+            {isTerminalStatus(form.status) && (
+              <FormField label={form.status === "do_not_call" ? "Opt-out Note" : "Reason"}>
+                <input
+                  value={form.lostReason}
+                  onChange={(e) => set("lostReason", e.target.value)}
+                  className={inputClass}
+                  placeholder={
+                    form.status === "do_not_call"
+                      ? "e.g. Asked to be removed from the list"
+                      : "e.g. Happy with their current provider"
+                  }
+                />
+              </FormField>
+            )}
 
             <div className="border-t border-[#f7f7f7] pt-4">
               <p className={sectionLabelClass}>Assignment</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Assigned To">
-                <Select
-                  value={form.assignedTo}
-                  onChange={(v) => set("assignedTo", v)}
-                  placeholder="Unassigned"
-                  options={employees.map((e) => ({ value: e.id, label: e.name }))}
-                  clearable
-                />
+                {canAssign ? (
+                  <Select
+                    value={form.assignedTo}
+                    onChange={(v) => set("assignedTo", v)}
+                    placeholder="Unassigned"
+                    options={employees.map((e) => ({ value: e.id, label: e.name }))}
+                    searchable
+                    clearable
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 text-sm border border-[#eaeaea] rounded-lg px-3 py-2 bg-[#fafafa] text-[#666]">
+                    <Lock className="w-3.5 h-3.5 text-[#999] shrink-0" />
+                    <span className="truncate">{assignedEmployee?.name ?? "Unassigned"}</span>
+                  </div>
+                )}
+                {!canAssign && (
+                  <p className="text-[10px] text-[#999] mt-1">Only an administrator can reassign a lead.</p>
+                )}
               </FormField>
               <FormField label="Follow Up By">
                 <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={form.followUpDate}
-                    onChange={(e) => set("followUpDate", e.target.value)}
-                    className={inputClass}
-                  />
+                  <div className="flex-1 min-w-0">
+                    <DateTimePicker
+                      dateOnly
+                      clearable
+                      quickDates
+                      value={form.followUpDate}
+                      onChange={(v) => set("followUpDate", v)}
+                      placeholder="No date set"
+                    />
+                  </div>
                   {overdue && (
-                    <span className="flex items-center gap-1 text-[10px] font-medium text-[#f31260] shrink-0" title="Follow-up date has passed">
+                    <span
+                      className="flex items-center gap-1 text-[10px] font-medium text-[#f31260] shrink-0"
+                      title="Follow-up date has passed"
+                    >
                       <AlertTriangle className="w-3 h-3" /> Overdue
                     </span>
                   )}
@@ -418,28 +652,81 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
         ) : (
           <div className="space-y-5">
             {narrowDetailFields.length === 0 && !address && !lead.website && (
-              <p className="text-sm text-[#999]">No details yet, click Edit to add some.</p>
+              <p className="text-sm text-[#999]">
+                {canEdit ? "No details yet, click Edit to add some." : "No details recorded for this lead yet."}
+              </p>
+            )}
+
+            {(lead.priority || lead.tags?.length) && (
+              <div className="flex items-center flex-wrap gap-1.5">
+                {lead.priority && (
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${PRIORITY_STYLES[lead.priority]}`}
+                  >
+                    {lead.priority.toUpperCase()} PRIORITY
+                  </span>
+                )}
+                {lead.tags?.map((t) => (
+                  <span key={t} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#f5f5f5] text-[#666]">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {lead.description && (
+              <div>
+                <p className={viewLabelClass}>Description</p>
+                <p className="text-sm text-[#333] whitespace-pre-wrap leading-relaxed">{lead.description}</p>
+              </div>
+            )}
+
+            {lead.nextStep && (
+              <div className="px-3 py-2.5 rounded-lg bg-[#eff6ff]">
+                <p className="text-[10px] font-semibold text-[#0070f3] uppercase tracking-widest mb-1">Next step</p>
+                <p className="text-sm text-[#0a0a0a]">{lead.nextStep}</p>
+              </div>
             )}
 
             {lead.website && (
-              <ViewField label="Website" value={lead.website.replace(/^https?:\/\//, "")} href={withScheme(lead.website)} />
+              <ViewField
+                label="Website"
+                value={lead.website.replace(/^https?:\/\//, "")}
+                href={withScheme(lead.website)}
+              />
             )}
 
             {address && <ViewField label="Address" value={address} />}
 
             {narrowDetailFields.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                {narrowDetailFields.map((f) => <ViewField key={f.label} {...f} />)}
+                {narrowDetailFields.map((f) => (
+                  <ViewField key={f.label} {...f} />
+                ))}
               </div>
             )}
 
+            {lead.lostReason && (
+              <ViewField label={lead.status === "do_not_call" ? "Opt-out Note" : "Reason"} value={lead.lostReason} />
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 pt-4 border-t border-[#f5f5f5]">
-              <ViewField label="Assigned To" value={assignedEmployee?.name ?? "Unassigned"} muted={!assignedEmployee} />
+              <ViewField
+                label="Assigned To"
+                value={assignedEmployee?.name ?? lead.assignedToName ?? "Unassigned"}
+                muted={!lead.assignedTo}
+              />
               <div>
                 <p className={viewLabelClass}>Follow Up By</p>
-                <p className={`text-sm truncate ${overdue ? "font-medium text-[#f31260]" : lead.followUpDate ? "font-medium text-[#0a0a0a]" : "text-[#bbb]"}`}>
+                <p
+                  className={`text-sm truncate ${overdue ? "font-medium text-[#f31260]" : lead.followUpDate ? "font-medium text-[#0a0a0a]" : "text-[#bbb]"}`}
+                >
                   {lead.followUpDate
-                    ? new Date(lead.followUpDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    ? new Date(lead.followUpDate).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
                     : "No date set"}
                   {overdue && <span className="ml-1.5 text-[10px] font-medium">(Overdue)</span>}
                 </p>
@@ -449,8 +736,13 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
         )}
       </div>
 
+      {/* Access */}
+      <div className="pb-5 mb-5 border-b border-[#f0f0f0]">
+        <LeadAccessPanel lead={lead} actor={actor} canGrant={access.canGrant} />
+      </div>
+
       {/* Notes / activity */}
-      <div>
+      <div className="pb-5 mb-5 border-b border-[#f0f0f0]">
         <div className="flex items-center gap-2 mb-3">
           <MessageSquare className="w-4 h-4 text-[#999]" />
           <p className="text-sm font-semibold text-[#0a0a0a]">Notes</p>
@@ -469,7 +761,9 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
               <div key={n.id} className="border border-[#eaeaea] rounded-lg p-3">
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className={`w-6 h-6 rounded-full ${colors.bg} ${colors.text} flex items-center justify-center shrink-0`}>
+                    <div
+                      className={`w-6 h-6 rounded-full ${colors.bg} ${colors.text} flex items-center justify-center shrink-0`}
+                    >
                       <span className="text-[9px] font-semibold">{getInitials(n.authorName)}</span>
                     </div>
                     <p className="text-xs font-medium text-[#0a0a0a] truncate">{isMine ? "You" : n.authorName}</p>
@@ -482,36 +776,58 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
                           {sharedWith.slice(0, 3).map((e) => {
                             const c = getAvatarColor(e.name);
                             return (
-                              <div key={e.id} title={e.name} className={`w-4.5 h-4.5 rounded-full ${c.bg} ${c.text} border border-white flex items-center justify-center`}>
+                              <div
+                                key={e.id}
+                                title={e.name}
+                                className={`w-4.5 h-4.5 rounded-full ${c.bg} ${c.text} border border-white flex items-center justify-center`}
+                              >
                                 <span className="text-[7px] font-semibold">{getInitials(e.name)}</span>
                               </div>
                             );
                           })}
                         </div>
                       )}
-                      <button onClick={() => setShareOpenFor(shareOpenFor === n.id ? null : n.id)} className="p-1 rounded hover:bg-[#f5f5f5] text-[#999] hover:text-[#0070f3] transition-colors" title="Share with teammates">
+                      <button
+                        onClick={() => setShareOpenFor(shareOpenFor === n.id ? null : n.id)}
+                        className="p-1 rounded hover:bg-[#f5f5f5] text-[#999] hover:text-[#0070f3] transition-colors"
+                        title="Share with teammates"
+                      >
                         <Send className="w-3 h-3" />
                       </button>
-                      <button onClick={() => handleDeleteNote(n)} className="p-1 rounded hover:bg-[#fff0f3] text-[#999] hover:text-[#f31260] transition-colors" title="Delete note">
+                      <button
+                        onClick={() => handleDeleteNote(n)}
+                        className="p-1 rounded hover:bg-[#fff0f3] text-[#999] hover:text-[#f31260] transition-colors"
+                        title="Delete note"
+                      >
                         <Trash2 className="w-3 h-3" />
                       </button>
                       {shareOpenFor === n.id && (
                         <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-[#eaeaea] rounded-xl shadow-lg z-20 p-2">
-                          <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest px-2 py-1.5">Share with</p>
+                          <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest px-2 py-1.5">
+                            Share with
+                          </p>
                           <div className="max-h-48 overflow-y-auto space-y-0.5">
-                            {employees.filter((e) => e.id !== myId).map((e) => {
-                              const checked = n.recipientIds.includes(e.id);
-                              const c = getAvatarColor(e.name);
-                              return (
-                                <button key={e.id} onClick={() => toggleRecipient(n, e.id)} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors text-left">
-                                  <div className={`w-5 h-5 rounded-full ${c.bg} ${c.text} flex items-center justify-center shrink-0`}>
-                                    <span className="text-[8px] font-semibold">{getInitials(e.name)}</span>
-                                  </div>
-                                  <span className="text-xs text-[#0a0a0a] flex-1 truncate">{e.name}</span>
-                                  {checked && <Check className="w-3.5 h-3.5 text-[#0070f3] shrink-0" />}
-                                </button>
-                              );
-                            })}
+                            {employees
+                              .filter((e) => e.id !== myId)
+                              .map((e) => {
+                                const checked = n.recipientIds.includes(e.id);
+                                const c = getAvatarColor(e.name);
+                                return (
+                                  <button
+                                    key={e.id}
+                                    onClick={() => toggleRecipient(n, e.id)}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors text-left"
+                                  >
+                                    <div
+                                      className={`w-5 h-5 rounded-full ${c.bg} ${c.text} flex items-center justify-center shrink-0`}
+                                    >
+                                      <span className="text-[8px] font-semibold">{getInitials(e.name)}</span>
+                                    </div>
+                                    <span className="text-xs text-[#0a0a0a] flex-1 truncate">{e.name}</span>
+                                    {checked && <Check className="w-3.5 h-3.5 text-[#0070f3] shrink-0" />}
+                                  </button>
+                                );
+                              })}
                           </div>
                         </div>
                       )}
@@ -524,23 +840,37 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
           })}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <textarea
-            value={newNoteBody}
-            onChange={(e) => setNewNoteBody(e.target.value)}
-            placeholder="Add a note… only you can see it until you share it"
-            className="w-full min-h-20 resize-none text-sm border border-[#eaeaea] rounded-lg px-3 py-2 outline-none focus:border-[#0070f3] transition-colors"
-          />
-          <button
-            onClick={handleAddNote}
-            disabled={savingNote || !newNoteBody.trim()}
-            className="self-end flex items-center gap-2 text-sm bg-[#0070f3] text-white font-medium px-4 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50"
-          >
-            {savingNote && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Add Note
-          </button>
-        </div>
+        {/* A note is authored, not an edit to the lead, so anyone who can see
+            the lead can leave one, including a read-only viewer. The insert
+            policy on lead_notes allows exactly that. */}
+        {myId ? (
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={newNoteBody}
+              onChange={(e) => setNewNoteBody(e.target.value)}
+              placeholder="Add a note… only you can see it until you share it"
+              className="w-full min-h-20 resize-none text-sm border border-[#eaeaea] rounded-lg px-3 py-2 outline-none focus:border-[#0070f3] transition-colors"
+            />
+            <button
+              onClick={handleAddNote}
+              disabled={savingNote || !newNoteBody.trim()}
+              className="self-end flex items-center gap-2 text-sm bg-[#0070f3] text-white font-medium px-4 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50"
+            >
+              {savingNote && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Add Note
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-[#999]">
+            Notes are attributed to an employee record, and your login isn&apos;t linked to one yet.
+          </p>
+        )}
       </div>
+
+      {/* Administrators only. The database agrees (lead_activity has an
+          admin-only read policy), so this isn't the enforcement, just the
+          reason not to render an empty panel for everyone else. */}
+      {access.isAdmin && <LeadActivityFeed leadId={lead.id} />}
     </Drawer>
   );
 }

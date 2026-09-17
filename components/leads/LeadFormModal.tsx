@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, Lock } from "lucide-react";
 import Select from "@/components/ui/Select";
-import { useAuth } from "@/lib/auth-context";
+import DateTimePicker from "@/components/ui/DateTimePicker";
 import { useEmployees } from "@/lib/db/employees";
-import { addLead, updateLead, type Lead, type LeadStatus } from "@/lib/db/leads";
-import { STATUS_OPTIONS } from "@/lib/leads-constants";
+import { addLead, updateLead, type Lead, type LeadStatus, type LeadPriority } from "@/lib/db/leads";
+import type { ActivityActor } from "@/lib/db/lead-activity";
+import { STATUS_OPTIONS, SETTABLE_STATUS_OPTIONS, PRIORITY_OPTIONS } from "@/lib/leads-constants";
+import { getErrorMessage } from "@/lib/utils";
 import { useDraft } from "@/lib/use-draft";
 
 type FormState = {
@@ -27,9 +29,12 @@ type FormState = {
   instagramUrl: string;
   facebookUrl: string;
   status: LeadStatus;
-  notes: string;
+  description: string;
   assignedTo: string;
   followUpDate: string;
+  priority: LeadPriority | "";
+  nextStep: string;
+  tags: string;
 };
 
 function toForm(lead?: Lead, defaultAssignee?: string): FormState {
@@ -51,23 +56,60 @@ function toForm(lead?: Lead, defaultAssignee?: string): FormState {
     instagramUrl: lead?.instagramUrl ?? "",
     facebookUrl: lead?.facebookUrl ?? "",
     status: lead?.status ?? "new",
-    notes: lead?.notes ?? "",
+    description: lead?.description ?? "",
     assignedTo: lead?.assignedTo ?? defaultAssignee ?? "",
     followUpDate: lead?.followUpDate ?? "",
+    priority: lead?.priority ?? "",
+    nextStep: lead?.nextStep ?? "",
+    tags: (lead?.tags ?? []).join(", "),
   };
 }
 
-const inputClass = "text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors w-full";
+/** Comma-separated input → a de-duplicated, trimmed tag list. */
+function parseTags(input: string): string[] | undefined {
+  const tags = [
+    ...new Set(
+      input
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    ),
+  ];
+  return tags.length > 0 ? tags : undefined;
+}
+
+const inputClass =
+  "text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors w-full";
 const labelClass = "text-[10px] font-semibold text-[#999] uppercase tracking-wider";
 
-export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead; onClose: () => void; onSaved: () => void }) {
-  const { authUser } = useAuth();
+export default function LeadFormModal({
+  lead,
+  onClose,
+  onSaved,
+  actor,
+  canAssign,
+  selfEmployeeId,
+  selfName,
+}: {
+  lead?: Lead;
+  onClose: () => void;
+  onSaved: () => void;
+  actor: ActivityActor | null;
+  /** Administrators pick any owner; everyone else can only own it themselves. */
+  canAssign: boolean;
+  selfEmployeeId: string;
+  selfName: string;
+}) {
   const employees = useEmployees();
   // Survives a tab switch, backgrounded/discarded tab, or accidental
   // refresh, a form this long is expensive to lose mid-entry.
+  //
+  // Defaults to the creator as owner. Not authUser.employeeId: that column is
+  // null for admin logins (see lib/hooks/use-current-employee-id.ts), which
+  // silently produced an unassigned lead.
   const [form, setForm, clearDraft] = useDraft<FormState>(
     `atlantis-lead-draft:${lead?.id ?? "new"}`,
-    toForm(lead, authUser?.employeeId ?? undefined)
+    toForm(lead, selfEmployeeId || undefined),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -83,7 +125,11 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
     setError("");
     try {
       const now = new Date().toISOString();
-      const assignedEmployee = employees.find((e) => e.id === form.assignedTo);
+      // A member may only create/keep a lead owned by themselves, the leads
+      // insert policy enforces it, so pin it here rather than sending a value
+      // the database will reject.
+      const ownerId = canAssign ? form.assignedTo : selfEmployeeId;
+      const assignedEmployee = employees.find((e) => e.id === ownerId);
       const patch = {
         companyName: form.companyName.trim(),
         dba: form.dba.trim() || undefined,
@@ -102,27 +148,37 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
         instagramUrl: form.instagramUrl.trim() || undefined,
         facebookUrl: form.facebookUrl.trim() || undefined,
         status: form.status,
-        notes: form.notes.trim() || undefined,
-        assignedTo: form.assignedTo || undefined,
-        assignedToName: assignedEmployee?.name,
+        description: form.description.trim() || undefined,
+        assignedTo: ownerId || undefined,
+        // Falls back to the caller's own name so a member's lead still shows
+        // an owner even before the employees list has loaded.
+        assignedToName: assignedEmployee?.name ?? (ownerId && ownerId === selfEmployeeId ? selfName : undefined),
         followUpDate: form.followUpDate || undefined,
+        priority: form.priority || undefined,
+        nextStep: form.nextStep.trim() || undefined,
+        tags: parseTags(form.tags),
       };
       if (lead) {
-        await updateLead(lead.id, patch);
+        await updateLead(lead.id, patch, actor);
       } else {
-        await addLead({
-          id: `lead-${crypto.randomUUID()}`,
-          source: "manual",
-          createdAt: now,
-          updatedAt: now,
-          ...patch,
-        });
+        await addLead(
+          {
+            id: `lead-${crypto.randomUUID()}`,
+            source: "manual",
+            createdAt: now,
+            updatedAt: now,
+            createdBy: selfEmployeeId || undefined,
+            createdByName: selfName || undefined,
+            ...patch,
+          },
+          actor,
+        );
       }
       clearDraft();
       onSaved();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save lead");
+      setError(getErrorMessage(e, "Failed to save lead"));
     } finally {
       setSaving(false);
     }
@@ -142,23 +198,42 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Company Name *</label>
-              <input className={inputClass} value={form.companyName} onChange={(e) => set("companyName", e.target.value)} />
+              <input
+                className={inputClass}
+                value={form.companyName}
+                onChange={(e) => set("companyName", e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className={labelClass}>DBA</label>
-              <input className={inputClass} value={form.dba} onChange={(e) => set("dba", e.target.value)} placeholder="Trade name, if different" />
+              <input
+                className={inputClass}
+                value={form.dba}
+                onChange={(e) => set("dba", e.target.value)}
+                placeholder="Trade name, if different"
+              />
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className={labelClass}>Business Type</label>
-            <input className={inputClass} value={form.businessType} onChange={(e) => set("businessType", e.target.value)} placeholder="e.g. HVAC Contractor" />
+            <input
+              className={inputClass}
+              value={form.businessType}
+              onChange={(e) => set("businessType", e.target.value)}
+              placeholder="e.g. HVAC Contractor"
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Point of Contact</label>
-              <input className={inputClass} value={form.pocName} onChange={(e) => set("pocName", e.target.value)} placeholder="Name" />
+              <input
+                className={inputClass}
+                value={form.pocName}
+                onChange={(e) => set("pocName", e.target.value)}
+                placeholder="Name"
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Title</label>
@@ -173,13 +248,23 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
             </div>
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Email</label>
-              <input type="email" className={inputClass} value={form.email} onChange={(e) => set("email", e.target.value)} />
+              <input
+                type="email"
+                className={inputClass}
+                value={form.email}
+                onChange={(e) => set("email", e.target.value)}
+              />
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className={labelClass}>Website</label>
-            <input className={inputClass} value={form.website} onChange={(e) => set("website", e.target.value)} placeholder="https://" />
+            <input
+              className={inputClass}
+              value={form.website}
+              onChange={(e) => set("website", e.target.value)}
+              placeholder="https://"
+            />
           </div>
 
           <div className="flex flex-col gap-1">
@@ -203,57 +288,152 @@ export default function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead;
 
           <div className="flex flex-col gap-1">
             <label className={labelClass}>Company Size</label>
-            <input className={inputClass} value={form.companySize} onChange={(e) => set("companySize", e.target.value)} placeholder="e.g. 11-50" />
+            <input
+              className={inputClass}
+              value={form.companySize}
+              onChange={(e) => set("companySize", e.target.value)}
+              placeholder="e.g. 11-50"
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>LinkedIn</label>
-              <input className={inputClass} value={form.linkedinUrl} onChange={(e) => set("linkedinUrl", e.target.value)} placeholder="linkedin.com/…" />
+              <input
+                className={inputClass}
+                value={form.linkedinUrl}
+                onChange={(e) => set("linkedinUrl", e.target.value)}
+                placeholder="linkedin.com/…"
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Instagram</label>
-              <input className={inputClass} value={form.instagramUrl} onChange={(e) => set("instagramUrl", e.target.value)} placeholder="instagram.com/…" />
+              <input
+                className={inputClass}
+                value={form.instagramUrl}
+                onChange={(e) => set("instagramUrl", e.target.value)}
+                placeholder="instagram.com/…"
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Facebook</label>
-              <input className={inputClass} value={form.facebookUrl} onChange={(e) => set("facebookUrl", e.target.value)} placeholder="facebook.com/…" />
+              <input
+                className={inputClass}
+                value={form.facebookUrl}
+                onChange={(e) => set("facebookUrl", e.target.value)}
+                placeholder="facebook.com/…"
+              />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className={labelClass}>Priority</label>
+            <Select
+              value={form.priority}
+              onChange={(v) => set("priority", v as LeadPriority | "")}
+              placeholder="Not set"
+              options={PRIORITY_OPTIONS}
+              clearable
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className={labelClass}>Next Step</label>
+            <input
+              className={inputClass}
+              value={form.nextStep}
+              onChange={(e) => set("nextStep", e.target.value)}
+              placeholder="e.g. Send pricing for 20 handsets"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className={labelClass}>Tags</label>
+            <input
+              className={inputClass}
+              value={form.tags}
+              onChange={(e) => set("tags", e.target.value)}
+              placeholder="Comma separated, e.g. VoIP, Boston, Q3 campaign"
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Assigned To</label>
-              <Select
-                value={form.assignedTo}
-                onChange={(v) => set("assignedTo", v)}
-                placeholder="Unassigned"
-                options={employees.map((e) => ({ value: e.id, label: e.name }))}
-                clearable
-              />
+              {canAssign ? (
+                <Select
+                  value={form.assignedTo}
+                  onChange={(v) => set("assignedTo", v)}
+                  placeholder="Unassigned"
+                  options={employees.map((e) => ({ value: e.id, label: e.name }))}
+                  searchable
+                  clearable
+                /> // Not a disabled Select: a member has exactly one valid choice,
+              ) : (
+                // and offering a dropdown they can't change reads as broken.
+                <div className="flex items-center gap-2 text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 bg-[#fafafa] text-[#666]">
+                  <Lock className="w-3.5 h-3.5 text-[#999] shrink-0" />
+                  <span className="truncate">{selfName || "You"}</span>
+                </div>
+              )}
+              {!canAssign && (
+                <p className="text-[10px] text-[#999]">
+                  Leads you create are assigned to you. An administrator can reassign them.
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <label className={labelClass}>Follow Up By</label>
-              <input type="date" className={inputClass} value={form.followUpDate} onChange={(e) => set("followUpDate", e.target.value)} />
+              <DateTimePicker
+                dateOnly
+                clearable
+                quickDates
+                value={form.followUpDate}
+                onChange={(v) => set("followUpDate", v)}
+                placeholder="No date set"
+              />
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className={labelClass}>Status</label>
-            <Select value={form.status} onChange={(v) => set("status", v as LeadStatus)} options={STATUS_OPTIONS} />
+            <label className={labelClass}>Stage</label>
+            {/* A brand-new lead starts at New without being asked, so the
+                picker offers the stages you'd actually set on creation. */}
+            <Select
+              value={form.status}
+              onChange={(v) => set("status", v as LeadStatus)}
+              options={form.status === "new" ? STATUS_OPTIONS : SETTABLE_STATUS_OPTIONS}
+            />
           </div>
 
+          {/* Replaces the old free-text "Notes" field: per-person notes live
+              on the lead itself as a shareable thread, so this slot is for
+              what the company is, which is also what CSV imports carry. */}
           <div className="flex flex-col gap-1">
-            <label className={labelClass}>Notes</label>
-            <textarea className={inputClass + " min-h-20 resize-none"} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
+            <label className={labelClass}>Description</label>
+            <textarea
+              className={inputClass + " min-h-20 resize-none"}
+              value={form.description}
+              onChange={(e) => set("description", e.target.value)}
+              placeholder="What they do, why they're a lead, anything worth knowing"
+            />
           </div>
 
           {error && <p className="text-xs text-[#f31260]">{error}</p>}
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-[#eaeaea] shrink-0">
-          <button onClick={onClose} className="text-sm border border-[#eaeaea] bg-white text-[#0a0a0a] font-medium px-4 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors">Cancel</button>
-          <button onClick={save} disabled={saving} className="text-sm bg-[#0070f3] text-white font-medium px-4 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50 flex items-center gap-2">
+          <button
+            onClick={onClose}
+            className="text-sm border border-[#eaeaea] bg-white text-[#0a0a0a] font-medium px-4 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="text-sm bg-[#0070f3] text-white font-medium px-4 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
             {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {lead ? "Save Changes" : "Add Lead"}
           </button>
