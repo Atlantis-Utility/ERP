@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* Class-based dark mode for Tailwind v4 */
-@variant dark (&:where(.dark, .dark *));
+@variant dark (&:where(.dark.dark *));
 
 :root {
   --background: #ffffff;
@@ -83,6 +83,12 @@ html.dark .bg-\[\#fef2f2\]     { background-color: #2d1515; }
 html.dark .bg-\[\#f0fdf4\]     { background-color: #0f2318; }
 html.dark .bg-\[\#eff6ff\]     { background-color: #0f1a2d; }
 html.dark .bg-\[\#fefce8\]     { background-color: #1f1a0d; }
+/* Lead pipeline stage pills (lib/leads-constants.ts), violet/orange/cyan
+   tints that had no dark counterpart, so the stage pill rendered as a light
+   block in dark mode. */
+html.dark .bg-\[\#f3e8ff\]     { background-color: #231831; }
+html.dark .bg-\[\#fff7e6\]     { background-color: #2a1e0c; }
+html.dark .bg-\[\#ecfeff\]     { background-color: #0c2226; }
 
 /* ── Borders ── */
 html.dark .border-\[\#eaeaea\]  { border-color: #2e2e2e; }
