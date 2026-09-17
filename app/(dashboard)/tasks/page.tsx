@@ -467,18 +467,21 @@ export default function TasksPage() {
       priority: t.priority === "urgent" ? ("high" as const) : t.priority,
     };
 
-    // The column is the ticket's to decide only until someone moves the card
-    // by hand. Taking the ticket's word unconditionally meant a drag never
-    // stuck: an email ticket with no metadata row reads as "open", which maps
-    // to Backlog, so a card moved to In Progress was pulled straight back on
-    // the next render even though the move had saved. 85 of the 94
-    // ticket-derived cards on this board have no metadata row.
+    // The column follows the ticket only when the ticket has actually said
+    // something. A ticket with no metadata row has no recorded status, and
+    // the "open" it reports is a fallback, not a statement: treating that as
+    // the ticket's opinion overrode every card whose ticket nobody had
+    // triaged. On this board that was 21 rows yanked into Backlog on the
+    // first poll after load, including work already marked done, which is
+    // why the board appeared to show the right thing and then rearrange
+    // itself a second later.
     //
-    // Later write wins. A ticket with no metadata has no updatedAt, so the
-    // manual move wins outright; changing the status on the Tickets page
-    // stamps updatedAt and takes the card back.
-    const ticketIsNewer = t.updatedAt && (!c.columnSetAt || t.updatedAt > c.columnSetAt);
-    if (!c.columnSetAt || ticketIsNewer) {
+    // When the ticket has been triaged, the later of the two wins: a status
+    // set on the Tickets page moves the card, and a move made here after
+    // that stays put.
+    const ticketDecided = t.updatedAt;
+    const movedSince = c.columnSetAt && (!ticketDecided || c.columnSetAt > ticketDecided);
+    if (ticketDecided && !movedSince) {
       return { ...synced, column: TICKET_STATUS_TO_COL[t.status] };
     }
     return synced;
