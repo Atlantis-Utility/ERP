@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DateTimePicker from "@/components/ui/DateTimePicker";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
@@ -207,11 +208,13 @@ export default function AddMeetingDrawer({ open, onClose, onAdd }: Props) {
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <FormField label="Date" required error={errors.meetingDate}>
-            <input
-              className={inputClass}
-              type="date"
+            <DateTimePicker
               value={form.meetingDate}
-              onChange={(e) => set("meetingDate", e.target.value)}
+              onChange={(v) => set("meetingDate", v)}
+              dateOnly
+              floating
+              quickDates
+              placeholder="Pick a date"
             />
           </FormField>
           <FormField label="Time" required error={errors.meetingTime}>

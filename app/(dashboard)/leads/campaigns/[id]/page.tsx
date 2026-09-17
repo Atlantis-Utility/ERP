@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useConfirm } from "@/lib/confirm";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -192,6 +193,7 @@ export default function CampaignSheetPage() {
   const { campaigns, loading: campaignsLoading } = useCampaigns();
   // Who this campaign was handed to, which is who its rows can be assigned to.
   const grants = useCampaignGrants(campaignId);
+  const confirm = useConfirm();
 
   const campaign = campaigns.find((c) => c.id === campaignId) ?? null;
   const canEdit = campaign?.myLevel === "admin" || campaign?.myLevel === "editor";
@@ -414,10 +416,12 @@ export default function CampaignSheetPage() {
   async function deleteSelected() {
     const ids = [...selected];
     if (ids.length === 0) return;
-    if (
-      !confirm(`Remove ${ids.length} row${ids.length !== 1 ? "s" : ""} from this campaign? The leads themselves stay.`)
-    )
-      return;
+    const ok = await confirm({
+      title: `Remove ${ids.length} row${ids.length !== 1 ? "s" : ""} from this campaign?`,
+      description: "They come off this sheet along with anything filled in on them. The leads themselves stay.",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     setBusy(true);
     setError("");
     try {

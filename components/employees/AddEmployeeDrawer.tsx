@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import DateTimePicker from "@/components/ui/DateTimePicker";
 import Drawer from "@/components/ui/Drawer";
 import { addNotification } from "@/lib/notifications";
 import { logActivity } from "@/lib/activity-log";
@@ -224,11 +225,12 @@ export default function AddEmployeeDrawer({ open, onClose }: Props) {
             />
           </FormField>
           <FormField label="Start Date" error={errors.startDate}>
-            <input
-              className={inputClass}
-              type="date"
+            <DateTimePicker
               value={form.startDate}
-              onChange={(e) => set("startDate", e.target.value)}
+              onChange={(v) => set("startDate", v)}
+              dateOnly
+              floating
+              placeholder="Pick a start date"
             />
           </FormField>
         </div>

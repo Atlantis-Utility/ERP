@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "@/lib/confirm";
 import Overlay from "@/components/ui/Overlay";
 import Header from "@/components/layout/Header";
 import Select from "@/components/ui/Select";
@@ -40,6 +41,7 @@ const EMPTY_FORM = {
 
 export default function ContactsPage() {
   const [state, setState] = useState<ViewState>("idle");
+  const confirm = useConfirm();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -83,7 +85,11 @@ export default function ContactsPage() {
   }, [domain, user]);
 
   const deleteContact = async (c: Contact) => {
-    if (!confirm(`Delete ${c.first_name} ${c.last_name}?`)) return;
+    const ok = await confirm({
+      title: `Delete ${c.first_name} ${c.last_name}?`,
+      description: "This removes the contact from RingLogix as well.",
+    });
+    if (!ok) return;
     try {
       const res = await fetch("/api/ringlogix/contacts", {
         method: "DELETE",

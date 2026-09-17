@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import DateTimePicker from "@/components/ui/DateTimePicker";
+import { useConfirm } from "@/lib/confirm";
 import Overlay from "@/components/ui/Overlay";
 import Header from "@/components/layout/Header";
 import Select from "@/components/ui/Select";
@@ -29,6 +31,7 @@ type ScheduleMode = "specific" | "relative";
 
 export default function WakeUpCallsPage() {
   const [state, setState] = useState<ViewState>("idle");
+  const confirm = useConfirm();
   const [calls, setCalls] = useState<CallRequest[]>([]);
   const [error, setError] = useState("");
 
@@ -80,7 +83,11 @@ export default function WakeUpCallsPage() {
   useEffect(() => { load(); }, [load]);
 
   const deleteCall = async (c: CallRequest) => {
-    if (!confirm(`Delete wake-up call ${c.request_id}?`)) return;
+    const ok = await confirm({
+      title: `Delete wake-up call ${c.request_id}?`,
+      description: "The call won't be placed. This can't be undone.",
+    });
+    if (!ok) return;
     try {
       const res = await fetch("/api/ringlogix/wake-up-calls", {
         method: "DELETE",
@@ -350,11 +357,11 @@ export default function WakeUpCallsPage() {
               {scheduleMode === "specific" && (
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Date & Time (GMT)</label>
-                  <input
-                    type="datetime-local"
+                  <DateTimePicker
                     value={specificTime}
-                    onChange={(e) => setSpecificTime(e.target.value)}
-                    className="text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors w-full"
+                    onChange={setSpecificTime}
+                    placeholder="Pick a date and time"
+                    quickDates
                   />
                 </div>
               )}

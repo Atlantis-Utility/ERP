@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/lib/confirm";
 import { Trash2, Send, Check, AlertTriangle, Loader2, MessageSquare, Pencil, Eye, Lock } from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
@@ -185,6 +186,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
   );
 
   const [editing, setEditing] = useState(false);
+  const confirm = useConfirm();
   const [error, setError] = useState("");
   // Staged edits, only committed on "Save Changes" (matches the Edit Project
   // drawer's Cancel/Save pattern). Backed by useDraft so a tab switch or
@@ -325,7 +327,11 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
   }
 
   async function handleDeleteNote(note: LeadNote) {
-    if (!confirm("Delete this note?")) return;
+    const ok = await confirm({
+      title: "Delete this note?",
+      description: "It's removed from the lead's history for everyone.",
+    });
+    if (!ok) return;
     try {
       await removeLeadNote(note.id);
     } catch (err) {

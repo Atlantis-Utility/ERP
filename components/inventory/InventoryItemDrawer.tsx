@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DateTimePicker from "@/components/ui/DateTimePicker";
 import { Trash2 } from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
@@ -288,11 +289,13 @@ export default function InventoryItemDrawer({ open, onClose, item }: Props) {
                 </FormField>
               </div>
               <FormField label="Activated On">
-                <input
-                  type="date"
-                  className={inputClass}
+                <DateTimePicker
                   value={draft.activatedOn ?? ""}
-                  onChange={(e) => set("activatedOn", e.target.value)}
+                  onChange={(v) => set("activatedOn", v)}
+                  dateOnly
+                  floating
+                  clearable
+                  placeholder="Not activated"
                 />
               </FormField>
             </div>

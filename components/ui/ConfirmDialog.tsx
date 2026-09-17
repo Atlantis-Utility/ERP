@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
+import Overlay from "@/components/ui/Overlay";
 
 interface Props {
   open:        boolean;
@@ -24,27 +24,20 @@ export default function ConfirmDialog({
   loading = false,
   variant = "danger",
 }: Props) {
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onCancel(); }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
-
   if (!open) return null;
 
   const isDanger = variant === "danger";
 
   return (
-    <div
+    // Escape and the backdrop are Overlay's job, in one place rather than
+    // one implementation per dialog. Not dismissable mid-action, so a click
+    // can't leave the caller waiting on an answer that never comes.
+    <Overlay
+      onDismiss={onCancel}
+      dismissable={!loading}
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
-      onClick={onCancel}
     >
-      <div
-        className="bg-white rounded-2xl border border-[#eaeaea] shadow-2xl w-full max-w-sm p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="bg-white rounded-2xl border border-[#eaeaea] shadow-2xl w-full max-w-sm p-6">
         {/* Icon */}
         <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${
           isDanger ? "bg-[#fff0f0] border border-[#fecaca]" : "bg-[#fffbeb] border border-[#fde68a]"
@@ -79,6 +72,6 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

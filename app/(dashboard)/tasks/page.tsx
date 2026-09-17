@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
+import Tooltip from "@/components/ui/Tooltip";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import {
   Plus,
@@ -294,19 +295,22 @@ function Card({
             {card.assignees.slice(0, 3).map((name) => {
               const c = getAvatarColor(name);
               return (
-                <div
-                  key={name}
-                  title={name}
-                  className={`w-5 h-5 rounded-full ${c.bg} ${c.text} border-2 border-white flex items-center justify-center`}
-                >
-                  <span className="text-[8px] font-semibold">{getInitials(name)}</span>
-                </div>
+                <Tooltip key={name} label={name}>
+                  <div
+                    className={`w-5 h-5 rounded-full ${c.bg} ${c.text} border-2 border-white flex items-center justify-center`}
+                  >
+                    <span className="text-[8px] font-semibold">{getInitials(name)}</span>
+                  </div>
+                </Tooltip>
               );
             })}
             {card.assignees.length > 3 && (
-              <div className="w-5 h-5 rounded-full bg-[#f1f1f1] border-2 border-white flex items-center justify-center">
-                <span className="text-[8px] text-[#666] font-semibold">+{card.assignees.length - 3}</span>
-              </div>
+              // The rest by name, rather than a count you can't resolve.
+              <Tooltip label={card.assignees.slice(3)}>
+                <div className="w-5 h-5 rounded-full bg-[#f1f1f1] border-2 border-white flex items-center justify-center">
+                  <span className="text-[8px] text-[#666] font-semibold">+{card.assignees.length - 3}</span>
+                </div>
+              </Tooltip>
             )}
           </div>
         </div>

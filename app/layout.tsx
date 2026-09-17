@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ToastProvider } from "@/lib/toast";
+import { ConfirmProvider } from "@/lib/confirm";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ThemeProvider>
           <AuthProvider>
-            <ToastProvider>{children}</ToastProvider>
+            <ToastProvider>
+              <ConfirmProvider>{children}</ConfirmProvider>
+            </ToastProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

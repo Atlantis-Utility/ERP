@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/lib/confirm";
 import Link from "next/link";
 import { Megaphone, Loader2, Users, Eye, Pencil } from "lucide-react";
 import CampaignAccessModal from "@/components/campaigns/CampaignAccessModal";
@@ -42,6 +43,7 @@ export default function CampaignsPanel({
   const { campaigns, loading, error: loadError } = useCampaigns();
   const isOwner = useIsOwner();
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   // Who is on each campaign, for the faces on its row.
   const grants = useAllCampaignGrants();
   const employees = useEmployees();
@@ -61,13 +63,11 @@ export default function CampaignsPanel({
   }
 
   async function remove(campaign: Campaign) {
-    if (
-      !confirm(
-        `Delete "${campaign.name}"? Its ${campaign.leadCount.toLocaleString()} row${campaign.leadCount !== 1 ? "s" : ""} and all call notes on them are removed. The leads themselves stay.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Delete "${campaign.name}"?`,
+      description: `Its ${campaign.leadCount.toLocaleString()} row${campaign.leadCount !== 1 ? "s" : ""} and all call notes on them are removed. The leads themselves stay.`,
+    });
+    if (!ok) return;
     setBusyId(campaign.id);
     try {
       await deleteCampaign(campaign.id);

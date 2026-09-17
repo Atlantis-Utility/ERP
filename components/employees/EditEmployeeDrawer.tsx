@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import DateTimePicker from "@/components/ui/DateTimePicker";
 import { useRouter } from "next/navigation";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
@@ -255,7 +256,13 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
             )}
           </FormField>
           <FormField label="Start Date">
-            <input className={inputClass} type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
+            <DateTimePicker
+              value={form.startDate}
+              onChange={(v) => set("startDate", v)}
+              dateOnly
+              floating
+              placeholder="Pick a start date"
+            />
           </FormField>
         </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "@/lib/confirm";
 import Header from "@/components/layout/Header";
 import Select from "@/components/ui/Select";
 import CopyButton from "@/components/ui/CopyButton";
@@ -53,7 +54,6 @@ import {
   PRIORITY_OPTIONS,
   PRIORITY_STYLES,
   SOURCE_LABELS,
-  SOURCE_OPTIONS,
   isFollowUpOverdue,
 } from "@/lib/leads-constants";
 import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref, withScheme } from "@/lib/utils";
@@ -110,6 +110,7 @@ export default function LeadsPage() {
   const employees = useEmployees();
   const access = useLeadsAccess();
   const isOwner = useIsOwner();
+  const confirm = useConfirm();
   const { authUser } = useAuth();
   // Campaigns is a separate page grant, so the tab is only offered to
   // someone who could actually open a campaign. Without this the tab would
@@ -314,7 +315,11 @@ export default function LeadsPage() {
     const label = allMatchingSelected
       ? `all ${total.toLocaleString()} matching lead${total !== 1 ? "s" : ""}`
       : `${selectedCount.toLocaleString()} lead${selectedCount !== 1 ? "s" : ""}`;
-    if (!confirm(`Delete ${label}? This also removes their notes and history, and can't be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete ${label}?`,
+      description: "Their notes and history go too. This can't be undone.",
+    });
+    if (!ok) return;
     setBusy(true);
     setError("");
     try {
@@ -335,7 +340,11 @@ export default function LeadsPage() {
   }
 
   async function deleteOne(lead: Lead) {
-    if (!confirm(`Delete lead "${lead.companyName}"? This also removes its notes and history.`)) return;
+    const ok = await confirm({
+      title: `Delete "${lead.companyName}"?`,
+      description: "Its notes and history go too. This can't be undone.",
+    });
+    if (!ok) return;
     setError("");
     try {
       const deleted = await deleteLeadsBulk({ kind: "ids", ids: [lead.id] });
@@ -385,7 +394,7 @@ export default function LeadsPage() {
   const sortButton = (key: LeadSortKey, label: string) => (
     <button
       onClick={() => toggleSort(key)}
-      className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+      className={`flex items-center gap-1 whitespace-nowrap text-[10px] font-semibold uppercase tracking-wider transition-colors ${
         sort === key ? "text-[#0070f3]" : "text-[#999] hover:text-[#666]"
       }`}
     >
@@ -595,15 +604,6 @@ export default function LeadsPage() {
                   onChange={(v) => applyFilters({ priority: v })}
                   placeholder="Any priority"
                   options={PRIORITY_OPTIONS}
-                  clearable
-                />
-              </div>
-              <div className="w-36">
-                <Select
-                  value={filters.source}
-                  onChange={(v) => applyFilters({ source: v })}
-                  placeholder="Any source"
-                  options={SOURCE_OPTIONS}
                   clearable
                 />
               </div>
