@@ -31,10 +31,17 @@ export interface KanbanCard {
   duration?: number;
   projectId?: string;
   progress?: number;
-  /** Manual override — meetings don't carry attendee emails to infer this from. */
+  /** Manual override, meetings don't carry attendee emails to infer this from. */
   company?: string;
-  /** Only set for email-sourced tickets — manual tickets have no working detail route to link to. */
+  /** Only set for email-sourced tickets, manual tickets have no working detail route to link to. */
   ticketId?: string;
+  /**
+   * Employee id of whoever created the card. Read-level fallback: the tasks
+   * policy (supabase/migration-record-access.sql) lets you see a task you're
+   * assigned to *or* created, so raising a task before deciding who owns it
+   * doesn't immediately hide it from you.
+   */
+  createdBy?: string;
 }
 
 interface Props {
@@ -62,18 +69,17 @@ export default function AddTaskDrawer({ open, onClose, onAdd, defaultColumn }: P
   const [errors, setErrors] = useState<FormErrors>({});
   const employees = useEmployees();
 
-  function set<K extends keyof typeof emptyForm>(field: K, value: typeof emptyForm[K]) {
+  function set<K extends keyof typeof emptyForm>(field: K, value: (typeof emptyForm)[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (field === "title" && errors.title) setErrors((p) => ({ ...p, title: undefined }));
-    if ((field === "dueDate" || field === "dueDateTbd") && errors.dueDate) setErrors((p) => ({ ...p, dueDate: undefined }));
+    if ((field === "dueDate" || field === "dueDateTbd") && errors.dueDate)
+      setErrors((p) => ({ ...p, dueDate: undefined }));
   }
 
   function toggleAssignee(name: string) {
     set(
       "assignees",
-      form.assignees.includes(name)
-        ? form.assignees.filter((n) => n !== name)
-        : [...form.assignees, name]
+      form.assignees.includes(name) ? form.assignees.filter((n) => n !== name) : [...form.assignees, name],
     );
   }
 
@@ -196,11 +202,11 @@ export default function AddTaskDrawer({ open, onClose, onAdd, defaultColumn }: P
               onClick={() => set("dueDateTbd", !form.dueDateTbd)}
               className="flex items-center gap-1.5 text-[10px] text-[#999] hover:text-[#555] transition-colors select-none"
             >
-              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${
-                form.dueDateTbd
-                  ? "bg-[#0a0a0a] border-[#0a0a0a]"
-                  : "border-[#d4d4d4] hover:border-[#999]"
-              }`}>
+              <div
+                className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${
+                  form.dueDateTbd ? "bg-[#0a0a0a] border-[#0a0a0a]" : "border-[#d4d4d4] hover:border-[#999]"
+                }`}
+              >
                 {form.dueDateTbd && <Check className="w-2.5 h-2.5 text-white" />}
               </div>
               To be decided
@@ -211,15 +217,9 @@ export default function AddTaskDrawer({ open, onClose, onAdd, defaultColumn }: P
               Will be set later
             </div>
           ) : (
-            <DateTimePicker
-              dateOnly
-              value={form.dueDate}
-              onChange={(v) => set("dueDate", v)}
-            />
+            <DateTimePicker dateOnly value={form.dueDate} onChange={(v) => set("dueDate", v)} />
           )}
-          {errors.dueDate && (
-            <p className="mt-1 text-[11px] text-[#f31260]">{errors.dueDate}</p>
-          )}
+          {errors.dueDate && <p className="mt-1 text-[11px] text-[#f31260]">{errors.dueDate}</p>}
         </div>
 
         <FormField label="Tags" hint="Comma-separated, e.g. Engineering, Bug, Urgent">
@@ -235,9 +235,7 @@ export default function AddTaskDrawer({ open, onClose, onAdd, defaultColumn }: P
           <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3">
             Assign To
             {form.assignees.length > 0 && (
-              <span className="ml-2 normal-case font-normal text-[#0070f3]">
-                {form.assignees.length} selected
-              </span>
+              <span className="ml-2 normal-case font-normal text-[#0070f3]">{form.assignees.length} selected</span>
             )}
           </p>
         </div>
@@ -252,9 +250,7 @@ export default function AddTaskDrawer({ open, onClose, onAdd, defaultColumn }: P
                 type="button"
                 onClick={() => toggleAssignee(emp.name)}
                 className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-left transition-colors ${
-                  selected
-                    ? "border-[#0070f3] bg-[#e8f2ff]"
-                    : "border-[#eaeaea] hover:border-[#ccc] hover:bg-[#fafafa]"
+                  selected ? "border-[#0070f3] bg-[#e8f2ff]" : "border-[#eaeaea] hover:border-[#ccc] hover:bg-[#fafafa]"
                 }`}
               >
                 <div
@@ -265,11 +261,7 @@ export default function AddTaskDrawer({ open, onClose, onAdd, defaultColumn }: P
                   <span className="text-[10px] font-semibold">{getInitials(emp.name)}</span>
                 </div>
                 <div className="min-w-0">
-                  <p
-                    className={`text-xs font-medium truncate ${
-                      selected ? "text-[#0070f3]" : "text-[#0a0a0a]"
-                    }`}
-                  >
+                  <p className={`text-xs font-medium truncate ${selected ? "text-[#0070f3]" : "text-[#0a0a0a]"}`}>
                     {emp.name}
                   </p>
                   <p className="text-[10px] text-[#999] truncate">{emp.department}</p>

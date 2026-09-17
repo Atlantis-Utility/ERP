@@ -6,18 +6,23 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { getAvatarColor, getInitials } from "@/lib/utils";
 import {
-  Plus, CalendarDays, LayoutGrid, Clock,
-  ExternalLink, CheckCircle2, Video, FolderKanban, Flag,
+  Plus,
+  CalendarDays,
+  LayoutGrid,
+  Clock,
+  ExternalLink,
+  CheckCircle2,
+  Video,
+  FolderKanban,
+  Flag,
   LifeBuoy,
 } from "lucide-react";
-import AddTaskDrawer, {
-  type KanbanCard,
-  type KanbanColumn,
-} from "@/components/tasks/AddTaskDrawer";
+import AddTaskDrawer, { type KanbanCard, type KanbanColumn } from "@/components/tasks/AddTaskDrawer";
 import AddMeetingDrawer from "@/components/tasks/AddMeetingDrawer";
 import { subscribeTasks, addTask, updateTask, removeTask } from "@/lib/db/tasks";
 import { subscribeProjects, updateProject } from "@/lib/db/projects";
 import { useVisibility } from "@/lib/visibility";
+import { useCurrentEmployeeId } from "@/lib/hooks/use-current-employee-id";
 import { upsertTicket, upsertManualTicket, type TicketStatus } from "@/lib/db/tickets";
 import type { Project } from "@/lib/mock-projects";
 import { useUnifiedTickets } from "@/lib/tickets/useUnifiedTickets";
@@ -29,49 +34,49 @@ import { PHASE_DEFS } from "@/components/projects/ProjectPhases";
 
 // "done" is intentionally excluded: completed items live in the Completed tab, not the board.
 const COLUMNS: { id: KanbanColumn; label: string; dot: string }[] = [
-  { id: "backlog",     label: "Backlog",     dot: "#999"    },
+  { id: "backlog", label: "Backlog", dot: "#999" },
   { id: "in-progress", label: "In Progress", dot: "#0070f3" },
-  { id: "review",      label: "In Review",   dot: "#f59e0b" },
+  { id: "review", label: "In Review", dot: "#f59e0b" },
 ];
 
 // Ticket status <-> board column. Both directions live here so a ticket card
 // and its ticket can't drift apart.
 const TICKET_STATUS_TO_COL: Record<TicketStatus, KanbanColumn> = {
-  open:          "backlog",
+  open: "backlog",
   "in-progress": "in-progress",
-  resolved:      "done",
-  closed:        "done",
+  resolved: "done",
+  closed: "done",
 };
 
 // Not a clean inverse: the board's "review" column has no ticket equivalent,
-// and "done" maps to resolved rather than closed on purpose — closing a ticket
+// and "done" maps to resolved rather than closed on purpose, closing a ticket
 // fires the customer review-request email, which dragging a card should not do.
 const COL_TO_TICKET_STATUS: Record<KanbanColumn, TicketStatus> = {
-  "backlog":     "open",
+  backlog: "open",
   "in-progress": "in-progress",
-  "review":      "in-progress",
-  "done":        "resolved",
+  review: "in-progress",
+  done: "resolved",
 };
 
 const PLATFORM_CONFIG: Record<string, { label: string; color: string; bg: string; letter: string }> = {
-  zoom:        { label: "Zoom",            color: "#2D8CFF", bg: "#eff6ff", letter: "Z"  },
-  meet:        { label: "Google Meet",     color: "#34A853", bg: "#f0fdf4", letter: "G"  },
-  teams:       { label: "Teams",           color: "#5c5fc9", bg: "#f0f0f9", letter: "T"  },
-  webex:       { label: "Webex",           color: "#00BEF3", bg: "#ecfeff", letter: "W"  },
-  "in-person": { label: "In Person",       color: "#b45309", bg: "#fffbeb", letter: "📍" },
+  zoom: { label: "Zoom", color: "#2D8CFF", bg: "#eff6ff", letter: "Z" },
+  meet: { label: "Google Meet", color: "#34A853", bg: "#f0fdf4", letter: "G" },
+  teams: { label: "Teams", color: "#5c5fc9", bg: "#f0f0f9", letter: "T" },
+  webex: { label: "Webex", color: "#00BEF3", bg: "#ecfeff", letter: "W" },
+  "in-person": { label: "In Person", color: "#b45309", bg: "#fffbeb", letter: "📍" },
 };
 
 const PRIORITY_DOT: Record<string, string> = {
-  high:   "bg-[#ef4444]",
+  high: "bg-[#ef4444]",
   medium: "bg-[#f59e0b]",
-  low:    "bg-[#22c55e]",
+  low: "bg-[#22c55e]",
 };
 
 const TYPE_BADGE: Record<string, string> = {
-  task:    "bg-[#f5f5f5] text-[#666]",
+  task: "bg-[#f5f5f5] text-[#666]",
   meeting: "bg-[#eff6ff] text-[#2563eb]",
   project: "bg-[#f0fdf4] text-[#16a34a]",
-  ticket:  "bg-[#fef3c7] text-[#b45309]",
+  ticket: "bg-[#fef3c7] text-[#b45309]",
 };
 
 /* ─── helpers ────────────────────────────────────────────────────────── */
@@ -164,22 +169,22 @@ function Card({
         isDragging
           ? "opacity-40 scale-[0.97] shadow-lg"
           : isOverdue
-          ? "border-[#fecaca] hover:border-[#f87171] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
-          : isReadOnly
-          ? "border-[#d1fae5] bg-[#f0fdf4] hover:border-[#6ee7b7] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
-          : "border-[#eaeaea] hover:border-[#c9c9c9] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+            ? "border-[#fecaca] hover:border-[#f87171] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+            : isReadOnly
+              ? "border-[#d1fae5] bg-[#f0fdf4] hover:border-[#6ee7b7] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+              : "border-[#eaeaea] hover:border-[#c9c9c9] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
       }`}
     >
       {/* Type badge + priority dot */}
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-1.5">
-          <span className={`text-[9px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${TYPE_BADGE[card.type] ?? TYPE_BADGE.task}`}>
+          <span
+            className={`text-[9px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${TYPE_BADGE[card.type] ?? TYPE_BADGE.task}`}
+          >
             {card.type}
           </span>
           {isNewTicket && (
-            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#dcfce7] text-[#16a34a]">
-              New
-            </span>
+            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#dcfce7] text-[#16a34a]">New</span>
           )}
         </div>
         <span
@@ -195,9 +200,7 @@ function Card({
 
       {/* Description */}
       {card.description && (
-        <p className="text-[11px] text-[#999] leading-relaxed line-clamp-2 mb-2.5">
-          {card.description}
-        </p>
+        <p className="text-[11px] text-[#999] leading-relaxed line-clamp-2 mb-2.5">{card.description}</p>
       )}
 
       {/* Project progress bar */}
@@ -253,13 +256,15 @@ function Card({
 
       {/* Footer */}
       <div className="flex items-center justify-between pt-2.5 border-t border-[#f5f5f5]">
-        <span className={`text-[10px] flex items-center gap-1 ${isOverdue ? "text-[#dc2626] font-medium" : "text-[#999]"}`}>
+        <span
+          className={`text-[10px] flex items-center gap-1 ${isOverdue ? "text-[#dc2626] font-medium" : "text-[#999]"}`}
+        >
           <Clock className="w-3 h-3 shrink-0" />
           {card.type === "meeting" && card.meetingDate
             ? formatShortDate(card.meetingDate)
             : card.dueDateTbd
-            ? "TBD"
-            : formatShortDate(card.dueDate)}
+              ? "TBD"
+              : formatShortDate(card.dueDate)}
           {isOverdue && " · Overdue"}
         </span>
 
@@ -311,35 +316,36 @@ function Card({
 
 /* ─── main page ──────────────────────────────────────────────────────── */
 
-type View   = "board" | "completed" | "followup";
+type View = "board" | "completed" | "followup";
 type Filter = "all" | "task" | "meeting" | "project" | "high" | "mine";
 
 const VIEW_CONFIG: Record<View, { label: string; icon: typeof LayoutGrid }> = {
-  board:     { label: "Board",     icon: LayoutGrid   },
+  board: { label: "Board", icon: LayoutGrid },
   completed: { label: "Completed", icon: CheckCircle2 },
-  followup:  { label: "Follow Up", icon: Flag         },
+  followup: { label: "Follow Up", icon: Flag },
 };
 
 export default function TasksPage() {
   const TODAY = todayString();
   const searchParams = useSearchParams();
-  const router       = useRouter();
+  const router = useRouter();
 
-  const [cards, setCards]             = useState<KanbanCard[]>([]);
-  const [projects, setProjects]       = useState<Project[]>([]);
+  const [cards, setCards] = useState<KanbanCard[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const { tickets } = useUnifiedTickets();
-  const { isMine, ownsProject, myName } = useVisibility();
-  const notifiedDeadlines             = useRef<Set<string>>(new Set());
-  const [view, setView]               = useState<View>("board");
-  const [filter, setFilter]           = useState<Filter>("all");
-  const [search, setSearch]           = useState("");
-  const [taskDrawerOpen, setTaskDrawerOpen]       = useState(false);
+  const { isMine, ownsProject, myName, seesAll } = useVisibility();
+  const myEmployeeId = useCurrentEmployeeId();
+  const notifiedDeadlines = useRef<Set<string>>(new Set());
+  const [view, setView] = useState<View>("board");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [search, setSearch] = useState("");
+  const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
   const [meetingDrawerOpen, setMeetingDrawerOpen] = useState(false);
-  const [defaultCol, setDefaultCol]   = useState<KanbanColumn | undefined>();
-  const [draggingId, setDraggingId]   = useState<string | null>(null);
+  const [defaultCol, setDefaultCol] = useState<KanbanColumn | undefined>();
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<KanbanColumn | null>(null);
   const [selectedCard, setSelectedCard] = useState<KanbanCard | null>(null);
-  const [detailOpen, setDetailOpen]     = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const todayStr = TODAY;
 
@@ -347,7 +353,9 @@ export default function TasksPage() {
 
   // Re-render ticket-derived cards' "New" tag live as tickets get opened/marked read
   useEffect(() => {
-    function onNotif() { forceNotifTick((n) => n + 1); }
+    function onNotif() {
+      forceNotifTick((n) => n + 1);
+    }
     window.addEventListener("app-notification", onNotif);
     return () => window.removeEventListener("app-notification", onNotif);
   }, []);
@@ -359,7 +367,9 @@ export default function TasksPage() {
     } catch {}
     const unsub = subscribeTasks((cards) => {
       setCards(cards);
-      try { localStorage.setItem("sc:tasks", JSON.stringify(cards)); } catch {}
+      try {
+        localStorage.setItem("sc:tasks", JSON.stringify(cards));
+      } catch {}
     });
     return unsub;
   }, []);
@@ -387,7 +397,9 @@ export default function TasksPage() {
     } catch {}
     const unsub = subscribeProjects((ps) => {
       setProjects(ps);
-      try { localStorage.setItem("sc:projects", JSON.stringify(ps)); } catch {}
+      try {
+        localStorage.setItem("sc:projects", JSON.stringify(ps));
+      } catch {}
     });
     return unsub;
   }, []);
@@ -398,38 +410,40 @@ export default function TasksPage() {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
-    // Only notify about projects this user can actually open — otherwise a
+    // Only notify about projects this user can actually open, otherwise a
     // contributor gets deadline alerts linking to a project they can't see.
-    projects.filter((p) => ownsProject(p)).forEach((project) => {
-      if (project.status === "completed") return;
-      const deadlineDate = project.deadline.split("T")[0];
-      const storageKey   = `deadline_notified_${project.id}_${deadlineDate}`;
-      if (notifiedDeadlines.current.has(storageKey)) return;
-      if (localStorage.getItem(storageKey)) {
-        notifiedDeadlines.current.add(storageKey);
-        return;
-      }
-      const deadline = new Date(deadlineDate + "T00:00:00");
-      const daysLeft = Math.ceil((deadline.getTime() - now.getTime()) / 86_400_000);
-      if (daysLeft <= 7 && daysLeft >= 0) {
-        notifiedDeadlines.current.add(storageKey);
-        localStorage.setItem(storageKey, "1");
-        const when = daysLeft === 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
-        addNotification({
-          prefId: "n-2",
-          icon: "project",
-          title: `Deadline ${when}: ${project.name}`,
-          body: `"${project.name}" is due ${when}. Progress: ${project.progress}%.`,
-          href: `/projects/${project.id}`,
-        });
-      }
-    });
+    projects
+      .filter((p) => ownsProject(p))
+      .forEach((project) => {
+        if (project.status === "completed") return;
+        const deadlineDate = project.deadline.split("T")[0];
+        const storageKey = `deadline_notified_${project.id}_${deadlineDate}`;
+        if (notifiedDeadlines.current.has(storageKey)) return;
+        if (localStorage.getItem(storageKey)) {
+          notifiedDeadlines.current.add(storageKey);
+          return;
+        }
+        const deadline = new Date(deadlineDate + "T00:00:00");
+        const daysLeft = Math.ceil((deadline.getTime() - now.getTime()) / 86_400_000);
+        if (daysLeft <= 7 && daysLeft >= 0) {
+          notifiedDeadlines.current.add(storageKey);
+          localStorage.setItem(storageKey, "1");
+          const when = daysLeft === 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
+          addNotification({
+            prefId: "n-2",
+            icon: "project",
+            title: `Deadline ${when}: ${project.name}`,
+            body: `"${project.name}" is due ${when}. Progress: ${project.progress}%.`,
+            href: `/projects/${project.id}`,
+          });
+        }
+      });
   }, [projects, ownsProject]);
 
   /* ─── derived ──────────────────────────────────────────────────── */
 
   // TicketWatcher persists a ticket's card once, on arrival, with an empty
-  // assignee list and a backlog column, and never revisits it — so assigning
+  // assignee list and a backlog column, and never revisits it, so assigning
   // or progressing the ticket afterwards left the board showing a stale
   // "unassigned, backlog" card forever. The ticket stays the source of truth
   // for those fields, so re-apply it on read.
@@ -453,7 +467,7 @@ export default function TasksPage() {
 
   // Record-level visibility: non-administrators only see what they're assigned.
   // Filtered per source rather than on the merged list, because a project's
-  // card carries only `team` as its assignees — the owner would otherwise lose
+  // card carries only `team` as its assignees, the owner would otherwise lose
   // sight of their own project.
   const visibleCards = syncedCards.filter((c) => isMine(c.assignees));
   const visibleProjects = projects.filter((p) => ownsProject(p));
@@ -462,52 +476,62 @@ export default function TasksPage() {
   // Project-derived cards (live from Firestore via subscribeProjects)
   const projectCards: KanbanCard[] = visibleProjects.map((p) => {
     const colMap: Record<Project["status"], KanbanColumn> = {
-      active:    "in-progress",
-      overdue:   "review",
+      active: "in-progress",
+      overdue: "review",
       "on-hold": "backlog",
       completed: "done",
       cancelled: "done",
     };
     return {
-      id:          `proj-${p.id}`,
-      type:        "project" as const,
-      title:       p.name,
+      id: `proj-${p.id}`,
+      type: "project" as const,
+      title: p.name,
       description: p.description || "",
-      column:      colMap[p.status],
-      priority:    p.priority,
-      assignees:   p.team,
-      dueDate:     p.deadline.split("T")[0],
-      tags:        ([p.isp, p.clientName].filter(Boolean)) as string[],
-      projectId:   p.id,
-      progress:    p.progress,
+      column: colMap[p.status],
+      priority: p.priority,
+      assignees: p.team,
+      dueDate: p.deadline.split("T")[0],
+      tags: [p.isp, p.clientName].filter(Boolean) as string[],
+      projectId: p.id,
+      progress: p.progress,
     };
   });
 
-  // Ticket-derived cards (live from useUnifiedTickets — email + manual tickets;
+  // Ticket-derived cards (live from useUnifiedTickets, email + manual tickets;
   // the hook itself already omits email tickets when Microsoft mail isn't connected).
   // Skip tickets TicketWatcher has already synced into a persisted task card
-  // (same `ticket-<id>` id scheme) — otherwise both would render with the same key.
+  // (same `ticket-<id>` id scheme), otherwise both would render with the same key.
   const persistedCardIds = new Set(visibleCards.map((c) => c.id));
   const ticketCards: KanbanCard[] = visibleTickets
     .filter((t) => !persistedCardIds.has(`ticket-${t.id}`))
     .map(ticketToCard);
 
+  // Stamps a newly-created card so it stays visible to whoever made it.
+  // Since tasks are now filtered by assignment at the database, a card saved
+  // with nobody on it would be readable only by administrators, so a member
+  // creating one with no assignee is put on it themselves, and `createdBy`
+  // backs that up if they later hand it off and then take themselves off.
+  function stampNewCard(card: KanbanCard): KanbanCard {
+    const assignees = card.assignees.length === 0 && !seesAll && myName ? [myName] : card.assignees;
+    return { ...card, assignees, createdBy: myEmployeeId || undefined };
+  }
+
   function ticketToCard(t: (typeof tickets)[number]): KanbanCard {
     return {
-      id:          `ticket-${t.id}`,
-      type:        "ticket" as const,
-      title:       t.subject,
+      id: `ticket-${t.id}`,
+      type: "ticket" as const,
+      title: t.subject,
       description: t.description ?? t.snippet ?? "",
-      column:      TICKET_STATUS_TO_COL[t.status],
-      // KanbanPriority has no "urgent" tier — collapse it into "high" and
+      column: TICKET_STATUS_TO_COL[t.status],
+      // KanbanPriority has no "urgent" tier, collapse it into "high" and
       // surface the distinction via a tag instead of losing the signal.
-      priority:    t.priority === "urgent" ? "high" : t.priority,
-      assignees:   t.assigneeName ? [t.assigneeName] : [],
-      dueDate:     t.receivedAt.split("T")[0],
-      tags:        [t.source, ...(t.priority === "urgent" ? ["Urgent"] : [])],
+      priority: t.priority === "urgent" ? "high" : t.priority,
+      assignees: t.assigneeName ? [t.assigneeName] : [],
+      dueDate: t.receivedAt.split("T")[0],
+      tags: [t.source, ...(t.priority === "urgent" ? ["Urgent"] : [])],
       // Only email tickets have a working detail route (`/tickets/[id]` resolves
-      // Graph thread ids) — manual tickets show inline info with no dead link.
-      ticketId:    t.source === "email" ? t.id : undefined,
+      // Graph thread ids), manual tickets show inline info with no dead link.
+      ticketId: t.source === "email" ? t.id : undefined,
     };
   }
 
@@ -517,22 +541,23 @@ export default function TasksPage() {
   const todayMeetings = visibleCards.filter((c) => c.type === "meeting" && c.meetingDate === todayStr);
 
   // Board stats
-  const statsOverdue       = allCards.filter((c) => !c.dueDateTbd && c.dueDate && c.dueDate < TODAY && c.column !== "done").length;
-  const statsDueToday      = allCards.filter((c) => (c.type === "meeting" ? c.meetingDate : c.dueDate) === TODAY).length;
-  const statsInProgress    = allCards.filter((c) => c.column === "in-progress").length;
+  const statsOverdue = allCards.filter(
+    (c) => !c.dueDateTbd && c.dueDate && c.dueDate < TODAY && c.column !== "done",
+  ).length;
+  const statsDueToday = allCards.filter((c) => (c.type === "meeting" ? c.meetingDate : c.dueDate) === TODAY).length;
+  const statsInProgress = allCards.filter((c) => c.column === "in-progress").length;
   const statsMeetingsToday = todayMeetings.length;
 
   // "My Tasks" compares against the employee-row name from useVisibility, not
   // authUser.displayName. Assignees are stored as employees.name, while
-  // displayName prefers the Supabase user_metadata value — they coincide only
+  // displayName prefers the Supabase user_metadata value, they coincide only
   // while that metadata is unset, so keying off it meant the tab would quietly
   // match nothing the moment anyone set a display name on their account.
   //
   // Deliberately not isMine(): that returns true for everything an
   // administrator can see, which is the wrong answer for a "just mine" filter.
   const assignedToMe = (c: KanbanCard) =>
-    myName !== "" &&
-    c.assignees.some((a) => a?.trim().toLowerCase() === myName.trim().toLowerCase());
+    myName !== "" && c.assignees.some((a) => a?.trim().toLowerCase() === myName.trim().toLowerCase());
 
   function matchesSearch(c: KanbanCard) {
     const q = search.toLowerCase();
@@ -547,13 +572,19 @@ export default function TasksPage() {
 
   const filtered = allCards.filter((c) => {
     const matchesType =
-      filter === "all"     ? true :
-      filter === "task"    ? c.type === "task" :
-      filter === "meeting" ? c.type === "meeting" :
-      filter === "project" ? c.type === "project" :
-      filter === "high"    ? c.priority === "high" :
-      filter === "mine"    ? assignedToMe(c) :
-      true;
+      filter === "all"
+        ? true
+        : filter === "task"
+          ? c.type === "task"
+          : filter === "meeting"
+            ? c.type === "meeting"
+            : filter === "project"
+              ? c.type === "project"
+              : filter === "high"
+                ? c.priority === "high"
+                : filter === "mine"
+                  ? assignedToMe(c)
+                  : true;
     return matchesType && matchesSearch(c);
   });
 
@@ -562,21 +593,19 @@ export default function TasksPage() {
 
   // Follow Up tab: projects currently sitting in the project detail page's "Follow Up" phase
   const followUpProjectIds = new Set(
-    projects
-      .filter((p) => p.status !== "completed" && getCurrentPhaseId(p) === "followup")
-      .map((p) => p.id)
+    projects.filter((p) => p.status !== "completed" && getCurrentPhaseId(p) === "followup").map((p) => p.id),
   );
   const followUpCards = projectCards.filter(
-    (c) => c.projectId && followUpProjectIds.has(c.projectId) && matchesSearch(c)
+    (c) => c.projectId && followUpProjectIds.has(c.projectId) && matchesSearch(c),
   );
 
   const filterTabs: { key: Filter; label: string }[] = [
-    { key: "all",     label: "All" },
-    { key: "task",    label: "Tasks" },
+    { key: "all", label: "All" },
+    { key: "task", label: "Tasks" },
     { key: "meeting", label: "Meetings" },
     { key: "project", label: "Projects" },
-    { key: "high",    label: "High Priority" },
-    { key: "mine",    label: "My Tasks" },
+    { key: "high", label: "High Priority" },
+    { key: "mine", label: "My Tasks" },
   ];
 
   /* ─── drag & drop ──────────────────────────────────────────────── */
@@ -591,10 +620,10 @@ export default function TasksPage() {
     setDragOverCol(col);
   }
   const COL_TO_STATUS: Record<KanbanColumn, Project["status"]> = {
-    "backlog":     "on-hold",
+    backlog: "on-hold",
     "in-progress": "active",
-    "review":      "overdue",
-    "done":        "completed",
+    review: "overdue",
+    done: "completed",
   };
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>, col: KanbanColumn) {
@@ -610,9 +639,7 @@ export default function TasksPage() {
         // ticket instead and let the card follow.
         const ticket = liveTicketByCardId.get(id)!;
         const patch = { status: COL_TO_TICKET_STATUS[col] };
-        const write = ticket.source === "email"
-          ? upsertTicket(ticket.id, patch)
-          : upsertManualTicket(ticket.id, patch);
+        const write = ticket.source === "email" ? upsertTicket(ticket.id, patch) : upsertManualTicket(ticket.id, patch);
         write.catch(console.error);
         // Keep the persisted card's own column in step for anything reading it
         // directly (search, the completed tab) rather than through the merge.
@@ -630,7 +657,7 @@ export default function TasksPage() {
     setDragOverCol(null);
   }
 
-  // Ticket cards are read-only references, not editable tasks — route them to
+  // Ticket cards are read-only references, not editable tasks, route them to
   // the ticket's own detail page instead of opening the generic edit drawer.
   function handleCardClick(card: KanbanCard) {
     if (card.type === "ticket") {
@@ -650,14 +677,20 @@ export default function TasksPage() {
         actions={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { setDefaultCol(undefined); setMeetingDrawerOpen(true); }}
+              onClick={() => {
+                setDefaultCol(undefined);
+                setMeetingDrawerOpen(true);
+              }}
               className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-xs font-medium text-[#444] px-3 py-2 rounded-lg hover:bg-[#fafafa] transition-colors"
             >
               <Video className="w-3.5 h-3.5" />
               Schedule
             </button>
             <button
-              onClick={() => { setDefaultCol(undefined); setTaskDrawerOpen(true); }}
+              onClick={() => {
+                setDefaultCol(undefined);
+                setTaskDrawerOpen(true);
+              }}
               className="flex items-center gap-1.5 bg-[#0a0a0a] text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-[#333] transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -678,7 +711,10 @@ export default function TasksPage() {
             {todayMeetings.map((m) => {
               const cfg = m.platform ? PLATFORM_CONFIG[m.platform] : null;
               return (
-                <div key={m.id} className="flex items-center gap-2 max-w-full bg-[#fffbeb] border border-[#fde68a] rounded-lg px-3 py-1.5">
+                <div
+                  key={m.id}
+                  className="flex items-center gap-2 max-w-full bg-[#fffbeb] border border-[#fde68a] rounded-lg px-3 py-1.5"
+                >
                   {cfg && (
                     <span
                       className="w-3.5 h-3.5 rounded-full text-white text-[8px] font-bold flex items-center justify-center shrink-0"
@@ -711,10 +747,18 @@ export default function TasksPage() {
       {/* ── Stats row ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 sm:flex sm:items-center gap-px bg-[#f0f0f0] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
         {[
-          { value: statsOverdue,       label: "Overdue",        valueColor: statsOverdue > 0 ? "text-[#ef4444]" : "text-[#0a0a0a]" },
-          { value: statsDueToday,      label: "Due Today",      valueColor: statsDueToday > 0 ? "text-[#f59e0b]" : "text-[#0a0a0a]" },
-          { value: statsInProgress,    label: "In Progress",    valueColor: "text-[#0070f3]" },
-          { value: statsMeetingsToday, label: "Meetings Today", valueColor: statsMeetingsToday > 0 ? "text-[#5c5fc9]" : "text-[#0a0a0a]" },
+          { value: statsOverdue, label: "Overdue", valueColor: statsOverdue > 0 ? "text-[#ef4444]" : "text-[#0a0a0a]" },
+          {
+            value: statsDueToday,
+            label: "Due Today",
+            valueColor: statsDueToday > 0 ? "text-[#f59e0b]" : "text-[#0a0a0a]",
+          },
+          { value: statsInProgress, label: "In Progress", valueColor: "text-[#0070f3]" },
+          {
+            value: statsMeetingsToday,
+            label: "Meetings Today",
+            valueColor: statsMeetingsToday > 0 ? "text-[#5c5fc9]" : "text-[#0a0a0a]",
+          },
         ].map(({ value, label, valueColor }) => (
           <div key={label} className="bg-white sm:flex-1 px-4 sm:px-5 py-3 text-center">
             <p className={`text-xl font-bold tabular-nums leading-none ${valueColor}`}>{value}</p>
@@ -778,7 +822,7 @@ export default function TasksPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {COLUMNS.map((col) => {
             const colCards = filtered.filter((c) => c.column === col.id);
-            const isOver   = dragOverCol === col.id;
+            const isOver = dragOverCol === col.id;
             return (
               <div
                 key={col.id}
@@ -790,25 +834,26 @@ export default function TasksPage() {
                 {/* Column header */}
                 <div className="flex items-center justify-between px-1 mb-3">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: col.dot }}
-                    />
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: col.dot }} />
                     <span className="text-xs font-semibold text-[#0a0a0a]">{col.label}</span>
                     <span className="text-[10px] font-medium text-[#999] bg-[#f5f5f5] px-1.5 py-0.5 rounded-full tabular-nums">
                       {colCards.length}
                     </span>
-                    {col.id !== "done" && (() => {
-                      const oc = colCards.filter((c) => !c.dueDateTbd && c.dueDate && c.dueDate < TODAY).length;
-                      return oc > 0 ? (
-                        <span className="text-[9px] font-bold text-[#ef4444] bg-[#fef2f2] px-1.5 py-0.5 rounded-full tabular-nums">
-                          {oc} overdue
-                        </span>
-                      ) : null;
-                    })()}
+                    {col.id !== "done" &&
+                      (() => {
+                        const oc = colCards.filter((c) => !c.dueDateTbd && c.dueDate && c.dueDate < TODAY).length;
+                        return oc > 0 ? (
+                          <span className="text-[9px] font-bold text-[#ef4444] bg-[#fef2f2] px-1.5 py-0.5 rounded-full tabular-nums">
+                            {oc} overdue
+                          </span>
+                        ) : null;
+                      })()}
                   </div>
                   <button
-                    onClick={() => { setDefaultCol(col.id); setTaskDrawerOpen(true); }}
+                    onClick={() => {
+                      setDefaultCol(col.id);
+                      setTaskDrawerOpen(true);
+                    }}
                     className="p-1 rounded-md hover:bg-[#f5f5f5] transition-colors"
                     title="Add task"
                   >
@@ -842,7 +887,10 @@ export default function TasksPage() {
 
                   {/* Add in column footer */}
                   <button
-                    onClick={() => { setDefaultCol(col.id); setTaskDrawerOpen(true); }}
+                    onClick={() => {
+                      setDefaultCol(col.id);
+                      setTaskDrawerOpen(true);
+                    }}
                     className="w-full flex items-center gap-1.5 text-[11px] text-[#bbb] hover:text-[#666] py-2 px-2 rounded-lg hover:bg-[#fafafa] transition-colors mt-1"
                   >
                     <Plus className="w-3 h-3" />
@@ -927,21 +975,35 @@ export default function TasksPage() {
       {/* Drawers */}
       <AddTaskDrawer
         open={taskDrawerOpen}
-        onClose={() => { setTaskDrawerOpen(false); setDefaultCol(undefined); }}
-        onAdd={(card) => { addTask(card).catch(console.error); }}
+        onClose={() => {
+          setTaskDrawerOpen(false);
+          setDefaultCol(undefined);
+        }}
+        onAdd={(card) => {
+          addTask(stampNewCard(card)).catch(console.error);
+        }}
         defaultColumn={defaultCol}
       />
       <AddMeetingDrawer
         open={meetingDrawerOpen}
         onClose={() => setMeetingDrawerOpen(false)}
-        onAdd={(card) => { addTask(card).catch(console.error); }}
+        onAdd={(card) => {
+          addTask(stampNewCard(card)).catch(console.error);
+        }}
       />
       <TaskDetailDrawer
         card={selectedCard}
         open={detailOpen}
-        onClose={() => { setDetailOpen(false); setSelectedCard(null); }}
-        onUpdate={async (id, patch) => { await updateTask(id, patch); }}
-        onDelete={async (id) => { await removeTask(id); }}
+        onClose={() => {
+          setDetailOpen(false);
+          setSelectedCard(null);
+        }}
+        onUpdate={async (id, patch) => {
+          await updateTask(id, patch);
+        }}
+        onDelete={async (id) => {
+          await removeTask(id);
+        }}
       />
     </div>
   );

@@ -5,19 +5,26 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import IspLogo from "@/components/unifi/IspLogo";
 import {
-  Wifi, AlertTriangle, CheckCircle, Phone,
-  ArrowRight, RefreshCw,
-  Users, FolderKanban, Settings, CalendarDays, CheckCheck,
-  DollarSign, Bell,
+  Wifi,
+  AlertTriangle,
+  CheckCircle,
+  Phone,
+  ArrowRight,
+  RefreshCw,
+  Users,
+  FolderKanban,
+  Settings,
+  CalendarDays,
+  CheckCheck,
+  DollarSign,
+  Bell,
 } from "lucide-react";
 import type { UiEnrichedSite } from "@/lib/unifi";
-import {
-  addNotification, getNotifications, markAllRead,
-  type AppNotification,
-} from "@/lib/notifications";
+import { addNotification, getNotifications, markAllRead, type AppNotification } from "@/lib/notifications";
 import { subscribeProjects } from "@/lib/db/projects";
 import type { Project } from "@/lib/mock-projects";
 import { subscribeTasks } from "@/lib/db/tasks";
+import { useVisibility } from "@/lib/visibility";
 import type { KanbanCard } from "@/components/tasks/AddTaskDrawer";
 import type { PortalCustomer } from "@/lib/ringlogix-portal";
 import { balanceAmount } from "@/lib/customer-status";
@@ -27,10 +34,10 @@ import TodaySchedule from "@/components/dashboard/TodaySchedule";
 
 const TIMELINE_RANGE_OPTIONS = [
   { value: "today", label: "Today" },
-  { value: "week",  label: "This Week" },
+  { value: "week", label: "This Week" },
   { value: "month", label: "This Month" },
-  { value: "3",      label: "Next 3 Months" },
-  { value: "6",      label: "Next 6 Months" },
+  { value: "3", label: "Next 3 Months" },
+  { value: "6", label: "Next 6 Months" },
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -50,7 +57,7 @@ interface UnifiSummary {
 function timeAgo(t: string | undefined | null): string {
   if (!t) return "-";
   const m = Math.floor((Date.now() - new Date(t).getTime()) / 60000);
-  if (m < 1)  return "just now";
+  if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
@@ -69,23 +76,24 @@ function greetingPrefix(): string {
 function notifIconEl(icon: AppNotification["icon"]) {
   const cls = "w-3.5 h-3.5 text-[#666]";
   switch (icon) {
-    case "user":    return <Users         className={cls} />;
-    case "project": return <FolderKanban  className={cls} />;
-    case "network": return <Wifi          className="w-3.5 h-3.5 text-[#d97706]" />;
-    case "phone":   return <Phone         className={cls} />;
-    case "system":  return <Settings      className={cls} />;
-    case "leave":   return <CalendarDays  className={cls} />;
-    default:        return <CheckCircle   className={cls} />;
+    case "user":
+      return <Users className={cls} />;
+    case "project":
+      return <FolderKanban className={cls} />;
+    case "network":
+      return <Wifi className="w-3.5 h-3.5 text-[#d97706]" />;
+    case "phone":
+      return <Phone className={cls} />;
+    case "system":
+      return <Settings className={cls} />;
+    case "leave":
+      return <CalendarDays className={cls} />;
+    default:
+      return <CheckCircle className={cls} />;
   }
 }
 
-function NotificationPanel({
-  notifs,
-  onMarkAllRead,
-}: {
-  notifs: AppNotification[];
-  onMarkAllRead: () => void;
-}) {
+function NotificationPanel({ notifs, onMarkAllRead }: { notifs: AppNotification[]; onMarkAllRead: () => void }) {
   const unread = notifs.filter((n) => !n.read).length;
 
   return (
@@ -129,24 +137,28 @@ function NotificationPanel({
         ) : (
           notifs.slice(0, 30).map((n) => {
             const row = (
-              <div className={`flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-[#fafafa] ${!n.read ? "bg-[#fafafa]" : ""}`}>
+              <div
+                className={`flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-[#fafafa] ${!n.read ? "bg-[#fafafa]" : ""}`}
+              >
                 <div className="p-1.5 rounded-lg bg-white border border-[#eaeaea] shrink-0 mt-0.5">
                   {notifIconEl(n.icon)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-xs leading-snug truncate ${!n.read ? "font-semibold text-[#0a0a0a]" : "font-medium text-[#444]"}`}>
+                  <p
+                    className={`text-xs leading-snug truncate ${!n.read ? "font-semibold text-[#0a0a0a]" : "font-medium text-[#444]"}`}
+                  >
                     {n.title}
                   </p>
                   <p className="text-[10px] text-[#999] mt-0.5 truncate">{n.body}</p>
                   <p className="text-[10px] text-[#bbb] mt-0.5">{timeAgo(n.timestamp)}</p>
                 </div>
-                {!n.read && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#0a0a0a] shrink-0 mt-1.5" />
-                )}
+                {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-[#0a0a0a] shrink-0 mt-1.5" />}
               </div>
             );
             return n.href ? (
-              <Link key={n.id} href={n.href}>{row}</Link>
+              <Link key={n.id} href={n.href}>
+                {row}
+              </Link>
             ) : (
               <div key={n.id}>{row}</div>
             );
@@ -187,19 +199,24 @@ function daysUntil(dateStr: string): number {
   return Math.ceil((d.getTime() - now.getTime()) / 86_400_000);
 }
 
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { authUser } = useAuth();
+  const { isMine } = useVisibility();
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [appNotifs, setAppNotifs] = useState<AppNotification[]>([]);
 
   const [unifi, setUnifi] = useState<UnifiSummary>({
-    total: 0, online: 0, offline: 0, alerts: 0,
-    devicesOnline: 0, devicesOffline: 0, problemSites: [],
+    total: 0,
+    online: 0,
+    offline: 0,
+    alerts: 0,
+    devicesOnline: 0,
+    devicesOffline: 0,
+    problemSites: [],
   });
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -216,38 +233,44 @@ export default function DashboardPage() {
       const sites: UiEnrichedSite[] = sitesJson?.data ?? [];
 
       setUnifi(deriveUnifiSummary(sites));
-      try { localStorage.setItem("sc:sites", JSON.stringify(sites)); } catch {}
+      try {
+        localStorage.setItem("sc:sites", JSON.stringify(sites));
+      } catch {}
 
       // Detect offline ↔ online transitions
       const prevOfflineRaw = localStorage.getItem("dashboard_last_offline_sites");
       const prevOffline: Set<string> = new Set(prevOfflineRaw ? JSON.parse(prevOfflineRaw) : []);
 
-      sites.filter((s) => !s.connected).forEach((site) => {
-        if (!prevOffline.has(site.siteId)) {
+      sites
+        .filter((s) => !s.connected)
+        .forEach((site) => {
+          if (!prevOffline.has(site.siteId)) {
+            addNotification({
+              prefId: "n-6",
+              icon: "network",
+              title: "Site went offline",
+              body: site.displayName + (site.ispName ? ` · ${site.ispName}` : ""),
+              href: `/sites/${site.siteId}`,
+            });
+          }
+        });
+
+      // Site came back online
+      sites
+        .filter((s) => s.connected && prevOffline.has(s.siteId))
+        .forEach((site) => {
           addNotification({
             prefId: "n-6",
             icon: "network",
-            title: "Site went offline",
+            title: "Site back online",
             body: site.displayName + (site.ispName ? ` · ${site.ispName}` : ""),
             href: `/sites/${site.siteId}`,
           });
-        }
-      });
-
-      // Site came back online
-      sites.filter((s) => s.connected && prevOffline.has(s.siteId)).forEach((site) => {
-        addNotification({
-          prefId: "n-6",
-          icon: "network",
-          title: "Site back online",
-          body: site.displayName + (site.ispName ? ` · ${site.ispName}` : ""),
-          href: `/sites/${site.siteId}`,
         });
-      });
 
       localStorage.setItem(
         "dashboard_last_offline_sites",
-        JSON.stringify(sites.filter((s) => !s.connected).map((s) => s.siteId))
+        JSON.stringify(sites.filter((s) => !s.connected).map((s) => s.siteId)),
       );
 
       // Detect packet loss (new sites only)
@@ -265,10 +288,7 @@ export default function DashboardPage() {
           });
         }
       });
-      localStorage.setItem(
-        "dashboard_last_packetloss_sites",
-        JSON.stringify(plSites.map((s) => s.siteId))
-      );
+      localStorage.setItem("dashboard_last_packetloss_sites", JSON.stringify(plSites.map((s) => s.siteId)));
 
       // Detect high latency (new sites only)
       const prevHLRaw = localStorage.getItem("dashboard_last_highlat_sites");
@@ -278,9 +298,7 @@ export default function DashboardPage() {
         if (!prevHL.has(site.siteId)) {
           const hlPeriods = site.internetIssues.filter((p) => p.highLatency);
           const maxMs = Math.max(...hlPeriods.map((p) => p.latencyMaxMs ?? 0));
-          const avgMs = Math.round(
-            hlPeriods.reduce((s, p) => s + (p.latencyAvgMs ?? 0), 0) / hlPeriods.length
-          );
+          const avgMs = Math.round(hlPeriods.reduce((s, p) => s + (p.latencyAvgMs ?? 0), 0) / hlPeriods.length);
           addNotification({
             prefId: "n-6",
             icon: "network",
@@ -290,34 +308,33 @@ export default function DashboardPage() {
           });
         }
       });
-      localStorage.setItem(
-        "dashboard_last_highlat_sites",
-        JSON.stringify(hlSites.map((s) => s.siteId))
-      );
+      localStorage.setItem("dashboard_last_highlat_sites", JSON.stringify(hlSites.map((s) => s.siteId)));
 
       // Detect sites with new critical alerts and fire notifications
       const prevAlertRaw = localStorage.getItem("dashboard_last_alert_sites");
       const prevAlert: Set<string> = new Set(prevAlertRaw ? JSON.parse(prevAlertRaw) : []);
-      sites.filter((s) => s.statistics.counts.criticalNotification > 0).forEach((site) => {
-        if (!prevAlert.has(site.siteId)) {
-          addNotification({
-            prefId: "n-7",
-            icon: "network",
-            title: "Site has active alerts",
-            body: `${site.displayName} · ${site.statistics.counts.criticalNotification} critical alert${site.statistics.counts.criticalNotification > 1 ? "s" : ""}`,
-            href: `/alerts`,
-          });
-        }
-      });
+      sites
+        .filter((s) => s.statistics.counts.criticalNotification > 0)
+        .forEach((site) => {
+          if (!prevAlert.has(site.siteId)) {
+            addNotification({
+              prefId: "n-7",
+              icon: "network",
+              title: "Site has active alerts",
+              body: `${site.displayName} · ${site.statistics.counts.criticalNotification} critical alert${site.statistics.counts.criticalNotification > 1 ? "s" : ""}`,
+              href: `/alerts`,
+            });
+          }
+        });
       localStorage.setItem(
         "dashboard_last_alert_sites",
-        JSON.stringify(sites.filter((s) => s.statistics.counts.criticalNotification > 0).map((s) => s.siteId))
+        JSON.stringify(sites.filter((s) => s.statistics.counts.criticalNotification > 0).map((s) => s.siteId)),
       );
       setAppNotifs(getNotifications());
 
       setLastUpdated(new Date());
     } catch {
-      // silently fail — sections show what they can
+      // silently fail, sections show what they can
     } finally {
       setLoading(false);
       setSpinning(false);
@@ -346,12 +363,14 @@ export default function DashboardPage() {
   // Load notifications on mount and subscribe to live updates
   useEffect(() => {
     setAppNotifs(getNotifications());
-    function onNotif() { setAppNotifs(getNotifications()); }
+    function onNotif() {
+      setAppNotifs(getNotifications());
+    }
     window.addEventListener("app-notification", onNotif as EventListener);
     return () => window.removeEventListener("app-notification", onNotif as EventListener);
   }, []);
 
-  // Projects — for upcoming/overdue deadline tracking
+  // Projects, for upcoming/overdue deadline tracking
   useEffect(() => {
     try {
       const c = localStorage.getItem("sc:projects");
@@ -359,12 +378,14 @@ export default function DashboardPage() {
     } catch {}
     const unsub = subscribeProjects((ps) => {
       setProjects(ps);
-      try { localStorage.setItem("sc:projects", JSON.stringify(ps)); } catch {}
+      try {
+        localStorage.setItem("sc:projects", JSON.stringify(ps));
+      } catch {}
     });
     return unsub;
   }, []);
 
-  // Tasks/meetings — for upcoming meeting tracking
+  // Tasks/meetings, for upcoming meeting tracking
   useEffect(() => {
     try {
       const c = localStorage.getItem("sc:tasks");
@@ -372,12 +393,14 @@ export default function DashboardPage() {
     } catch {}
     const unsub = subscribeTasks((cs) => {
       setCards(cs);
-      try { localStorage.setItem("sc:tasks", JSON.stringify(cs)); } catch {}
+      try {
+        localStorage.setItem("sc:tasks", JSON.stringify(cs));
+      } catch {}
     });
     return unsub;
   }, []);
 
-  // Customers — for unpaid-balance tracking
+  // Customers, for unpaid-balance tracking
   useEffect(() => {
     try {
       const c = localStorage.getItem("sc:customers");
@@ -389,13 +412,17 @@ export default function DashboardPage() {
         const data = await r.json();
         const arr: PortalCustomer[] = Array.isArray(data) ? data : [];
         setCustomers(arr);
-        try { localStorage.setItem("sc:customers", JSON.stringify(arr)); } catch {}
+        try {
+          localStorage.setItem("sc:customers", JSON.stringify(arr));
+        } catch {}
       })
       .catch(() => {});
   }, []);
 
   const today = new Date().toLocaleDateString("en-US", {
-    weekday: "long", month: "long", day: "numeric",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
   });
 
   // Business KPIs derived from projects, meetings, and customer billing data
@@ -403,10 +430,21 @@ export default function DashboardPage() {
     .filter((p) => p.status !== "completed" && !p.deadlineTbd && p.deadline)
     .map((p) => ({ ...p, daysLeft: daysUntil(p.deadline) }));
   const overdueProjects = activeProjectsWithDays.filter((p) => p.daysLeft < 0).sort((a, b) => a.daysLeft - b.daysLeft);
-  const upcomingDeadlines = activeProjectsWithDays.filter((p) => p.daysLeft >= 0 && p.daysLeft <= 7).sort((a, b) => a.daysLeft - b.daysLeft);
+  const upcomingDeadlines = activeProjectsWithDays
+    .filter((p) => p.daysLeft >= 0 && p.daysLeft <= 7)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const todaysMeetings = cards.filter((c) => c.type === "meeting" && c.column !== "done" && c.meetingDate === todayStr);
+  // Record-level visibility, same rule as the task board: administrators see
+  // everything, everyone else only what they're assigned to. Without this the
+  // dashboard showed every employee's meetings and schedule to everyone,
+  // regardless of the filtering on /tasks. The tasks table now enforces this
+  // too, so for a member `cards` arrives pre-filtered, this keeps the
+  // rendering honest for an admin-cached list and for project-derived cards.
+  const visibleCards = cards.filter((c) => isMine(c.assignees));
+  const todaysMeetings = visibleCards.filter(
+    (c) => c.type === "meeting" && c.column !== "done" && c.meetingDate === todayStr,
+  );
 
   const unpaidCustomers = customers
     .map((c) => ({ ...c, owed: balanceAmount(c.balance) }))
@@ -414,16 +452,31 @@ export default function DashboardPage() {
     .sort((a, b) => b.owed - a.owed);
   const totalOwed = unpaidCustomers.reduce((s, c) => s + c.owed, 0);
 
-  // Same status colors used on the Projects page badges — kept in sync so a
+  // Same status colors used on the Projects page badges, kept in sync so a
   // color always means the same thing across the app.
   const projectStatusSlices = [
-    { key: "active",    label: "Active",    count: projects.filter((p) => p.status === "active").length,    color: "#818cf8" },
-    { key: "completed", label: "Completed", count: projects.filter((p) => p.status === "completed").length, color: "#22c55e" },
-    { key: "on-hold",   label: "On Hold",   count: projects.filter((p) => p.status === "on-hold").length,   color: "#fbbf24" },
-    { key: "overdue",   label: "Overdue",   count: projects.filter((p) => p.status === "overdue").length,   color: "#fb923c" },
+    { key: "active", label: "Active", count: projects.filter((p) => p.status === "active").length, color: "#818cf8" },
+    {
+      key: "completed",
+      label: "Completed",
+      count: projects.filter((p) => p.status === "completed").length,
+      color: "#22c55e",
+    },
+    {
+      key: "on-hold",
+      label: "On Hold",
+      count: projects.filter((p) => p.status === "on-hold").length,
+      color: "#fbbf24",
+    },
+    {
+      key: "overdue",
+      label: "Overdue",
+      count: projects.filter((p) => p.status === "overdue").length,
+      color: "#fb923c",
+    },
   ];
 
-  // Project timeline — real deadlines bucketed by the selected range, never fabricated history
+  // Project timeline, real deadlines bucketed by the selected range, never fabricated history
   const timelineMonths = (() => {
     const now = new Date();
     const validProjects = projects.filter((p) => !p.deadlineTbd && p.deadline);
@@ -449,7 +502,10 @@ export default function DashboardPage() {
     }
 
     if (timelineRange === "month") {
-      const bucket = emptyBucket(`${now.getFullYear()}-${now.getMonth()}`, now.toLocaleDateString("en-US", { month: "long" }));
+      const bucket = emptyBucket(
+        `${now.getFullYear()}-${now.getMonth()}`,
+        now.toLocaleDateString("en-US", { month: "long" }),
+      );
       for (const p of validProjects) {
         const d = new Date(p.deadline.split("T")[0] + "T00:00:00");
         if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) tally(bucket, p.status);
@@ -460,7 +516,10 @@ export default function DashboardPage() {
     const monthCount = Number(timelineRange);
     const months = Array.from({ length: monthCount }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      return emptyBucket(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, d.toLocaleDateString("en-US", { month: "short" }));
+      return emptyBucket(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+        d.toLocaleDateString("en-US", { month: "short" }),
+      );
     });
     const byKey = new Map(months.map((m) => [m.key, m]));
     for (const p of validProjects) {
@@ -473,11 +532,11 @@ export default function DashboardPage() {
   })();
 
   const kpiCards = [
-    { key: "deadlines",    label: "Deadlines This Week", value: upcomingDeadlines.length, href: "/projects" },
-    { key: "overdue",      label: "Overdue Projects",    value: overdueProjects.length,   href: "/projects" },
-    { key: "unpaid",       label: "Unpaid Customers",    value: unpaidCustomers.length,   href: "/customers" },
-    { key: "sitesOnline",  label: "Sites Online",        value: unifi.online,             href: "/sites" },
-    { key: "meetingsToday",label: "Meetings Today",      value: todaysMeetings.length,    href: "/tasks" },
+    { key: "deadlines", label: "Deadlines This Week", value: upcomingDeadlines.length, href: "/projects" },
+    { key: "overdue", label: "Overdue Projects", value: overdueProjects.length, href: "/projects" },
+    { key: "unpaid", label: "Unpaid Customers", value: unpaidCustomers.length, href: "/customers" },
+    { key: "sitesOnline", label: "Sites Online", value: unifi.online, href: "/sites" },
+    { key: "meetingsToday", label: "Meetings Today", value: todaysMeetings.length, href: "/tasks" },
   ];
 
   return (
@@ -486,7 +545,8 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4 shrink-0">
         <div>
           <h1 className="text-2xl font-semibold text-[#0a0a0a] leading-tight">
-            {greetingPrefix()}{authUser?.displayName ? `, ${authUser.displayName.split(" ")[0]}` : ""}
+            {greetingPrefix()}
+            {authUser?.displayName ? `, ${authUser.displayName.split(" ")[0]}` : ""}
           </h1>
           <p className="text-sm text-[#999] mt-1">{today}</p>
         </div>
@@ -569,7 +629,10 @@ export default function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <Link href="/tasks" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+              <Link
+                href="/tasks"
+                className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium"
+              >
                 View all <ArrowRight className="w-3 h-3" />
               </Link>
             )}
@@ -580,7 +643,7 @@ export default function DashboardPage() {
                 <ProjectTimelineChart data={timelineMonths} />
               </div>
             ) : (
-              <TodaySchedule cards={cards} />
+              <TodaySchedule cards={visibleCards} />
             )}
           </div>
         </div>
@@ -588,7 +651,10 @@ export default function DashboardPage() {
         <div className="lg:col-span-3 min-h-0">
           <NotificationPanel
             notifs={appNotifs}
-            onMarkAllRead={() => { markAllRead(); setAppNotifs(getNotifications()); }}
+            onMarkAllRead={() => {
+              markAllRead();
+              setAppNotifs(getNotifications());
+            }}
           />
         </div>
       </div>
@@ -607,7 +673,10 @@ export default function DashboardPage() {
                 <p className="text-[10px] text-[#999]">UniFi · real-time</p>
               </div>
             </div>
-            <Link href="/sites" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+            <Link
+              href="/sites"
+              className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium"
+            >
               All sites <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -615,10 +684,14 @@ export default function DashboardPage() {
           {/* Stats row */}
           <div className="grid grid-cols-4 divide-x divide-[#f4f4f4] border-b border-[#f4f4f4] shrink-0">
             {[
-              { label: "Total",   value: unifi.total,   color: "" },
-              { label: "Online",  value: unifi.online,  color: unifi.online  > 0 && unifi.offline === 0 ? "text-[#16a34a]" : "" },
+              { label: "Total", value: unifi.total, color: "" },
+              {
+                label: "Online",
+                value: unifi.online,
+                color: unifi.online > 0 && unifi.offline === 0 ? "text-[#16a34a]" : "",
+              },
               { label: "Offline", value: unifi.offline, color: unifi.offline > 0 ? "text-[#dc2626]" : "" },
-              { label: "Alerts",  value: unifi.alerts,  color: unifi.alerts  > 0 ? "text-[#d97706]" : "" },
+              { label: "Alerts", value: unifi.alerts, color: unifi.alerts > 0 ? "text-[#d97706]" : "" },
             ].map(({ label, value, color }) => (
               <div key={label} className="py-3 text-center">
                 {loading ? (
@@ -654,7 +727,9 @@ export default function DashboardPage() {
                       className="flex items-center justify-between px-5 py-3 border-b border-[#f8f8f8] last:border-0 hover:bg-[#fafafa] transition-colors group"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${site.connected ? "bg-[#d97706]" : "bg-[#dc2626]"}`} />
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${site.connected ? "bg-[#d97706]" : "bg-[#dc2626]"}`}
+                        />
                         <span className="text-sm text-[#0a0a0a] font-medium truncate group-hover:text-[#444] transition-colors">
                           {site.displayName}
                         </span>
@@ -672,11 +747,13 @@ export default function DashboardPage() {
                             {site.statistics.counts.criticalNotification}
                           </span>
                         )}
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
-                          site.connected
-                            ? "bg-[#fffbeb] text-[#b45309] border-[#fde68a]"
-                            : "bg-[#fef2f2] text-[#b91c1c] border-[#fecaca]"
-                        }`}>
+                        <span
+                          className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                            site.connected
+                              ? "bg-[#fffbeb] text-[#b45309] border-[#fde68a]"
+                              : "bg-[#fef2f2] text-[#b91c1c] border-[#fecaca]"
+                          }`}
+                        >
                           {site.connected ? "Alerts" : "Offline"}
                         </span>
                       </div>
@@ -685,7 +762,10 @@ export default function DashboardPage() {
 
               {!loading && unifi.problemSites.length > 0 && (
                 <div className="px-5 py-3 border-t border-[#f4f4f4]">
-                  <Link href="/alerts" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+                  <Link
+                    href="/alerts"
+                    className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium"
+                  >
                     View all alerts <ArrowRight className="w-3 h-3" />
                   </Link>
                 </div>
@@ -706,7 +786,10 @@ export default function DashboardPage() {
                 <p className="text-[10px] text-[#999]">Outstanding balances</p>
               </div>
             </div>
-            <Link href="/customers" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+            <Link
+              href="/customers"
+              className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium"
+            >
               All customers <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -714,10 +797,18 @@ export default function DashboardPage() {
           {/* Stats row */}
           <div className="grid grid-cols-4 divide-x divide-[#f4f4f4] border-b border-[#f4f4f4] shrink-0">
             {[
-              { label: "Total",      value: customers.length,       color: "" },
-              { label: "Unpaid",     value: unpaidCustomers.length, color: unpaidCustomers.length > 0 ? "text-[#dc2626]" : "" },
+              { label: "Total", value: customers.length, color: "" },
+              {
+                label: "Unpaid",
+                value: unpaidCustomers.length,
+                color: unpaidCustomers.length > 0 ? "text-[#dc2626]" : "",
+              },
               { label: "Total Owed", value: `$${totalOwed.toFixed(0)}`, color: totalOwed > 0 ? "text-[#dc2626]" : "" },
-              { label: "Highest",    value: `$${(unpaidCustomers[0]?.owed ?? 0).toFixed(0)}`, color: unpaidCustomers.length > 0 ? "text-[#d97706]" : "" },
+              {
+                label: "Highest",
+                value: `$${(unpaidCustomers[0]?.owed ?? 0).toFixed(0)}`,
+                color: unpaidCustomers.length > 0 ? "text-[#d97706]" : "",
+              },
             ].map(({ label, value, color }) => (
               <div key={label} className="py-3 text-center">
                 {loading ? (
@@ -752,8 +843,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="flex items-center gap-0.5 text-[10px] font-semibold text-[#d97706]">
-                      <AlertTriangle className="w-3 h-3" />
-                      1
+                      <AlertTriangle className="w-3 h-3" />1
                     </span>
                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-[#fffbeb] text-[#b45309] border-[#fde68a]">
                       ${c.owed.toFixed(0)}
@@ -764,7 +854,10 @@ export default function DashboardPage() {
 
               {unpaidCustomers.length > 0 && (
                 <div className="px-5 py-3 border-t border-[#f4f4f4]">
-                  <Link href="/customers" className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium">
+                  <Link
+                    href="/customers"
+                    className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium"
+                  >
                     View all unpaid <ArrowRight className="w-3 h-3" />
                   </Link>
                 </div>
@@ -773,7 +866,6 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
-
     </div>
   );
 }

@@ -8,16 +8,24 @@ import type { Project } from "./mock-projects";
 // Record-level visibility for tasks and projects: you see what you're assigned
 // to, administrators see everything.
 //
-// Assignments are stored as employee *names*, not ids — KanbanCard.assignees,
+// Assignments are stored as employee *names*, not ids. KanbanCard.assignees,
 // Project.owner/team and Ticket.assigneeName all hold the string from
 // employees.name (see AddTaskDrawer and AddProjectDrawer, which build their
 // pickers from `emp.name`). So the identity to compare against is the name on
 // the current user's employee row, not their employee id or auth display name,
 // which can differ.
 //
-// This is UI filtering, not enforcement: Supabase RLS on these tables is still
-// authenticated read/write, so a determined user could read the rows straight
-// from the API. It hides records; it does not protect them.
+// For TASKS this now mirrors real enforcement: supabase/migration-record-access.sql
+// puts the same rule ("assigned to you, or you created it, or you're an
+// administrator") in an RLS policy on the tasks table, so a member's fetch
+// returns nothing else to begin with. Keeping the filter here as well is not
+// redundant, the board also renders project- and ticket-derived cards that
+// never existed as task rows, and those still need filtering client-side.
+//
+// For PROJECTS it remains UI filtering only: `projects` is still under a
+// blanket authenticated read/write policy, so a determined user could read
+// those rows straight from the API. It hides project records; it does not
+// protect them.
 
 export interface Visibility {
   /** Administrators, and bootstrap admins with no employee record. */
