@@ -282,9 +282,30 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
         <div className="space-y-4">
           {PAGE_SECTIONS.map((section) => {
             const pages = NAV_PAGES.filter((p) => p.section === section);
+            const hrefs = pages.map((p) => p.href);
+            const allGranted = hrefs.every((h) => access.includes(h));
             return (
               <div key={section}>
-                <p className="text-[10px] font-semibold text-[#bbb] uppercase tracking-widest mb-2">{section}</p>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-[10px] font-semibold text-[#bbb] uppercase tracking-widest">{section}</p>
+                  {/* RingLogix alone is eleven pages; granting a whole area
+                      shouldn't be eleven clicks. */}
+                  {isAdmin && pages.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAccess((prev) =>
+                          allGranted
+                            ? prev.filter((h) => !hrefs.includes(h))
+                            : [...new Set([...prev, ...hrefs])]
+                        )
+                      }
+                      className="text-[10px] font-medium text-[#999] hover:text-[#0a0a0a] transition-colors"
+                    >
+                      {allGranted ? "Clear all" : "Select all"}
+                    </button>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {pages.map((page) => {
                     const granted = access.includes(page.href);

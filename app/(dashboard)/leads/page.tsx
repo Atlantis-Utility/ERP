@@ -16,6 +16,8 @@ import CampaignsPanel from "@/components/campaigns/CampaignsPanel";
 import AddToCampaignModal from "@/components/campaigns/AddToCampaignModal";
 import { criteriaFromLeadFilters, type CampaignFill } from "@/lib/db/campaigns";
 import { useEmployees } from "@/lib/db/employees";
+import { useAuth } from "@/lib/auth-context";
+import { hasPageAccess } from "@/lib/nav-pages";
 import { useLeadsAccess } from "@/lib/leads-access";
 import {
   queryLeadsPage,
@@ -102,6 +104,11 @@ const SORT_LABELS: Record<LeadSortKey, string> = {
 export default function LeadsPage() {
   const employees = useEmployees();
   const access = useLeadsAccess();
+  const { authUser } = useAuth();
+  // Campaigns is a separate page grant, so the tab is only offered to
+  // someone who could actually open a campaign. Without this the tab would
+  // be visible and every campaign behind it would 404.
+  const canSeeCampaigns = hasPageAccess("/leads/campaigns", authUser?.access);
   const revision = useLeadsRevision();
 
   const [tab, setTab] = useState<Tab>("leads");
@@ -457,7 +464,7 @@ export default function LeadsPage() {
       <div className="flex items-center gap-1 mb-5 border-b border-[#eaeaea]">
         {[
           { value: "leads" as Tab, label: "All Leads", icon: Target },
-          { value: "campaigns" as Tab, label: "Campaigns", icon: Megaphone },
+          ...(canSeeCampaigns ? [{ value: "campaigns" as Tab, label: "Campaigns", icon: Megaphone }] : []),
         ].map((t) => (
           <button
             key={t.value}
@@ -472,9 +479,9 @@ export default function LeadsPage() {
         ))}
       </div>
 
-      {tab === "campaigns" && <CampaignsPanel isAdmin={access.isAdmin} actor={actor} />}
+      {tab === "campaigns" && canSeeCampaigns && <CampaignsPanel isAdmin={access.isAdmin} actor={actor} />}
 
-      {tab === "leads" && (
+      {(tab === "leads" || !canSeeCampaigns) && (
         <>
           {/* KPI strip */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
@@ -654,13 +661,15 @@ export default function LeadsPage() {
                 >
                   <UserCheck className="w-3.5 h-3.5" /> Assign / share
                 </button>
-                <button
-                  onClick={() => setShowAddToCampaign(true)}
-                  disabled={busy}
-                  className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#444] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-                >
-                  <Megaphone className="w-3.5 h-3.5" /> Add to campaign
-                </button>
+                {canSeeCampaigns && (
+                  <button
+                    onClick={() => setShowAddToCampaign(true)}
+                    disabled={busy}
+                    className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#444] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+                  >
+                    <Megaphone className="w-3.5 h-3.5" /> Add to campaign
+                  </button>
+                )}
                 <button
                   onClick={bulkDelete}
                   disabled={busy}

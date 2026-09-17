@@ -3,23 +3,17 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { NAV_PAGES } from "@/lib/nav-pages";
+import { hasPageAccess } from "@/lib/nav-pages";
 import NotFound from "@/app/not-found";
 
 // `authUser.access` (undefined = unrestricted) is only used to hide sidebar
 // links today, it never stopped someone from typing/bookmarking the URL
 // directly. Gate the route itself so a revoked page actually becomes
 // unreachable, not just invisible in the nav.
-function isAllowed(pathname: string, access: string[] | undefined): boolean {
-  if (!access) return true;
-  // Longest matching href wins so "/employees/123" is gated by the
-  // "/employees" grant rather than falling through unmatched.
-  const page = NAV_PAGES
-    .filter((p) => (p.href === "/" ? pathname === "/" : pathname === p.href || pathname.startsWith(`${p.href}/`)))
-    .sort((a, b) => b.href.length - a.href.length)[0];
-  if (!page) return true; // not a gated page (e.g. /account)
-  return access.includes(page.href);
-}
+//
+// The rule itself lives in lib/nav-pages.ts, because the UI needs the same
+// answer to decide what to offer, and two copies of it would eventually
+// disagree about a nested route.
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { authUser, loading } = useAuth();
@@ -45,7 +39,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   // authUser.access updates live (auth-context's realtime subscription),
   // this also kicks in the moment an admin revokes access to the page an
   // employee is currently sitting on.
-  if (!isAllowed(pathname, authUser.access)) return <NotFound />;
+  if (!hasPageAccess(pathname, authUser.access)) return <NotFound />;
 
   return <>{children}</>;
 }
