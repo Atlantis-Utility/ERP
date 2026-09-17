@@ -7,6 +7,13 @@ import FloatingLayer from "./FloatingLayer";
 export interface SelectOption {
   value: string;
   label: string;
+  /**
+   * Renders in red, below a divider, for an option that does something
+   * destructive rather than simply setting a value. Keeps an action like
+   * "delete" with the control it belongs to instead of needing a button of
+   * its own beside it.
+   */
+  danger?: boolean;
 }
 
 interface SelectProps {
@@ -86,7 +93,8 @@ export default function Select({
   const listed = options.find((o) => o.value === value);
   // A value that isn't in the list is a custom one, and has to be offered as
   // the selected option or the trigger would show the placeholder over it.
-  const custom = (allowCustom || showUnlistedValue) && !listed && value !== "" ? { value, label: value } : null;
+  const custom: SelectOption | null =
+    (allowCustom || showUnlistedValue) && !listed && value !== "" ? { value, label: value } : null;
   const selected = listed ?? custom;
   const allOptions = custom ? [custom, ...options] : options;
   const visibleOptions =
@@ -154,8 +162,11 @@ export default function Select({
       {visibleOptions.length === 0 && !allowCustom ? (
         <p className={`text-[#bbb] ${isCell ? "px-2.5 py-1.5 text-[12px]" : "px-3 py-2 text-sm"}`}>No matches</p>
       ) : (
-        visibleOptions.map((opt) => {
+        visibleOptions.map((opt, i) => {
           const isSelected = opt.value === value;
+          // A divider above the first destructive option separates "set this
+          // value" from "do this thing".
+          const startsDangerGroup = opt.danger && !visibleOptions[i - 1]?.danger;
           return (
             <button
               key={opt.value}
@@ -166,10 +177,16 @@ export default function Select({
               }}
               className={`w-full flex items-center justify-between gap-2 text-left transition-colors ${
                 isCell ? "px-2.5 py-1.5 text-[12px]" : "px-3 py-2 text-sm"
-              } ${isSelected ? "bg-[#f5f5f5] text-[#0a0a0a] font-medium" : "text-[#444] hover:bg-[#fafafa]"}`}
+              } ${startsDangerGroup ? "mt-1 border-t border-[#f0f0f0] pt-2" : ""} ${
+                opt.danger
+                  ? "text-[#f31260] hover:bg-[#fef2f2]"
+                  : isSelected
+                    ? "bg-[#f5f5f5] text-[#0a0a0a] font-medium"
+                    : "text-[#444] hover:bg-[#fafafa]"
+              }`}
             >
               <span className="truncate">{opt.label}</span>
-              {isSelected && <Check className="w-3.5 h-3.5 text-[#0070f3] shrink-0" />}
+              {isSelected && !opt.danger && <Check className="w-3.5 h-3.5 text-[#0070f3] shrink-0" />}
             </button>
           );
         })

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Overlay from "@/components/ui/Overlay";
 import { X, Loader2 } from "lucide-react";
 import LeadCriteriaFields from "@/components/campaigns/LeadCriteriaFields";
 import { addLeadsToCampaign, previewSelection, EMPTY_CRITERIA, type CampaignCriteria } from "@/lib/db/campaigns";
@@ -72,7 +73,8 @@ export default function AddLeadsToSheetModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <Overlay onDismiss={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      dismissable={!saving}>
       <div className="bg-white border border-[#eaeaea] rounded-xl shadow-xl w-full max-w-2xl max-h-[88vh] flex flex-col">
         <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-[#f0f0f0]">
           <div className="min-w-0">
@@ -177,6 +179,6 @@ export default function AddLeadsToSheetModal({
           </div>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

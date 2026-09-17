@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Megaphone, Loader2, Users, Trash2, Eye, Pencil } from "lucide-react";
+import { Megaphone, Loader2, Users, Eye, Pencil } from "lucide-react";
 import CampaignAccessModal from "@/components/campaigns/CampaignAccessModal";
 import {
   useCampaigns,
@@ -15,8 +15,12 @@ import {
 import { useEmployees } from "@/lib/db/employees";
 import { CAMPAIGN_STATUS_OPTIONS, CAMPAIGN_STATUS_STYLES, calledPercent } from "@/lib/campaign-constants";
 import Select from "@/components/ui/Select";
+import Tooltip from "@/components/ui/Tooltip";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import { useIsOwner } from "@/lib/db/ownership";
+
+/** Not a status: picked from the same menu, handled as an action. */
+const DELETE_OPTION = "__delete";
 
 /**
  * The list of campaigns the reader can see, with progress and the controls an
@@ -196,22 +200,21 @@ export default function CampaignsPanel({
                         // "[object Object]" and no colour at all.
                         const avatar = getAvatarColor(person.name);
                         return (
-                          <span
-                            key={person.name}
-                            title={`${person.name} · ${person.role}`}
-                            className={`w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-semibold ${avatar.bg} ${avatar.text}`}
-                          >
-                            {getInitials(person.name)}
-                          </span>
+                          <Tooltip key={person.name} label={`${person.name} · ${person.role}`}>
+                            <span
+                              className={`w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-semibold ${avatar.bg} ${avatar.text}`}
+                            >
+                              {getInitials(person.name)}
+                            </span>
+                          </Tooltip>
                         );
                       })}
                       {people.length > 4 && (
-                        <span
-                          title={people.slice(4).map((x) => `${x.name} · ${x.role}`).join("\n")}
-                          className="w-6 h-6 rounded-full ring-2 ring-white bg-[#f0f0f0] text-[#666] flex items-center justify-center text-[9px] font-semibold"
-                        >
-                          +{people.length - 4}
-                        </span>
+                        <Tooltip label={people.slice(4).map((x) => `${x.name} · ${x.role}`)}>
+                          <span className="w-6 h-6 rounded-full ring-2 ring-white bg-[#f0f0f0] text-[#666] flex items-center justify-center text-[9px] font-semibold">
+                            +{people.length - 4}
+                          </span>
+                        </Tooltip>
                       )}
                     </div>
                   )}
@@ -231,25 +234,23 @@ export default function CampaignsPanel({
                       policy in SQL is what actually decides; this only keeps
                       the button from being offered to someone it would
                       refuse. */}
-                  {isOwner && (
-                    <button
-                      onClick={() => remove(c)}
-                      disabled={busy}
-                      className="p-2 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fef2f2] transition-colors disabled:opacity-50"
-                      title={`Delete ${c.name}`}
-                    >
-                      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  )}
-
                   {/* Last, and the only control here that changes the
                       campaign itself rather than opening something. */}
                   {isAdmin && (
                     <div className="w-28">
                       <Select
                         value={c.status}
-                        onChange={(v) => setStatus(c, v as CampaignStatus)}
-                        options={CAMPAIGN_STATUS_OPTIONS}
+                        onChange={(v) => (v === DELETE_OPTION ? remove(c) : setStatus(c, v as CampaignStatus))}
+                        options={
+                          // Delete lives in the same menu rather than as a
+                          // trash icon of its own: both change what this
+                          // campaign is, and a row of separate icons was
+                          // noisier than a menu. Owner only, and the policy
+                          // in SQL is what actually decides.
+                          isOwner
+                            ? [...CAMPAIGN_STATUS_OPTIONS, { value: DELETE_OPTION, label: "Delete", danger: true }]
+                            : CAMPAIGN_STATUS_OPTIONS
+                        }
                         disabled={busy}
                       />
                     </div>

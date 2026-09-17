@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Overlay from "@/components/ui/Overlay";
 import { X, Check, Loader2, AlertCircle, ArrowRight, ClipboardCheck } from "lucide-react";
 import {
   fetchPendingChanges,
@@ -139,7 +140,8 @@ export default function ReviewChangesModal({
   const selectedIds = [...selected];
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+    <Overlay onDismiss={onClose} className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
+      dismissable={!busy}>
       <div className="bg-white border border-[#eaeaea] rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eaeaea] shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -286,6 +288,6 @@ export default function ReviewChangesModal({
           </div>
         )}
       </div>
-    </div>
+    </Overlay>
   );
 }

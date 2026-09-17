@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Overlay from "@/components/ui/Overlay";
 import { X, Loader2, UserCheck, Eye, Pencil, Check } from "lucide-react";
 import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
@@ -87,7 +88,8 @@ export default function AssignLeadsModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+    <Overlay onDismiss={onClose} className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
+      dismissable={!saving}>
       <div className="bg-white border border-[#eaeaea] rounded-xl shadow-xl w-full max-w-md flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eaeaea]">
           <div>
@@ -217,6 +219,6 @@ export default function AssignLeadsModal({
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Overlay from "@/components/ui/Overlay";
 import { X, Loader2, Plus } from "lucide-react";
 import Select from "@/components/ui/Select";
 import LevelToggle from "@/components/leads/LevelToggle";
@@ -86,7 +87,7 @@ export default function LeadsAccessModal({ actor, onClose }: { actor: ActivityAc
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <Overlay onDismiss={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white border border-[#eaeaea] rounded-xl shadow-xl w-full max-w-xl max-h-[85vh] flex flex-col">
         <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4">
           <div className="min-w-0">
@@ -194,6 +195,6 @@ export default function LeadsAccessModal({ actor, onClose }: { actor: ActivityAc
           {error && <p className="text-[11px] text-[#f31260] truncate">{error}</p>}
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

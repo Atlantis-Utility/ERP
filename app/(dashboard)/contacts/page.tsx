@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Overlay from "@/components/ui/Overlay";
 import Header from "@/components/layout/Header";
 import Select from "@/components/ui/Select";
 import { BookUser, Mail, Smartphone, Phone, RefreshCw, AlertCircle, Plus, X, Trash2 } from "lucide-react";
@@ -339,7 +340,7 @@ export default function ContactsPage() {
 
       {/* Add Contact Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+        <Overlay onDismiss={() => setShowModal(false)} className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
           <div className="bg-white border border-[#eaeaea] rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#eaeaea]">
               <p className="text-sm font-semibold text-[#0a0a0a]">Add Contact</p>
@@ -384,7 +385,7 @@ export default function ContactsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Overlay>
       )}
     </div>
   );

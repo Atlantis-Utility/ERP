@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Overlay from "@/components/ui/Overlay";
 import { X, FileSpreadsheet, UploadCloud, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import Select from "@/components/ui/Select";
 import { guessColumnMapping } from "@/lib/csv";
@@ -356,7 +357,8 @@ export default function ImportLeadsCsvModal({
   const conflictingResults = useMemo(() => mergeResults.filter((r) => r.conflicts.length > 0), [mergeResults]);
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+    <Overlay onDismiss={onClose} className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
+      dismissable={!importing && !parsing && !matching}>
       <div className="bg-white border border-[#eaeaea] rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eaeaea] shrink-0">
           <div className="flex items-center gap-2">
@@ -699,6 +701,6 @@ export default function ImportLeadsCsvModal({
           </div>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

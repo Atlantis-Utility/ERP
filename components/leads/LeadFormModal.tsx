@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Overlay from "@/components/ui/Overlay";
 import { X, Loader2, Lock } from "lucide-react";
 import Select from "@/components/ui/Select";
 import DateTimePicker from "@/components/ui/DateTimePicker";
@@ -185,7 +186,8 @@ export default function LeadFormModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+    <Overlay onDismiss={onClose} className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
+      dismissable={!saving}>
       <div className="bg-white border border-[#eaeaea] rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eaeaea] shrink-0">
           <p className="text-sm font-semibold text-[#0a0a0a]">{lead ? "Edit Lead" : "Add Lead"}</p>
@@ -439,6 +441,6 @@ export default function LeadFormModal({
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }
