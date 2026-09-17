@@ -18,6 +18,7 @@ import Select from "@/components/ui/Select";
 import Tooltip from "@/components/ui/Tooltip";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import { useIsOwner } from "@/lib/db/ownership";
+import { useToast } from "@/lib/toast";
 
 /** Not a status: picked from the same menu, handled as an action. */
 const DELETE_OPTION = "__delete";
@@ -40,22 +41,20 @@ export default function CampaignsPanel({
 }) {
   const { campaigns, loading, error: loadError } = useCampaigns();
   const isOwner = useIsOwner();
+  const { success, error: toastError } = useToast();
   // Who is on each campaign, for the faces on its row.
   const grants = useAllCampaignGrants();
   const employees = useEmployees();
   const nameById = useMemo(() => new Map(employees.map((e) => [e.id, e.name])), [employees]);
   const [accessFor, setAccessFor] = useState<Campaign | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
   async function setStatus(campaign: Campaign, status: CampaignStatus) {
     setBusyId(campaign.id);
-    setError("");
     try {
       await updateCampaign(campaign.id, { status });
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to update the campaign"));
+      toastError(getErrorMessage(err, "Failed to update the campaign"));
     } finally {
       setBusyId(null);
     }
@@ -70,12 +69,11 @@ export default function CampaignsPanel({
       return;
     }
     setBusyId(campaign.id);
-    setError("");
     try {
       await deleteCampaign(campaign.id);
-      setNotice(`Deleted "${campaign.name}".`);
+      success(`Deleted "${campaign.name}".`);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to delete the campaign"));
+      toastError(getErrorMessage(err, "Failed to delete the campaign"));
     } finally {
       setBusyId(null);
     }
@@ -83,10 +81,9 @@ export default function CampaignsPanel({
 
   return (
     <div className="bg-white border border-[#eaeaea] rounded-xl">
-      {(error || loadError) && (
-        <p className="px-5 py-3 text-[13px] text-[#f31260] border-b border-[#f0f0f0]">{error || loadError}</p>
-      )}
-      {notice && <p className="px-5 py-3 text-[13px] text-[#17c964] border-b border-[#f0f0f0]">{notice}</p>}
+      {/* A list that failed to load is a state, not an event, so it stays
+          on the page rather than becoming a toast that disappears. */}
+      {loadError && <p className="px-5 py-3 text-[13px] text-[#f31260] border-b border-[#f0f0f0]">{loadError}</p>}
 
       {loading && (
         <div className="p-12 text-center">

@@ -10,6 +10,7 @@ import ReviewChangesModal from "@/components/campaigns/ReviewChangesModal";
 import { useCampaigns } from "@/lib/db/campaigns";
 import { usePendingChangeCount } from "@/lib/db/lead-changes";
 import { useLeadsAccess } from "@/lib/leads-access";
+import { useToast } from "@/lib/toast";
 
 /**
  * The campaign list. A route of its own rather than a tab on /leads so that
@@ -24,7 +25,7 @@ export default function CampaignsPage() {
   const { count: pending, reload: reloadPending } = usePendingChangeCount();
   const [showReview, setShowReview] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [notice, setNotice] = useState("");
+  const { success } = useToast();
 
   const actor = useMemo(
     () => (access.myEmployeeId ? { id: access.myEmployeeId, name: access.myName } : null),
@@ -82,10 +83,6 @@ export default function CampaignsPage() {
         }
       />
 
-      {notice && (
-        <p className="mb-4 px-4 py-2.5 rounded-lg bg-[#f0fdf4] text-[#17c964] text-sm">{notice}</p>
-      )}
-
       <CampaignsPanel isAdmin={access.isAdmin} actor={actor} />
 
       {showCreate && access.isAdmin && (
@@ -95,7 +92,7 @@ export default function CampaignsPage() {
           onCreated={(_id, message) => {
             // The list keeps itself current over realtime, so there's nothing
             // to refetch here.
-            setNotice(message);
+            success(message);
             setShowCreate(false);
           }}
         />

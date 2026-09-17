@@ -16,13 +16,13 @@ import {
   FolderKanban,
   Flag,
   LifeBuoy,
-  X,
 } from "lucide-react";
 import AddTaskDrawer, { type KanbanCard, type KanbanColumn } from "@/components/tasks/AddTaskDrawer";
 import AddMeetingDrawer from "@/components/tasks/AddMeetingDrawer";
 import { subscribeTasks, addTask, updateTask, removeTask } from "@/lib/db/tasks";
 import { subscribeProjects, updateProject } from "@/lib/db/projects";
 import { useVisibility } from "@/lib/visibility";
+import { useToast } from "@/lib/toast";
 import { useCurrentEmployeeId } from "@/lib/hooks/use-current-employee-id";
 import { upsertTicket, upsertManualTicket, type TicketStatus } from "@/lib/db/tickets";
 import type { Project } from "@/lib/mock-projects";
@@ -344,9 +344,9 @@ export default function TasksPage() {
   const [meetingDrawerOpen, setMeetingDrawerOpen] = useState(false);
   const [defaultCol, setDefaultCol] = useState<KanbanColumn | undefined>();
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  // A move that the database refused used to go to the console only, so the
-  // card slid back with no explanation.
-  const [moveError, setMoveError] = useState("");
+  // A move the database refuses is an event, so it's a toast: it used to go
+  // to the console only, and the card slid back with no explanation.
+  const { error: setMoveError } = useToast();
   const [dragOverCol, setDragOverCol] = useState<KanbanColumn | null>(null);
   const [selectedCard, setSelectedCard] = useState<KanbanCard | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -650,7 +650,6 @@ export default function TasksPage() {
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>, col: KanbanColumn) {
     e.preventDefault();
-    setMoveError("");
     const id = e.dataTransfer.getData("cardId");
     if (id) {
       if (id.startsWith("proj-")) {
@@ -737,15 +736,6 @@ export default function TasksPage() {
           </div>
         }
       />
-
-      {moveError && (
-        <div className="flex items-start justify-between gap-2 mb-4 px-4 py-2.5 rounded-lg bg-[#fef2f2] text-[#f31260] text-sm">
-          <p>{moveError}</p>
-          <button onClick={() => setMoveError("")} className="shrink-0 p-0.5 rounded hover:bg-[#fff0f3]">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
 
       {/* ── Today's meetings banner ─────────────────────────────────── */}
       {todayMeetings.length > 0 && (
