@@ -67,23 +67,91 @@ const PAGE_SIZE = 100;
 // same height with a hairline border and no rounded corners: the editable
 // ones only differ by being focusable.
 const CELL = "border-r border-b border-[#f0f0f0] px-2 h-9 align-middle";
-const READ_CELL = `${CELL} text-[12px] text-[#666] whitespace-nowrap max-w-52 truncate`;
+const READ_CELL = `${CELL} text-[12px] text-[#666] whitespace-nowrap truncate`;
 
 /**
- * The frozen pane, checkbox / No. / Company Name, floats above the columns
- * that scroll underneath it. Two things make that read correctly: an opaque
- * background (so nothing shows through), and a hard right edge on the last
- * pinned column. Without the edge, a column caught half-scrolled sits flush
- * against the company name and the two look like overlapping text.
+ * Every column's width in pixels, in the order they appear.
  *
- * The offsets below have to add up to the widths of the columns before them
- * (w-9 = 36px, w-14 = 56px, so the third pins at 92px = left-23), which is
- * why they're declared here once instead of inline in both the header and
- * the body.
+ * Declared rather than left to the browser, because two things need them
+ * exactly. The table is laid out `table-fixed`, so these are obeyed instead
+ * of being treated as hints and squeezed to fit the viewport, which is what
+ * clipped every cell to a few characters. And the frozen pane's sticky
+ * offsets are the running total of the columns to its left: while those were
+ * hard-coded (left-9, left-23) against widths the browser was free to
+ * ignore, a narrower render left a gap between two pinned cells, and the
+ * columns scrolling underneath showed through it.
+ *
+ * A call sheet is wide. That's what the horizontal scrollbar is for.
  */
+const COL = {
+  check: 36,
+  no: 56,
+  company: 232,
+  contact: 176,
+  address1: 184,
+  city: 128,
+  state: 64,
+  zip: 88,
+  phone: 140,
+  email: 184,
+  category: 168,
+  source: 128,
+  callDate: 148,
+  attempts: 76,
+  outcome: 180,
+  feedback: 264,
+  interested: 184,
+  bestTime: 148,
+  followUp: 148,
+  nextAction: 184,
+  rep: 168,
+  dnc: 52,
+  saveState: 40,
+} as const;
+
+/** In render order, so <colgroup> and the offsets below can't disagree. */
+function sheetColumnWidths(canEdit: boolean): number[] {
+  return [
+    ...(canEdit ? [COL.check] : []),
+    COL.no,
+    COL.company,
+    COL.contact,
+    COL.address1,
+    COL.city,
+    COL.state,
+    COL.zip,
+    COL.phone,
+    COL.email,
+    COL.category,
+    COL.source,
+    COL.callDate,
+    COL.attempts,
+    COL.outcome,
+    COL.feedback,
+    COL.interested,
+    COL.bestTime,
+    COL.followUp,
+    COL.nextAction,
+    COL.rep,
+    COL.dnc,
+    COL.saveState,
+  ];
+}
+
+/**
+ * Where each pinned column sits: the sum of the widths before it. Applied as
+ * a style rather than a Tailwind class so it is always the real number.
+ */
+function pinOffsets(canEdit: boolean) {
+  const check = canEdit ? COL.check : 0;
+  return { check: 0, no: check, company: check + COL.no };
+}
+
+// An opaque background stops the scrolling columns showing through the pane,
+// and the shadow gives its last column a hard edge: without one, a column
+// caught half-scrolled sits flush against the company name and the two read
+// as overlapping text.
 const PIN_EDGE = "shadow-[6px_0_8px_-6px_rgba(0,0,0,0.13)]";
-const pinNo = (canEdit: boolean) => (canEdit ? "left-9" : "left-0");
-const pinCompany = (canEdit: boolean) => (canEdit ? "left-23" : "left-14");
 const INPUT =
   "w-full h-full bg-transparent text-[12px] text-[#0a0a0a] px-1 outline-none focus:bg-[#eff6ff] transition-colors";
 // A cell holding a correction that hasn't been reviewed. Amber, the same
@@ -301,7 +369,7 @@ export default function CampaignSheetPage() {
    * uncontrolled input keeps its identity while typing, the same way the
    * call columns work.
    */
-  function factTd(row: CampaignRow, column: FactColumn, width: string, extra?: (value: string) => ReactNode) {
+  function factTd(row: CampaignRow, column: FactColumn, extra?: (value: string) => ReactNode) {
     const cell = factCell(row, column);
     return (
       <td className={`${CELL} ${cell.pending ? PENDING_CELL : ""}`}>
@@ -316,7 +384,7 @@ export default function CampaignSheetPage() {
               if (e.key === "Enter") e.currentTarget.blur();
             }}
             title={cell.pending ? `Waiting on an administrator: ${cell.value}` : cell.value}
-            className={`${INPUT} ${width} ${cell.pending ? "text-[#946c00]" : ""}`}
+            className={`${INPUT} min-w-0 flex-1 ${cell.pending ? "text-[#946c00]" : ""}`}
           />
           {extra?.(cell.value)}
         </div>
@@ -456,6 +524,11 @@ export default function CampaignSheetPage() {
   }
 
   const repOptions = employees.map((e) => ({ value: e.id, label: e.name }));
+  // The column model, and where the frozen pane's cells sit within it. Both
+  // come from the same numbers, so the pane can't drift out of alignment
+  // with the columns it's pinned over.
+  const columnWidths = sheetColumnWidths(canEdit);
+  const pins = pinOffsets(canEdit);
 
   return (
     <div>
@@ -663,20 +736,35 @@ export default function CampaignSheetPage() {
           <div className={`overflow-auto max-h-[70vh] transition-opacity ${loading ? "opacity-60" : ""}`}>
             {/* border-separate, not collapse: a collapsed border belongs to
                 the table rather than the cell, so the frozen pane's own right
-                border scrolls away with the body and the pane loses its edge. */}
-            <table className="border-separate border-spacing-0" style={{ minWidth: "1800px" }}>
+                border scrolls away with the body and the pane loses its edge.
+                table-fixed so the colgroup below is obeyed exactly, which is
+                what the pane's offsets are measured against. */}
+            <table
+              className="table-fixed border-separate border-spacing-0"
+              style={{ width: columnWidths.reduce((sum, w) => sum + w, 0) }}
+            >
+              <colgroup>
+                {columnWidths.map((w, i) => (
+                  <col key={i} style={{ width: w }} />
+                ))}
+              </colgroup>
               <thead className="sticky top-0 z-20">
                 <tr className="bg-[#fafafa]">
                   {canEdit && (
-                    <th className="sticky left-0 z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] w-9 px-2 h-9" />
+                    <th
+                      style={{ left: pins.check }}
+                      className="sticky z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9"
+                    />
                   )}
                   <th
-                    className={`sticky ${pinNo(canEdit)} z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] w-14 px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider`}
+                    style={{ left: pins.no }}
+                    className="sticky z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider"
                   >
                     No.
                   </th>
                   <th
-                    className={`sticky ${pinCompany(canEdit)} z-30 ${PIN_EDGE} bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider w-56`}
+                    style={{ left: pins.company }}
+                    className={`sticky z-30 ${PIN_EDGE} bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider`}
                   >
                     Company Name
                   </th>
@@ -703,7 +791,13 @@ export default function CampaignSheetPage() {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider whitespace-nowrap"
+                      // Clipped, not wrapped: under table-fixed a label wider
+                      // than its column overflows into the next one instead of
+                      // widening it, and "Caller Feedback / Prospect's Stated
+                      // Problem" is wider than any sane column. The full text
+                      // is on hover.
+                      title={h}
+                      className="bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider truncate"
                     >
                       {h}
                     </th>
@@ -724,7 +818,8 @@ export default function CampaignSheetPage() {
                     >
                       {canEdit && (
                         <td
-                          className={`sticky left-0 z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea]`}
+                          style={{ left: pins.check }}
+                          className={`sticky z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea]`}
                         >
                           <input
                             type="checkbox"
@@ -743,12 +838,14 @@ export default function CampaignSheetPage() {
                         </td>
                       )}
                       <td
-                        className={`sticky ${pinNo(canEdit)} z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] text-[11px] text-[#999] tabular-nums`}
+                        style={{ left: pins.no }}
+                        className={`sticky z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] text-[11px] text-[#999] tabular-nums`}
                       >
                         {row.position}
                       </td>
                       <td
-                        className={`sticky ${pinCompany(canEdit)} z-10 ${PIN_EDGE} ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] w-56 max-w-56`}
+                        style={{ left: pins.company }}
+                        className={`sticky z-10 ${PIN_EDGE} ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea]`}
                       >
                         <div className="flex items-center gap-1">
                           {/* min-w-0 or the name refuses to shrink inside the
@@ -786,14 +883,14 @@ export default function CampaignSheetPage() {
                           permission to rewrite the lead database, so an
                           editor's change is queued for an administrator,
                           whose own edits go straight through. */}
-                      {factTd(row, "contactName", "w-44", (v) => (
+                      {factTd(row, "contactName", (v) => (
                         <CopyButton value={v} label="contact name" revealOnHover />
                       ))}
-                      {factTd(row, "address1", "w-52")}
-                      {factTd(row, "city", "w-28")}
-                      {factTd(row, "state", "w-12")}
-                      {factTd(row, "zip", "w-20")}
-                      {factTd(row, "phone", "w-32 font-mono", (v) =>
+                      {factTd(row, "address1")}
+                      {factTd(row, "city")}
+                      {factTd(row, "state")}
+                      {factTd(row, "zip")}
+                      {factTd(row, "phone", (v) =>
                         v ? (
                           <a
                             href={telHref(v)}
@@ -804,7 +901,7 @@ export default function CampaignSheetPage() {
                           </a>
                         ) : null,
                       )}
-                      {factTd(row, "email", "w-44", (v) =>
+                      {factTd(row, "email", (v) =>
                         v ? (
                           <a
                             href={`mailto:${v}`}
@@ -815,14 +912,14 @@ export default function CampaignSheetPage() {
                           </a>
                         ) : null,
                       )}
-                      {factTd(row, "category", "w-40")}
+                      {factTd(row, "category")}
                       <td className={READ_CELL}>{row.source ?? ""}</td>
 
                       {/* Call results: the editable half of the sheet. The
                           pickers are the app's own, floating out of the
                           sheet's scroll container so they open over it
                           instead of being clipped by it. */}
-                      <td className={`${CELL} w-36`}>
+                      <td className={CELL}>
                         <DateTimePicker
                           value={row.callDate ?? ""}
                           onChange={(v) => commit(row, { callDate: v || null })}
@@ -845,10 +942,10 @@ export default function CampaignSheetPage() {
                           onKeyDown={(e) => {
                             if (e.key === "Enter") e.currentTarget.blur();
                           }}
-                          className={`${INPUT} w-14 tabular-nums`}
+                          className={`${INPUT} tabular-nums`}
                         />
                       </td>
-                      <td className={`${CELL} w-44`}>
+                      <td className={CELL}>
                         {/* showUnlistedValue: an outcome saved before this
                             list changed still has to display, or the row
                             would look blank and saving it would clear it. */}
@@ -876,10 +973,10 @@ export default function CampaignSheetPage() {
                           onKeyDown={(e) => {
                             if (e.key === "Enter") e.currentTarget.blur();
                           }}
-                          className={`${INPUT} w-80`}
+                          className={INPUT}
                         />
                       </td>
-                      <td className={`${CELL} w-48`}>
+                      <td className={CELL}>
                         {/* allowCustom, because callers hear things that
                             aren't on any list, and rounding that to the
                             nearest option loses the useful part. */}
@@ -896,7 +993,7 @@ export default function CampaignSheetPage() {
                           disabled={!canEdit}
                         />
                       </td>
-                      <td className={`${CELL} w-36`}>
+                      <td className={CELL}>
                         <Select
                           value={row.bestTime ?? ""}
                           onChange={(v) => commit(row, { bestTime: v })}
@@ -910,7 +1007,7 @@ export default function CampaignSheetPage() {
                           disabled={!canEdit}
                         />
                       </td>
-                      <td className={`${CELL} w-36 ${dueSoon ? "bg-[#fef2f2]" : ""}`}>
+                      <td className={`${CELL} ${dueSoon ? "bg-[#fef2f2]" : ""}`}>
                         {/* quickDates: on a call sheet the answer is almost
                             always today, tomorrow or next week. */}
                         <DateTimePicker
@@ -936,10 +1033,10 @@ export default function CampaignSheetPage() {
                           onKeyDown={(e) => {
                             if (e.key === "Enter") e.currentTarget.blur();
                           }}
-                          className={`${INPUT} w-52`}
+                          className={INPUT}
                         />
                       </td>
-                      <td className={`${CELL} w-40`}>
+                      <td className={CELL}>
                         <Select
                           value={row.assignedRep ?? ""}
                           onChange={(id) =>
