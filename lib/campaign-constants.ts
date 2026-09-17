@@ -34,9 +34,10 @@ export const CALL_OUTCOME_STYLES: Record<string, string> = {
 };
 
 /**
- * Suggestions for "Interested In (Service)". A datalist rather than a fixed
- * select: callers hear things that don't fit a list, and losing that detail
- * to the nearest dropdown option would be worse than inconsistent values.
+ * Suggestions for "Interested In (Service)". Offered as a dropdown with a
+ * Custom entry rather than a fixed list: callers hear things that don't fit
+ * a list, and losing that detail to the nearest option would be worse than
+ * the odd one-off value.
  */
 export const SERVICE_SUGGESTIONS = [
   "VoIP / Phone system",
@@ -48,6 +49,23 @@ export const SERVICE_SUGGESTIONS = [
   "Call centre / Queues",
   "Hardware / Handsets",
 ];
+
+export const SERVICE_OPTIONS = SERVICE_SUGGESTIONS.map((s) => ({ value: s, label: s }));
+
+/**
+ * When to call back. The windows people actually say on the phone, with the
+ * same Custom escape hatch, so "after the lunch rush" survives.
+ */
+export const BEST_TIME_SUGGESTIONS = [
+  "Morning",
+  "Afternoon",
+  "Late afternoon",
+  "Before 9am",
+  "After 4pm",
+  "Weekends",
+];
+
+export const BEST_TIME_OPTIONS = BEST_TIME_SUGGESTIONS.map((s) => ({ value: s, label: s }));
 
 export const CAMPAIGN_STATUS_OPTIONS: { value: CampaignStatus; label: string }[] = [
   { value: "active", label: "Active" },

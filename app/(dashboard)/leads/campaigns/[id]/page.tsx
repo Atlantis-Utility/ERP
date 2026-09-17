@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -18,11 +18,17 @@ import {
   ChevronRight,
   Eye,
   X,
+  ClipboardCheck,
+  Phone,
+  Mail,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import CopyButton from "@/components/ui/CopyButton";
+import Select from "@/components/ui/Select";
+import DateTimePicker from "@/components/ui/DateTimePicker";
 import CampaignAccessModal from "@/components/campaigns/CampaignAccessModal";
 import AddLeadsToSheetModal from "@/components/campaigns/AddLeadsToSheetModal";
+import ReviewChangesModal from "@/components/campaigns/ReviewChangesModal";
 import { useEmployees } from "@/lib/db/employees";
 import { useLeadsAccess } from "@/lib/leads-access";
 import {
@@ -40,7 +46,18 @@ import {
   type SheetResult,
   type SheetQuery,
 } from "@/lib/db/campaigns";
-import { CALL_OUTCOMES, CALL_OUTCOME_STYLES, SERVICE_SUGGESTIONS } from "@/lib/campaign-constants";
+import {
+  CALL_OUTCOME_OPTIONS,
+  CALL_OUTCOME_STYLES,
+  SERVICE_OPTIONS,
+  BEST_TIME_OPTIONS,
+} from "@/lib/campaign-constants";
+import {
+  requestLeadChange,
+  changesError,
+  LEAD_FIELD_LABELS,
+  type EditableLeadField,
+} from "@/lib/db/lead-changes";
 import { exportToCsv } from "@/lib/export";
 import { getErrorMessage, formatPhone, telHref } from "@/lib/utils";
 
@@ -51,10 +68,56 @@ const PAGE_SIZE = 100;
 // ones only differ by being focusable.
 const CELL = "border-r border-b border-[#f0f0f0] px-2 h-9 align-middle";
 const READ_CELL = `${CELL} text-[12px] text-[#666] whitespace-nowrap max-w-52 truncate`;
+
+/**
+ * The frozen pane, checkbox / No. / Company Name, floats above the columns
+ * that scroll underneath it. Two things make that read correctly: an opaque
+ * background (so nothing shows through), and a hard right edge on the last
+ * pinned column. Without the edge, a column caught half-scrolled sits flush
+ * against the company name and the two look like overlapping text.
+ *
+ * The offsets below have to add up to the widths of the columns before them
+ * (w-9 = 36px, w-14 = 56px, so the third pins at 92px = left-23), which is
+ * why they're declared here once instead of inline in both the header and
+ * the body.
+ */
+const PIN_EDGE = "shadow-[6px_0_8px_-6px_rgba(0,0,0,0.13)]";
+const pinNo = (canEdit: boolean) => (canEdit ? "left-9" : "left-0");
+const pinCompany = (canEdit: boolean) => (canEdit ? "left-23" : "left-14");
 const INPUT =
   "w-full h-full bg-transparent text-[12px] text-[#0a0a0a] px-1 outline-none focus:bg-[#eff6ff] transition-colors";
+// A cell holding a correction that hasn't been reviewed. Amber, the same
+// "waiting on someone" colour the rest of the app uses, rather than red:
+// nothing is wrong, it just isn't final.
+const PENDING_CELL = "bg-[#fefce8]";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
+
+/**
+ * Which lead fact each sheet column shows. The sheet's own columns are named
+ * for the spreadsheet ("Address1", "Category"), while a change request names
+ * the lead field it would rewrite, so the two have to be mapped.
+ */
+const FACT_COLUMNS = {
+  companyName: "companyName",
+  contactName: "pocName",
+  address1: "street",
+  city: "city",
+  state: "state",
+  zip: "zip",
+  phone: "phone",
+  email: "email",
+  category: "businessType",
+} as const satisfies Record<string, EditableLeadField>;
+
+type FactColumn = keyof typeof FACT_COLUMNS;
+
+/** A correction typed into the sheet, before the page is refetched. */
+interface LocalFact {
+  value: string;
+  /** False once an administrator's own edit has gone straight to the lead. */
+  pending: boolean;
+}
 
 export default function CampaignSheetPage() {
   const params = useParams<{ id: string }>();
@@ -80,7 +143,13 @@ export default function CampaignSheetPage() {
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // Corrections typed in this session, rowId -> lead field -> value, applied
+  // over what the server sent so a cell keeps what was typed until the next
+  // fetch (the same job `edits` does for the call columns).
+  const [localFacts, setLocalFacts] = useState<Record<string, Record<string, LocalFact>>>({});
+
   const [showAccess, setShowAccess] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [showAddLeads, setShowAddLeads] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -169,6 +238,97 @@ export default function CampaignSheetPage() {
       }
     },
     [actor],
+  );
+
+  /**
+   * What a lead-fact cell should show, and whether it's waiting on a review.
+   *
+   * Three sources, in order: something typed here in this session, a
+   * correction someone else has outstanding (campaign_rows sends those), and
+   * finally what's actually stored on the lead.
+   */
+  const factCell = useCallback(
+    (row: CampaignRow, column: FactColumn): { value: string; pending: boolean } => {
+      const field = FACT_COLUMNS[column];
+      const local = localFacts[row.rowId]?.[field];
+      if (local) return { value: local.value, pending: local.pending };
+      const proposed = row.pending?.[field];
+      if (proposed !== undefined && proposed !== null) return { value: proposed, pending: true };
+      return { value: (row[column] as string | null) ?? "", pending: false };
+    },
+    [localFacts],
+  );
+
+  /**
+   * Sends a correction to a lead fact. An editor's goes to the review queue;
+   * an administrator's is written straight through, because they are the
+   * reviewer. Either way the cell keeps the new text.
+   */
+  const submitFact = useCallback(
+    async (row: CampaignRow, column: FactColumn, raw: string) => {
+      const field = FACT_COLUMNS[column];
+      const next = raw.trim();
+      const current = factCell(row, column);
+      if (next === current.value.trim()) return;
+
+      setSaveState((prev) => ({ ...prev, [row.rowId]: "saving" }));
+      try {
+        const outcome = await requestLeadChange(campaignId, row.leadId, field, next);
+        setLocalFacts((prev) => {
+          const forRow = { ...(prev[row.rowId] ?? {}) };
+          if (outcome === "unchanged") delete forRow[field];
+          else forRow[field] = { value: next, pending: outcome === "pending" };
+          return { ...prev, [row.rowId]: forRow };
+        });
+        setSaveState((prev) => ({ ...prev, [row.rowId]: "saved" }));
+        setTimeout(
+          () => setSaveState((prev) => (prev[row.rowId] === "saved" ? { ...prev, [row.rowId]: "idle" } : prev)),
+          1500,
+        );
+        if (outcome === "pending") {
+          setNotice(`${LEAD_FIELD_LABELS[field]} change sent for review.`);
+        }
+      } catch (err) {
+        setSaveState((prev) => ({ ...prev, [row.rowId]: "error" }));
+        setError(changesError(err, "Couldn't send that correction"));
+      }
+    },
+    [campaignId, factCell],
+  );
+
+  /**
+   * One editable lead-fact cell. A function rather than a component so the
+   * uncontrolled input keeps its identity while typing, the same way the
+   * call columns work.
+   */
+  function factTd(row: CampaignRow, column: FactColumn, width: string, extra?: (value: string) => ReactNode) {
+    const cell = factCell(row, column);
+    return (
+      <td className={`${CELL} ${cell.pending ? PENDING_CELL : ""}`}>
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            defaultValue={cell.value}
+            key={`${column}-${row.rowId}-${cell.value}`}
+            disabled={!canEdit}
+            onBlur={(e) => submitFact(row, column, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            title={cell.pending ? `Waiting on an administrator: ${cell.value}` : cell.value}
+            className={`${INPUT} ${width} ${cell.pending ? "text-[#946c00]" : ""}`}
+          />
+          {extra?.(cell.value)}
+        </div>
+      </td>
+    );
+  }
+
+  /** True when any cell on the row is waiting on a reviewer. */
+  const rowHasPending = useCallback(
+    (row: CampaignRow) =>
+      (Object.keys(FACT_COLUMNS) as FactColumn[]).some((column) => factCell(row, column).pending),
+    [factCell],
   );
 
   async function deleteSelected() {
@@ -317,11 +477,13 @@ export default function CampaignSheetPage() {
         }
         actions={
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Back to the campaign list, not the full lead list: that's
+                where this sheet was opened from. */}
             <Link
-              href="/leads"
+              href="/leads/campaigns"
               className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#444] px-3 py-2 rounded-md hover:bg-[#fafafa] transition-colors"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Leads
+              <ArrowLeft className="w-3.5 h-3.5" /> Campaigns
             </Link>
             <button
               onClick={exportSheet}
@@ -331,6 +493,15 @@ export default function CampaignSheetPage() {
               <Download className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Export</span>
             </button>
+            {isAdmin && (stats?.pending ?? 0) > 0 && (
+              <button
+                onClick={() => setShowReview(true)}
+                className="flex items-center gap-1.5 border border-[#f5a524] bg-[#fefce8] text-[13px] font-medium text-[#946c00] px-3 py-2 rounded-md hover:bg-[#fdf6d8] transition-colors"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" />
+                Review {stats?.pending.toLocaleString()}
+              </button>
+            )}
             {isAdmin && (
               <>
                 <button
@@ -390,7 +561,11 @@ export default function CampaignSheetPage() {
             { label: "Called", value: stats.called },
             { label: "Interested", value: stats.interested },
             { label: "Follow-ups Due", value: stats.followUps },
-            { label: "Do Not Call", value: stats.doNotCall },
+            // Only worth a column when there's something in it, and only to
+            // the person who can act on it.
+            ...(isAdmin && stats.pending > 0
+              ? [{ label: "Awaiting Review", value: stats.pending }]
+              : [{ label: "Do Not Call", value: stats.doNotCall }]),
           ].map((s) => (
             <div key={s.label} className="bg-white px-4 py-3">
               <p className="text-xl font-bold tabular-nums leading-none text-[#0a0a0a]">{s.value.toLocaleString()}</p>
@@ -433,30 +608,27 @@ export default function CampaignSheetPage() {
           >
             <AlertTriangle className="w-3.5 h-3.5" /> Follow-up due
           </button>
-          <select
-            value={filters.outcome}
-            onChange={(e) => applyFilters({ outcome: e.target.value })}
-            className="text-xs border border-[#eaeaea] rounded-md px-2 py-1.5 outline-none focus:border-[#0070f3] bg-white text-[#444]"
-          >
-            <option value="">Any outcome</option>
-            {CALL_OUTCOMES.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filters.rep}
-            onChange={(e) => applyFilters({ rep: e.target.value })}
-            className="text-xs border border-[#eaeaea] rounded-md px-2 py-1.5 outline-none focus:border-[#0070f3] bg-white text-[#444]"
-          >
-            <option value="">Any rep</option>
-            {employees.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-40">
+            <Select
+              value={filters.outcome}
+              onChange={(v) => applyFilters({ outcome: v })}
+              placeholder="Any outcome"
+              options={CALL_OUTCOME_OPTIONS}
+              className="py-1.5"
+              clearable
+            />
+          </div>
+          <div className="w-40">
+            <Select
+              value={filters.rep}
+              onChange={(v) => applyFilters({ rep: v })}
+              placeholder="Any rep"
+              options={repOptions}
+              className="py-1.5"
+              searchable
+              clearable
+            />
+          </div>
           {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#999]" />}
           <div className="flex-1" />
           {canEdit && selected.size > 0 && (
@@ -491,19 +663,22 @@ export default function CampaignSheetPage() {
         {/* The sheet */}
         {rows.length > 0 && (
           <div className={`overflow-auto max-h-[70vh] transition-opacity ${loading ? "opacity-60" : ""}`}>
-            <table className="border-collapse" style={{ minWidth: "1800px" }}>
+            {/* border-separate, not collapse: a collapsed border belongs to
+                the table rather than the cell, so the frozen pane's own right
+                border scrolls away with the body and the pane loses its edge. */}
+            <table className="border-separate border-spacing-0" style={{ minWidth: "1800px" }}>
               <thead className="sticky top-0 z-20">
                 <tr className="bg-[#fafafa]">
                   {canEdit && (
                     <th className="sticky left-0 z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] w-9 px-2 h-9" />
                   )}
                   <th
-                    className={`sticky ${canEdit ? "left-9" : "left-0"} z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] w-14 px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider`}
+                    className={`sticky ${pinNo(canEdit)} z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] w-14 px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider`}
                   >
                     No.
                   </th>
                   <th
-                    className={`sticky ${canEdit ? "left-23" : "left-14"} z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider min-w-52`}
+                    className={`sticky ${pinCompany(canEdit)} z-30 ${PIN_EDGE} bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider w-56`}
                   >
                     Company Name
                   </th>
@@ -541,6 +716,7 @@ export default function CampaignSheetPage() {
               <tbody>
                 {rows.map((row) => {
                   const state = saveState[row.rowId] ?? "idle";
+                  const company = factCell(row, "companyName");
                   const dueSoon =
                     row.followUpDate !== null && row.followUpDate <= new Date().toISOString().slice(0, 10);
                   return (
@@ -569,77 +745,95 @@ export default function CampaignSheetPage() {
                         </td>
                       )}
                       <td
-                        className={`sticky ${canEdit ? "left-9" : "left-0"} z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] text-[11px] text-[#999] tabular-nums`}
+                        className={`sticky ${pinNo(canEdit)} z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] text-[11px] text-[#999] tabular-nums`}
                       >
                         {row.position}
                       </td>
                       <td
-                        className={`sticky ${canEdit ? "left-23" : "left-14"} z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] min-w-52`}
+                        className={`sticky ${pinCompany(canEdit)} z-10 ${PIN_EDGE} ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] w-56 max-w-56`}
                       >
                         <div className="flex items-center gap-1">
-                          <span className="text-[12px] font-medium text-[#0a0a0a] whitespace-nowrap truncate">
-                            {row.companyName ?? "-"}
-                          </span>
-                          <CopyButton value={row.companyName ?? ""} label="company name" revealOnHover />
+                          {/* min-w-0 or the name refuses to shrink inside the
+                              flex row and widens the whole frozen pane. */}
+                          <input
+                            type="text"
+                            defaultValue={company.value}
+                            key={`co-${row.rowId}-${company.value}`}
+                            disabled={!canEdit}
+                            onBlur={(e) => submitFact(row, "companyName", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                            }}
+                            title={company.value}
+                            className={`${INPUT} min-w-0 font-medium ${company.pending ? "text-[#946c00]" : ""}`}
+                          />
+                          {/* The row tag lives on the frozen column so it
+                              stays in sight however far the sheet is
+                              scrolled sideways. */}
+                          {rowHasPending(row) && (
+                            <span
+                              title="Waiting on an administrator"
+                              className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#946c00] bg-[#fefce8] border border-[#f7e6a8] rounded px-1 py-0.5"
+                            >
+                              Updated
+                            </span>
+                          )}
+                          <CopyButton value={company.value} label="company name" revealOnHover />
                         </div>
                       </td>
 
-                      {/* Lead facts: read-only here on purpose. They belong to
-                          the lead, and a campaign grant gives sight of the
-                          lead, not permission to rewrite it. Edit those on
-                          the lead itself. */}
-                      <td className={READ_CELL}>
-                        <div className="flex items-center gap-1">
-                          <span className="truncate">{row.contactName ?? ""}</span>
-                          <CopyButton value={row.contactName ?? ""} label="contact name" revealOnHover />
-                        </div>
-                      </td>
-                      <td className={READ_CELL}>{row.address1 ?? ""}</td>
-                      <td className={READ_CELL}>{row.city ?? ""}</td>
-                      <td className={READ_CELL}>{row.state ?? ""}</td>
-                      <td className={READ_CELL}>{row.zip ?? ""}</td>
-                      <td className={`${CELL} text-[12px] whitespace-nowrap`}>
-                        {row.phone ? (
-                          <div className="flex items-center gap-1">
-                            <a href={telHref(row.phone)} className="text-[#0070f3] hover:underline font-mono">
-                              {formatPhone(row.phone)}
-                            </a>
-                            <CopyButton value={formatPhone(row.phone)} label="phone number" revealOnHover />
-                          </div>
-                        ) : (
-                          <span className="text-[#ccc]">-</span>
-                        )}
-                      </td>
-                      <td className={`${CELL} text-[12px] whitespace-nowrap`}>
-                        {row.email ? (
-                          <div className="flex items-center gap-1">
-                            <a
-                              href={`mailto:${row.email}`}
-                              className="text-[#0070f3] hover:underline truncate max-w-44"
-                            >
-                              {row.email}
-                            </a>
-                            <CopyButton value={row.email} label="email address" revealOnHover />
-                          </div>
-                        ) : (
-                          <span className="text-[#ccc]">-</span>
-                        )}
-                      </td>
-                      <td className={READ_CELL}>{row.category ?? ""}</td>
+                      {/* Lead facts. Editable here, because the person on the
+                          phone is the one who finds out that a name or a
+                          number is wrong. A campaign grant is still not
+                          permission to rewrite the lead database, so an
+                          editor's change is queued for an administrator,
+                          whose own edits go straight through. */}
+                      {factTd(row, "contactName", "w-44", (v) => (
+                        <CopyButton value={v} label="contact name" revealOnHover />
+                      ))}
+                      {factTd(row, "address1", "w-52")}
+                      {factTd(row, "city", "w-28")}
+                      {factTd(row, "state", "w-12")}
+                      {factTd(row, "zip", "w-20")}
+                      {factTd(row, "phone", "w-32 font-mono", (v) =>
+                        v ? (
+                          <a
+                            href={telHref(v)}
+                            title={`Call ${formatPhone(v)}`}
+                            className="shrink-0 p-0.5 rounded text-[#0070f3] hover:bg-[#eff6ff] transition-colors"
+                          >
+                            <Phone className="w-3 h-3" />
+                          </a>
+                        ) : null,
+                      )}
+                      {factTd(row, "email", "w-44", (v) =>
+                        v ? (
+                          <a
+                            href={`mailto:${v}`}
+                            title={`Email ${v}`}
+                            className="shrink-0 p-0.5 rounded text-[#0070f3] hover:bg-[#eff6ff] transition-colors"
+                          >
+                            <Mail className="w-3 h-3" />
+                          </a>
+                        ) : null,
+                      )}
+                      {factTd(row, "category", "w-40")}
                       <td className={READ_CELL}>{row.source ?? ""}</td>
 
-                      {/* Call results: the editable half of the sheet. */}
-                      <td className={CELL}>
-                        <input
-                          type="date"
-                          defaultValue={row.callDate ?? ""}
-                          key={`cd-${row.rowId}-${row.callDate ?? ""}`}
+                      {/* Call results: the editable half of the sheet. The
+                          pickers are the app's own, floating out of the
+                          sheet's scroll container so they open over it
+                          instead of being clipped by it. */}
+                      <td className={`${CELL} w-36`}>
+                        <DateTimePicker
+                          value={row.callDate ?? ""}
+                          onChange={(v) => commit(row, { callDate: v || null })}
+                          dateOnly
+                          clearable
+                          floating
+                          variant="cell"
                           disabled={!canEdit}
-                          onBlur={(e) => commit(row, { callDate: e.target.value || null })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className={`${INPUT} w-32`}
+                          placeholder="Not called"
                         />
                       </td>
                       <td className={CELL}>
@@ -656,27 +850,22 @@ export default function CampaignSheetPage() {
                           className={`${INPUT} w-14 tabular-nums`}
                         />
                       </td>
-                      <td className={CELL}>
-                        <select
+                      <td className={`${CELL} w-44`}>
+                        {/* showUnlistedValue: an outcome saved before this
+                            list changed still has to display, or the row
+                            would look blank and saving it would clear it. */}
+                        <Select
                           value={row.callOutcome ?? ""}
+                          onChange={(v) => commit(row, { callOutcome: v || null })}
+                          options={CALL_OUTCOME_OPTIONS}
+                          placeholder="-"
+                          variant="cell"
+                          floating
+                          clearable
+                          showUnlistedValue
                           disabled={!canEdit}
-                          onChange={(e) => commit(row, { callOutcome: e.target.value || null })}
-                          className={`${INPUT} w-40 ${row.callOutcome ? (CALL_OUTCOME_STYLES[row.callOutcome] ?? "") : ""} rounded`}
-                        >
-                          <option value="">-</option>
-                          {/* A value saved before this list changed still
-                              needs to be selectable, or opening the row would
-                              silently blank it. */}
-                          {row.callOutcome &&
-                            !CALL_OUTCOMES.includes(row.callOutcome as (typeof CALL_OUTCOMES)[number]) && (
-                              <option value={row.callOutcome}>{row.callOutcome}</option>
-                            )}
-                          {CALL_OUTCOMES.map((o) => (
-                            <option key={o} value={o}>
-                              {o}
-                            </option>
-                          ))}
-                        </select>
+                          className={`rounded ${row.callOutcome ? (CALL_OUTCOME_STYLES[row.callOutcome] ?? "") : ""}`}
+                        />
                       </td>
                       <td className={CELL}>
                         <input
@@ -692,45 +881,50 @@ export default function CampaignSheetPage() {
                           className={`${INPUT} w-80`}
                         />
                       </td>
-                      <td className={CELL}>
-                        <input
-                          type="text"
-                          list="campaign-services"
-                          defaultValue={row.interestedIn ?? ""}
-                          key={`in-${row.rowId}-${row.interestedIn ?? ""}`}
+                      <td className={`${CELL} w-48`}>
+                        {/* allowCustom, because callers hear things that
+                            aren't on any list, and rounding that to the
+                            nearest option loses the useful part. */}
+                        <Select
+                          value={row.interestedIn ?? ""}
+                          onChange={(v) => commit(row, { interestedIn: v })}
+                          options={SERVICE_OPTIONS}
+                          placeholder="-"
+                          variant="cell"
+                          floating
+                          clearable
+                          allowCustom
+                          customPlaceholder="What they asked about"
                           disabled={!canEdit}
-                          onBlur={(e) => commit(row, { interestedIn: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className={`${INPUT} w-44`}
                         />
                       </td>
-                      <td className={CELL}>
-                        <input
-                          type="text"
-                          defaultValue={row.bestTime ?? ""}
-                          key={`bt-${row.rowId}-${row.bestTime ?? ""}`}
+                      <td className={`${CELL} w-36`}>
+                        <Select
+                          value={row.bestTime ?? ""}
+                          onChange={(v) => commit(row, { bestTime: v })}
+                          options={BEST_TIME_OPTIONS}
+                          placeholder="-"
+                          variant="cell"
+                          floating
+                          clearable
+                          allowCustom
+                          customPlaceholder="When to call back"
                           disabled={!canEdit}
-                          placeholder={canEdit ? "e.g. after 4pm" : ""}
-                          onBlur={(e) => commit(row, { bestTime: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className={`${INPUT} w-32`}
                         />
                       </td>
-                      <td className={`${CELL} ${dueSoon ? "bg-[#fef2f2]" : ""}`}>
-                        <input
-                          type="date"
-                          defaultValue={row.followUpDate ?? ""}
-                          key={`fu-${row.rowId}-${row.followUpDate ?? ""}`}
+                      <td className={`${CELL} w-36 ${dueSoon ? "bg-[#fef2f2]" : ""}`}>
+                        {/* quickDates: on a call sheet the answer is almost
+                            always today, tomorrow or next week. */}
+                        <DateTimePicker
+                          value={row.followUpDate ?? ""}
+                          onChange={(v) => commit(row, { followUpDate: v || null })}
+                          dateOnly
+                          clearable
+                          quickDates
+                          floating
+                          variant="cell"
                           disabled={!canEdit}
-                          onBlur={(e) => commit(row, { followUpDate: e.target.value || null })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className={`${INPUT} w-32 ${dueSoon ? "text-[#f31260] font-medium" : ""}`}
+                          placeholder="None"
                         />
                       </td>
                       <td className={CELL}>
@@ -747,28 +941,25 @@ export default function CampaignSheetPage() {
                           className={`${INPUT} w-52`}
                         />
                       </td>
-                      <td className={CELL}>
-                        <select
+                      <td className={`${CELL} w-40`}>
+                        <Select
                           value={row.assignedRep ?? ""}
-                          disabled={!canEdit}
-                          onChange={(e) => {
-                            const id = e.target.value;
+                          onChange={(id) =>
                             commit(row, {
                               assignedRep: id || null,
                               // Denormalised so the sheet and its export read
                               // a name without joining employees per row.
                               assignedRepName: repOptions.find((r) => r.value === id)?.label ?? null,
-                            });
-                          }}
-                          className={`${INPUT} w-36`}
-                        >
-                          <option value="">Unassigned</option>
-                          {repOptions.map((r) => (
-                            <option key={r.value} value={r.value}>
-                              {r.label}
-                            </option>
-                          ))}
-                        </select>
+                            })
+                          }
+                          options={repOptions}
+                          placeholder="Unassigned"
+                          variant="cell"
+                          floating
+                          searchable
+                          clearable
+                          disabled={!canEdit}
+                        />
                       </td>
                       <td className={`${CELL} text-center`}>
                         <input
@@ -794,12 +985,6 @@ export default function CampaignSheetPage() {
                 })}
               </tbody>
             </table>
-            {/* Suggestions for "Interested In", shared by every row's input. */}
-            <datalist id="campaign-services">
-              {SERVICE_SUGGESTIONS.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
           </div>
         )}
 
@@ -851,6 +1036,25 @@ export default function CampaignSheetPage() {
           onAdded={(message) => {
             setNotice(message);
             setRevision((r) => r + 1);
+          }}
+        />
+      )}
+      {showReview && campaign && isAdmin && (
+        <ReviewChangesModal
+          campaignId={campaign.id}
+          campaignName={campaign.name}
+          onClose={() => setShowReview(false)}
+          onReviewed={(approved, rejected) => {
+            // Refetched rather than patched: an approval rewrites the lead,
+            // so the sheet's copy of those facts is now stale, as is anything
+            // typed over them in this session.
+            setLocalFacts({});
+            setRevision((r) => r + 1);
+            const parts = [
+              approved > 0 && `Approved ${approved.toLocaleString()}`,
+              rejected > 0 && `turned down ${rejected.toLocaleString()}`,
+            ].filter(Boolean);
+            if (parts.length > 0) setNotice(`${parts.join(", ")}.`);
           }}
         />
       )}

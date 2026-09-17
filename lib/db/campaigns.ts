@@ -59,6 +59,13 @@ export interface CampaignRow {
   doNotCall: boolean;
   updatedAt: string | null;
   updatedByName: string | null;
+  /**
+   * Lead facts a campaign editor has corrected that are still waiting on an
+   * administrator, keyed by the lead field. The sheet shows these in place of
+   * the stored value and tags the row, so the person who typed a correction
+   * sees their own work rather than the value they just replaced.
+   */
+  pending: Record<string, string | null>;
 }
 
 /** The editable half of a row, what a caller fills in. */
@@ -131,6 +138,7 @@ export function criteriaFromLeadFilters(f: LeadFilters): CampaignCriteria {
     unassignedOnly: f.assignedTo === "unassigned",
     priority: f.priority,
     source: f.source,
+    city: f.city,
     overdue: f.overdue,
     stale: f.stale,
   };
@@ -158,6 +166,8 @@ export interface CampaignStats {
   interested: number;
   followUps: number;
   unassigned: number;
+  /** Rows carrying a correction that hasn't been reviewed yet. */
+  pending: number;
   doNotCall: number;
 }
 
@@ -428,6 +438,7 @@ interface SheetRowRaw {
   do_not_call: boolean | null;
   updated_at: string | null;
   updated_by_name: string | null;
+  pending: Record<string, string | null> | null;
 }
 
 const fromSheetRow = (r: SheetRowRaw): CampaignRow => ({
@@ -457,6 +468,7 @@ const fromSheetRow = (r: SheetRowRaw): CampaignRow => ({
   doNotCall: Boolean(r.do_not_call),
   updatedAt: r.updated_at,
   updatedByName: r.updated_by_name,
+  pending: r.pending ?? {},
 });
 
 const rowFilterArgs = (f: CampaignRowFilters) => ({
@@ -504,7 +516,15 @@ export async function fetchCampaignStats(campaignId: string, filters: CampaignRo
   );
   if (error) throw error;
   const row = (Array.isArray(data) ? data[0] : data) as
-    | { total: number; called: number; interested: number; follow_ups: number; unassigned: number; do_not_call: number }
+    | {
+        total: number;
+        called: number;
+        interested: number;
+        follow_ups: number;
+        unassigned: number;
+        do_not_call: number;
+        pending: number;
+      }
     | undefined;
   return {
     total: Number(row?.total ?? 0),
@@ -512,6 +532,7 @@ export async function fetchCampaignStats(campaignId: string, filters: CampaignRo
     interested: Number(row?.interested ?? 0),
     followUps: Number(row?.follow_ups ?? 0),
     unassigned: Number(row?.unassigned ?? 0),
+    pending: Number(row?.pending ?? 0),
     doNotCall: Number(row?.do_not_call ?? 0),
   };
 }
