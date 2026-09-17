@@ -322,8 +322,12 @@ export default function ImportLeadsCsvModal({
     }
   }
 
-  function setFieldResolution(resultId: string, field: string, choice: Resolution) {
-    setResolutions((prev) => ({ ...prev, [resultId]: { ...prev[resultId], [field]: choice } }));
+  // Keyed by MergeResult.key, the *row* in the file, never by `id`, which is
+  // the lead that will be written: two rows can resolve to the same lead, and
+  // keying on it made them share one set of choices. Everything else here
+  // reads by key, so writing by id silently discarded the click.
+  function setFieldResolution(rowKey: string, field: string, choice: Resolution) {
+    setResolutions((prev) => ({ ...prev, [rowKey]: { ...prev[rowKey], [field]: choice } }));
   }
 
   // "Keep existing" only decides the *conflicts* listed here. Fields the
@@ -334,8 +338,8 @@ export default function ImportLeadsCsvModal({
   function setAllResolutions(choice: Resolution) {
     setResolutions((prev) => {
       const next: Record<string, Record<string, Resolution>> = {};
-      for (const [resultId, fields] of Object.entries(prev)) {
-        next[resultId] = Object.fromEntries(Object.keys(fields).map((f) => [f, choice]));
+      for (const [rowKey, fields] of Object.entries(prev)) {
+        next[rowKey] = Object.fromEntries(Object.keys(fields).map((f) => [f, choice]));
       }
       return next;
     });
@@ -591,7 +595,7 @@ export default function ImportLeadsCsvModal({
                             <span className="text-[#999] w-28 shrink-0">{c.label}</span>
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               <button
-                                onClick={() => setFieldResolution(r.id, c.key, "existing")}
+                                onClick={() => setFieldResolution(r.key, c.key, "existing")}
                                 className={`flex-1 min-w-0 truncate text-left px-2.5 py-1.5 rounded-lg border transition-colors ${
                                   choice === "existing"
                                     ? "border-[#0070f3] bg-[#e8f2ff] text-[#0a0a0a]"
@@ -602,7 +606,7 @@ export default function ImportLeadsCsvModal({
                                 Keep: {c.existingValue}
                               </button>
                               <button
-                                onClick={() => setFieldResolution(r.id, c.key, "new")}
+                                onClick={() => setFieldResolution(r.key, c.key, "new")}
                                 className={`flex-1 min-w-0 truncate text-left px-2.5 py-1.5 rounded-lg border transition-colors ${
                                   choice === "new"
                                     ? "border-[#0070f3] bg-[#e8f2ff] text-[#0a0a0a]"
