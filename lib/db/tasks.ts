@@ -51,7 +51,24 @@ export async function addTask(card: KanbanCard): Promise<void> {
 export async function updateTask(id: string, patch: Partial<KanbanCard>): Promise<void> {
   const { data: existing, error: fetchErr } = await supabase.from(TABLE).select("data").eq("id", id).single();
   if (fetchErr) throw fetchErr;
-  const merged = { ...(existing.data as KanbanCard), ...patch };
+  const current = existing.data as KanbanCard;
+
+  // A move is stamped with when it happened, wherever it came from: a drag on
+  // the board, the column picker in the detail drawer, the calendar. The
+  // board compares this against the ticket's own updatedAt to decide which
+  // wins for a ticket-derived card, and an unstamped move loses, so stamping
+  // it here rather than at each call site is the difference between a move
+  // that sticks and one that is silently undone on the next render. The
+  // drawer's was being undone exactly that way.
+  //
+  // Only when the column actually changes: the drawer sends the whole form on
+  // every save, and an edit to the title shouldn't freeze the column against
+  // a later change to the ticket.
+  const moved = patch.column !== undefined && patch.column !== current.column;
+  const stamped =
+    moved && patch.columnSetAt === undefined ? { ...patch, columnSetAt: new Date().toISOString() } : patch;
+
+  const merged = { ...current, ...stamped };
   const { error } = await withTimeout(
     supabase
       .from(TABLE)
