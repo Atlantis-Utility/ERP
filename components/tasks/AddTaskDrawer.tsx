@@ -19,6 +19,17 @@ export interface KanbanCard {
   title: string;
   description: string;
   column: KanbanColumn;
+  /**
+   * When someone last moved this card on the board, ISO.
+   *
+   * Only meaningful for ticket-derived cards, whose column is otherwise
+   * derived from the ticket's status: without this, a card dragged to In
+   * Progress was overwritten by the ticket on the very next render and
+   * appeared to snap back to Backlog. Comparing this against the ticket's
+   * own updatedAt lets the later of the two win, so a drag sticks and a
+   * status change made on the Tickets page still moves the card.
+   */
+  columnSetAt?: string;
   priority: KanbanPriority;
   assignees: string[];
   dueDate: string;

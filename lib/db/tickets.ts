@@ -1,4 +1,5 @@
 import { supabase } from "../supabase/client";
+import { subscribeChanges } from "../supabase/realtime";
 
 export type TicketStatus   = "open" | "in-progress" | "resolved" | "closed";
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
@@ -71,17 +72,16 @@ export function subscribeAllTicketMeta(cb: (metas: TicketMeta[]) => void): () =>
     cb((data ?? []).map(metaFromRow));
   });
 
-  const channel = supabase
-    .channel("tickets-all")
-    .on("postgres_changes", { event: "*", schema: "public", table: META_TABLE }, () => {
-      supabase.from(META_TABLE).select("*").then(({ data, error }) => {
-        if (error) { console.error("[tickets]", error); return; }
-        cb((data ?? []).map(metaFromRow));
-      });
-    })
-    .subscribe();
-
-  return () => { supabase.removeChannel(channel); };
+  // Shared and ref-counted: the Tickets page subscribes directly while the
+  // Tasks board subscribes through useUnifiedTickets, and two callers on one
+  // hand-rolled channel means the second one's .on() lands on a channel that
+  // has already been subscribed, which throws and takes the page down.
+  return subscribeChanges("tickets-all", [META_TABLE], () => {
+    supabase.from(META_TABLE).select("*").then(({ data, error }) => {
+      if (error) { console.error("[tickets]", error); return; }
+      cb((data ?? []).map(metaFromRow));
+    });
+  });
 }
 
 // ── Manual / multi-channel tickets ──────────────────────────────────────────
@@ -170,10 +170,6 @@ export function subscribeManualTickets(cb: (tickets: ManualTicket[]) => void): (
   }
   load();
 
-  const channel = supabase
-    .channel("manual-tickets-all")
-    .on("postgres_changes", { event: "*", schema: "public", table: MANUAL_TABLE }, load)
-    .subscribe();
-
-  return () => { supabase.removeChannel(channel); };
+  // Same reasoning as subscribeAllTicketMeta above.
+  return subscribeChanges("manual-tickets-all", [MANUAL_TABLE], load);
 }

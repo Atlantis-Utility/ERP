@@ -912,3 +912,21 @@ drop trigger if exists campaign_leads_guard_rep_trg on campaign_leads;
 create trigger campaign_leads_guard_rep_trg
   before update on campaign_leads
   for each row execute function campaign_leads_guard_rep();
+
+-- ── 15. manual_tickets was never published ──────────────────────────────
+--
+-- The table is subscribed to in two places (the Tickets page and, through
+-- useUnifiedTickets, the Tasks board) but was missing from the realtime
+-- publication, so those subscriptions never fired. A phone or web ticket
+-- moved on the board wrote fine and then appeared to snap back, because
+-- nothing refetched and the board went on deriving the card's column from
+-- the status it had last seen. Nothing updated until a reload.
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table manual_tickets;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+  end;
+end $$;

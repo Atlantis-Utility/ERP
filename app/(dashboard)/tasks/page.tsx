@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
-import { getAvatarColor, getInitials } from "@/lib/utils";
+import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import {
   Plus,
   CalendarDays,
@@ -16,6 +16,7 @@ import {
   FolderKanban,
   Flag,
   LifeBuoy,
+  X,
 } from "lucide-react";
 import AddTaskDrawer, { type KanbanCard, type KanbanColumn } from "@/components/tasks/AddTaskDrawer";
 import AddMeetingDrawer from "@/components/tasks/AddMeetingDrawer";
@@ -343,6 +344,9 @@ export default function TasksPage() {
   const [meetingDrawerOpen, setMeetingDrawerOpen] = useState(false);
   const [defaultCol, setDefaultCol] = useState<KanbanColumn | undefined>();
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // A move that the database refused used to go to the console only, so the
+  // card slid back with no explanation.
+  const [moveError, setMoveError] = useState("");
   const [dragOverCol, setDragOverCol] = useState<KanbanColumn | null>(null);
   const [selectedCard, setSelectedCard] = useState<KanbanCard | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -455,14 +459,29 @@ export default function TasksPage() {
   const syncedCards = cards.map((c) => {
     const t = liveTicketByCardId.get(c.id);
     if (!t) return c;
-    return {
+    const synced = {
       ...c,
-      column: TICKET_STATUS_TO_COL[t.status],
       // An unassigned ticket leaves whatever the board has, so assigning
       // someone directly on the card still works.
       assignees: t.assigneeName ? [t.assigneeName] : c.assignees,
       priority: t.priority === "urgent" ? ("high" as const) : t.priority,
     };
+
+    // The column is the ticket's to decide only until someone moves the card
+    // by hand. Taking the ticket's word unconditionally meant a drag never
+    // stuck: an email ticket with no metadata row reads as "open", which maps
+    // to Backlog, so a card moved to In Progress was pulled straight back on
+    // the next render even though the move had saved. 85 of the 94
+    // ticket-derived cards on this board have no metadata row.
+    //
+    // Later write wins. A ticket with no metadata has no updatedAt, so the
+    // manual move wins outright; changing the status on the Tickets page
+    // stamps updatedAt and takes the card back.
+    const ticketIsNewer = t.updatedAt && (!c.columnSetAt || t.updatedAt > c.columnSetAt);
+    if (!c.columnSetAt || ticketIsNewer) {
+      return { ...synced, column: TICKET_STATUS_TO_COL[t.status] };
+    }
+    return synced;
   });
 
   // Record-level visibility: non-administrators only see what they're assigned.
@@ -628,11 +647,14 @@ export default function TasksPage() {
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>, col: KanbanColumn) {
     e.preventDefault();
+    setMoveError("");
     const id = e.dataTransfer.getData("cardId");
     if (id) {
       if (id.startsWith("proj-")) {
         const projectId = id.slice(5);
-        updateProject(projectId, { status: COL_TO_STATUS[col] }).catch(console.error);
+        updateProject(projectId, { status: COL_TO_STATUS[col] }).catch((err) =>
+          setMoveError(getErrorMessage(err, "Couldn't move that project")),
+        );
       } else if (liveTicketByCardId.has(id)) {
         // The card's column is derived from the ticket, so writing only the
         // task row would snap straight back on the next render. Move the
@@ -640,13 +662,26 @@ export default function TasksPage() {
         const ticket = liveTicketByCardId.get(id)!;
         const patch = { status: COL_TO_TICKET_STATUS[col] };
         const write = ticket.source === "email" ? upsertTicket(ticket.id, patch) : upsertManualTicket(ticket.id, patch);
-        write.catch(console.error);
-        // Keep the persisted card's own column in step for anything reading it
-        // directly (search, the completed tab) rather than through the merge.
-        updateTask(id, { column: col }).catch(console.error);
+        write.catch((err) => setMoveError(getErrorMessage(err, "Couldn't move that ticket")));
+        // The card's own column is stamped as well, both for anything reading
+        // it directly (search, the completed tab) and so the merge above knows
+        // the move was deliberate. Shown immediately rather than waiting for
+        // the ticket to come back round, which is a poll away.
+        const movedAt = new Date().toISOString();
+        setCards((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, column: col, columnSetAt: movedAt } : c)),
+        );
+        updateTask(id, { column: col, columnSetAt: movedAt }).catch((err) =>
+          setMoveError(getErrorMessage(err, "Couldn't move that card")),
+        );
       } else {
-        setCards((prev) => prev.map((c) => (c.id === id ? { ...c, column: col } : c)));
-        updateTask(id, { column: col }).catch(console.error);
+        const movedAt = new Date().toISOString();
+        setCards((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, column: col, columnSetAt: movedAt } : c)),
+        );
+        updateTask(id, { column: col, columnSetAt: movedAt }).catch((err) =>
+          setMoveError(getErrorMessage(err, "Couldn't move that card")),
+        );
       }
     }
     setDraggingId(null);
@@ -699,6 +734,15 @@ export default function TasksPage() {
           </div>
         }
       />
+
+      {moveError && (
+        <div className="flex items-start justify-between gap-2 mb-4 px-4 py-2.5 rounded-lg bg-[#fef2f2] text-[#f31260] text-sm">
+          <p>{moveError}</p>
+          <button onClick={() => setMoveError("")} className="shrink-0 p-0.5 rounded hover:bg-[#fff0f3]">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* ── Today's meetings banner ─────────────────────────────────── */}
       {todayMeetings.length > 0 && (
