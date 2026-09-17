@@ -1,4 +1,25 @@
-// Minimal CSV parser (handles quoted fields, escaped quotes, and commas
+/**
+ * Picks the separator a file actually uses. Excel writes the list separator
+ * of the machine it ran on, so a sheet saved as CSV in most of Europe is
+ * semicolon-delimited, and a "CSV" exported from some tools is really tabs.
+ * Counting outside quotes on the header line is enough to tell them apart:
+ * the real separator is the one that appears most.
+ */
+function sniffDelimiter(firstLine: string): string {
+  const counts = [",", ";", "\t"].map((d) => {
+    let n = 0;
+    let quoted = false;
+    for (const ch of firstLine) {
+      if (ch === '"') quoted = !quoted;
+      else if (ch === d && !quoted) n++;
+    }
+    return { d, n };
+  });
+  const best = counts.reduce((a, b) => (b.n > a.n ? b : a));
+  return best.n > 0 ? best.d : ",";
+}
+
+// Minimal CSV parser (handles quoted fields, escaped quotes, and separators
 // inside quotes), no dependency needed for the LinkedIn export sizes this
 // deals with (a saved lead list, not millions of rows).
 export function parseCsv(text: string): { headers: string[]; rows: string[][] } {
@@ -17,8 +38,15 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][] } 
     row = [];
   };
 
-  // Normalize line endings so \r\n doesn't leave a trailing \r in the last field.
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // Normalize line endings so \r\n doesn't leave a trailing \r in the last
+  // field, and drop the byte-order mark Excel puts at the front of a
+  // "CSV UTF-8" export, which otherwise becomes part of the first header and
+  // stops it matching any known column name.
+  const normalized = text
+    .replace(/^﻿/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+  const delimiter = sniffDelimiter(normalized.slice(0, normalized.indexOf("\n") + 1 || undefined));
 
   for (let i = 0; i < normalized.length; i++) {
     const c = normalized[i];
@@ -33,7 +61,7 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][] } 
       }
     } else if (c === '"') {
       inQuotes = true;
-    } else if (c === ",") {
+    } else if (c === delimiter) {
       pushField();
     } else if (c === "\n") {
       pushRow();

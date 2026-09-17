@@ -22,7 +22,10 @@ const TABLE = "leads";
 export type LeadStatus =
   "new" | "contacted" | "follow_up" | "interested" | "appointment" | "not_interested" | "do_not_call";
 
-export type LeadSource = "azure_maps" | "linkedin_csv" | "manual";
+// "linkedin_csv" predates importing anything other than a Sales Navigator
+// export. Rows written then still carry it, so it stays readable, while
+// anything imported now records the honest "file_import".
+export type LeadSource = "azure_maps" | "linkedin_csv" | "file_import" | "manual";
 export type LeadPriority = "low" | "medium" | "high";
 
 /**
@@ -146,6 +149,8 @@ export interface LeadFilters {
   assignedTo: string;
   priority: string;
   source: string;
+  /** Exact city, matched case-insensitively in SQL. */
+  city: string;
   overdue: boolean;
   stale: boolean;
 }
@@ -156,6 +161,7 @@ export const EMPTY_FILTERS: LeadFilters = {
   assignedTo: "",
   priority: "",
   source: "",
+  city: "",
   overdue: false,
   stale: false,
 };
@@ -198,6 +204,7 @@ const filterArgs = (f: LeadFilters) => ({
   p_overdue: f.overdue,
   p_stale: f.stale,
   p_stale_days: STALE_DAYS,
+  p_city: f.city || null,
 });
 
 /**
@@ -576,7 +583,7 @@ export async function addLeads(
   await logBulkActivity(
     leads.map((l) => l.id),
     "import",
-    `Imported from ${leads[0].source === "linkedin_csv" ? "LinkedIn CSV" : leads[0].source}`,
+    leads[0].source === "azure_maps" ? "Imported from Azure Maps" : "Imported from a file",
     actor ?? null,
   );
 }

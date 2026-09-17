@@ -99,7 +99,8 @@ export const PRIORITY_STYLES: Record<LeadPriority, string> = {
 
 export const SOURCE_LABELS: Record<LeadSource, string> = {
   azure_maps: "Azure Maps",
-  linkedin_csv: "LinkedIn",
+  file_import: "File import",
+  linkedin_csv: "LinkedIn CSV",
   manual: "Manual",
 };
 

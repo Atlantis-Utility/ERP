@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { X, FileSpreadsheet, UploadCloud, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import Select from "@/components/ui/Select";
-import { parseCsv, guessColumnMapping } from "@/lib/csv";
+import { guessColumnMapping } from "@/lib/csv";
+import { readSpreadsheet, SpreadsheetError, SPREADSHEET_ACCEPT, type SheetData } from "@/lib/spreadsheet";
 import { addLeads, fetchDedupeIndex, fetchLeadsByIds, type Lead } from "@/lib/db/leads";
 import type { ActivityActor } from "@/lib/db/lead-activity";
 import { getErrorMessage } from "@/lib/utils";
@@ -88,9 +89,14 @@ export default function ImportLeadsCsvModal({
 }) {
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
+  // A workbook can hold several sheets, only one of which is the lead list.
+  const [sheets, setSheets] = useState<SheetData[]>([]);
+  const [sheetIndex, setSheetIndex] = useState(0);
   const [headers, setHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [parsing, setParsing] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [parseError, setParseError] = useState("");
 
   const [rows, setRows] = useState<ParsedRow[]>([]);
@@ -105,22 +111,50 @@ export default function ImportLeadsCsvModal({
 
   const canContinueMapping = Boolean(mapping.companyName);
 
+  // Loads one sheet's headers and rows into the mapping step. Re-guessing the
+  // mapping per sheet matters: two tabs of the same workbook rarely share a
+  // layout, and carrying the previous guess over would quietly read the wrong
+  // columns.
+  function selectSheet(all: SheetData[], index: number) {
+    const sheet = all[index];
+    if (!sheet) return;
+    setSheetIndex(index);
+    setHeaders(sheet.headers);
+    setRawRows(sheet.rows);
+    setMapping(guessColumnMapping(sheet.headers));
+    setRows([]);
+  }
+
   async function handleFile(file: File) {
     setParseError("");
+    setParsing(true);
     try {
-      const text = await file.text();
-      const { headers: h, rows: r } = parseCsv(text);
-      if (h.length === 0 || r.length === 0) {
-        setParseError("Couldn't find any data rows in that file.");
+      const { sheets: parsed } = await readSpreadsheet(file);
+      // Open on the first sheet that has rows: the lead list is often the
+      // second tab, after a cover sheet or a set of instructions.
+      const firstWithRows = parsed.findIndex((s) => s.headers.length > 0 && s.rows.length > 0);
+      if (firstWithRows < 0) {
+        setParseError(
+          parsed.length > 1
+            ? "None of the sheets in that workbook have any data rows."
+            : "Couldn't find any data rows in that file.",
+        );
         return;
       }
       setFileName(file.name);
-      setHeaders(h);
-      setRawRows(r);
-      setMapping(guessColumnMapping(h));
+      setSheets(parsed);
+      selectSheet(parsed, firstWithRows);
       setStep("map");
-    } catch {
-      setParseError("Failed to read that file. Make sure it's a CSV export.");
+    } catch (e) {
+      // Every SpreadsheetError says what to do about it, so it's shown as
+      // written rather than replaced with a generic failure.
+      setParseError(
+        e instanceof SpreadsheetError
+          ? e.message
+          : getErrorMessage(e, "Failed to read that file. Make sure it's a CSV or Excel export."),
+      );
+    } finally {
+      setParsing(false);
     }
   }
 
@@ -184,7 +218,7 @@ export default function ImportLeadsCsvModal({
         linkedinUrl: r.linkedinUrl || undefined,
         instagramUrl: r.instagramUrl || undefined,
         facebookUrl: r.facebookUrl || undefined,
-        source: "linkedin_csv",
+        source: "file_import",
         status: "new",
         createdAt: now,
         updatedAt: now,
@@ -323,7 +357,7 @@ export default function ImportLeadsCsvModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eaeaea] shrink-0">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-4 h-4 text-[#0070f3]" />
-            <p className="text-sm font-semibold text-[#0a0a0a]">Import CSV</p>
+            <p className="text-sm font-semibold text-[#0a0a0a]">Import leads</p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-[#f5f5f5] transition-colors text-[#999]">
             <X className="w-4 h-4" />
@@ -334,19 +368,51 @@ export default function ImportLeadsCsvModal({
           {step === "upload" && (
             <div>
               <p className="text-xs text-[#666] mb-4">
-                Export a saved lead list from Sales Navigator to CSV, then upload it here. Whatever the export gives you
-                (company, contact, address, socials) gets mapped straight in, fill in anything else by hand afterward.
+                Upload an Excel workbook or a CSV: a purchased list, a Sales Navigator export, a sheet someone keeps by
+                hand. Whatever it carries (company, contact, address, socials) gets mapped straight in, fill in anything
+                else by hand afterward.
               </p>
-              <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[#eaeaea] rounded-xl p-10 cursor-pointer hover:border-[#0070f3] hover:bg-[#fafafa] transition-colors">
-                <UploadCloud className="w-6 h-6 text-[#999]" />
-                <span className="text-sm font-medium text-[#0a0a0a]">Click to choose a .csv file</span>
-                <span className="text-xs text-[#999]">or drag and drop</span>
+              {/* The label is the drop target as well as the picker, so the
+                  "or drag and drop" it advertises actually works. */}
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) handleFile(f);
+                }}
+                className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl p-10 cursor-pointer transition-colors ${
+                  dragging ? "border-[#0070f3] bg-[#f5faff]" : "border-[#eaeaea] hover:border-[#0070f3] hover:bg-[#fafafa]"
+                }`}
+              >
+                {parsing ? (
+                  <>
+                    <Loader2 className="w-6 h-6 text-[#0070f3] animate-spin" />
+                    <span className="text-sm font-medium text-[#0a0a0a]">Reading the file…</span>
+                    <span className="text-xs text-[#999]">A large workbook can take a moment</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-6 h-6 text-[#999]" />
+                    <span className="text-sm font-medium text-[#0a0a0a]">Click to choose a file</span>
+                    <span className="text-xs text-[#999]">or drag and drop, .xlsx or .csv</span>
+                  </>
+                )}
                 <input
                   type="file"
-                  accept=".csv,text/csv"
+                  accept={SPREADSHEET_ACCEPT}
+                  disabled={parsing}
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
+                    // Cleared so picking the same file twice (after fixing it
+                    // in Excel) still fires a change event.
+                    e.target.value = "";
                     if (f) handleFile(f);
                   }}
                 />
@@ -362,9 +428,23 @@ export default function ImportLeadsCsvModal({
           {step === "map" && (
             <div>
               <p className="text-xs text-[#666] mb-4">
-                <span className="font-medium text-[#0a0a0a]">{fileName}</span>: {rawRows.length} row
+                <span className="font-medium text-[#0a0a0a]">{fileName}</span>: {rawRows.length.toLocaleString()} row
                 {rawRows.length !== 1 ? "s" : ""} found. Match each field below to a column from your file.
               </p>
+
+              {sheets.length > 1 && (
+                <div className="flex flex-col gap-1 mb-4">
+                  <label className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Sheet</label>
+                  <Select
+                    value={String(sheetIndex)}
+                    onChange={(v) => selectSheet(sheets, Number(v))}
+                    options={sheets.map((s, i) => ({
+                      value: String(i),
+                      label: `${s.name} (${s.rows.length.toLocaleString()} row${s.rows.length !== 1 ? "s" : ""})`,
+                    }))}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {MAPPING_FIELDS.map((f) => (
                   <div key={f.key} className="flex flex-col gap-1">

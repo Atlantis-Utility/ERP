@@ -230,7 +230,7 @@ export default function CreateCampaignModal({
                 {
                   value: "csv" as Mode,
                   title: "Upload a file",
-                  hint: "Import a CSV into this campaign",
+                  hint: "Import Excel or CSV into this campaign",
                   icon: FileSpreadsheet,
                 },
                 { value: "empty" as Mode, title: "Start empty", hint: "Add leads later", icon: Circle },
