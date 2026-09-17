@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Calendar, Clock } from "lucide-react";
+import FloatingLayer from "./FloatingLayer";
 
 interface Props {
   value: string; // "YYYY-MM-DDTHH:mm" or "YYYY-MM-DD" (when dateOnly)
@@ -9,6 +10,17 @@ interface Props {
   placeholder?: string;
   className?: string;
   dateOnly?: boolean;
+  disabled?: boolean;
+  /**
+   * "cell" strips the border so the trigger can sit in a spreadsheet cell and
+   * read as part of the grid rather than as a form control.
+   */
+  variant?: "control" | "cell";
+  /**
+   * Renders the calendar in a portal, positioned against the trigger, for use
+   * inside a scrollable container that would otherwise clip it.
+   */
+  floating?: boolean;
   /**
    * Adds a Clear action. Opt-in: a required date shouldn't offer to empty
    * itself, so the existing callers keep their current behaviour.
@@ -68,9 +80,13 @@ export default function DateTimePicker({
   placeholder,
   className = "",
   dateOnly = false,
+  disabled = false,
+  variant = "control",
+  floating = false,
   clearable = false,
   quickDates = false,
 }: Props) {
+  const isCell = variant === "cell";
   const today = new Date();
   const parsed = parseValue(value, dateOnly);
   const defaultPlaceholder = dateOnly ? "Select date" : "Select date & time";
@@ -88,14 +104,20 @@ export default function DateTimePicker({
   );
 
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    // When floating, the calendar is rendered in a portal outside this
+    // subtree, so FloatingLayer handles dismissal: testing "outside ref"
+    // here would treat a click on a day as a click outside and close the
+    // calendar before the day registered.
+    if (floating) return;
     function handleOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
-  }, []);
+  }, [floating]);
 
   // Sync state when value changes externally
   useEffect(() => {
@@ -180,143 +202,162 @@ export default function DateTimePicker({
   const isPast = (day: number) =>
     new Date(viewYear, viewMonth, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
+  const calendar = (
+    <div
+      className={`w-68 bg-white border border-[#eaeaea] rounded-xl shadow-xl shadow-black/8 p-4 ${
+        floating ? "" : "absolute z-50 top-[calc(100%+6px)] left-0"
+      }`}
+    >
+      {quickDates && (
+        <div className="flex items-center gap-1.5 mb-3 pb-3 border-b border-[#f4f4f4]">
+          {shortcuts.map((s) => {
+            const d = new Date();
+            d.setDate(d.getDate() + s.days);
+            return (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => applyDate(d)}
+                className="flex-1 text-[11px] font-medium text-[#444] bg-[#f5f5f5] rounded-md py-1.5 hover:bg-[#eaeaea] transition-colors"
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Month navigation */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          type="button"
+          onClick={prevMonth}
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#f5f5f5] transition-colors text-[#666]"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <p className="text-sm font-semibold text-[#0a0a0a] tracking-tight">
+          {MONTH_NAMES[viewMonth]} {viewYear}
+        </p>
+        <button
+          type="button"
+          onClick={nextMonth}
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#f5f5f5] transition-colors text-[#666]"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Day-of-week header */}
+      <div className="grid grid-cols-7 mb-1">
+        {DAY_LABELS.map((d) => (
+          <p key={d} className="text-center text-[10px] font-semibold text-[#bbb] py-0.5 uppercase tracking-wider">
+            {d}
+          </p>
+        ))}
+      </div>
+
+      {/* Day grid */}
+      <div className="grid grid-cols-7">
+        {cells.map((day, i) => (
+          <div key={i} className="flex items-center justify-center py-0.5">
+            {day ? (
+              <button
+                type="button"
+                onClick={() => selectDay(day)}
+                className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+                  isSelected(day)
+                    ? "bg-[#0a0a0a] text-white"
+                    : isToday(day)
+                      ? "ring-1 ring-[#0a0a0a] text-[#0a0a0a] hover:bg-[#f0f0f0]"
+                      : isPast(day)
+                        ? "text-[#ccc] hover:bg-[#f5f5f5] cursor-default"
+                        : "text-[#333] hover:bg-[#f5f5f5]"
+                }`}
+              >
+                {day}
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      {clearable && value && (
+        <div className="mt-2 pt-2 border-t border-[#f4f4f4]">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedDate(null);
+              onChange("");
+              setOpen(false);
+            }}
+            className="w-full text-[11px] font-medium text-[#999] hover:text-[#f31260] py-1.5 rounded-md hover:bg-[#fef2f2] transition-colors"
+          >
+            Clear date
+          </button>
+        </div>
+      )}
+
+      {/* Time section, hidden in dateOnly mode */}
+      {!dateOnly && (
+        <>
+          <div className="mt-3 pt-3 border-t border-[#f4f4f4]">
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-1.5 flex-1">
+                <Clock className="w-3.5 h-3.5 text-[#999] shrink-0" />
+                <span className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Time</span>
+              </div>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => handleTimeChange(e.target.value)}
+                className="text-sm font-medium text-[#0a0a0a] bg-[#f5f5f5] border border-transparent rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0a0a0a]/20 focus:bg-white focus:border-[#eaeaea] transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Confirm: only needed when time is selectable */}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mt-3 w-full text-xs font-semibold bg-[#0a0a0a] text-white py-2 rounded-lg hover:bg-[#333] transition-colors tracking-wide"
+          >
+            Confirm
+          </button>
+        </>
+      )}
+    </div>
+  );
+
   return (
-    <div ref={ref} className={`relative ${className}`}>
-      {/* Trigger button */}
+    <div ref={ref} className={isCell ? `relative h-full ${className}` : `relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
+        disabled={disabled}
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2.5 px-3 h-9 text-sm rounded-lg border border-[#eaeaea] bg-white hover:border-[#ccc] transition-colors text-left focus:outline-none focus:ring-2 focus:ring-[#0a0a0a]/10"
+        className={
+          isCell
+            ? `w-full h-full flex items-center gap-1 px-1 text-[12px] text-left bg-transparent transition-colors focus:outline-none disabled:opacity-60 ${
+                open ? "bg-[#eff6ff]" : "hover:bg-[#f5f5f5]"
+              }`
+            : "w-full flex items-center gap-2.5 px-3 h-9 text-sm rounded-lg border border-[#eaeaea] bg-white hover:border-[#ccc] transition-colors text-left focus:outline-none focus:ring-2 focus:ring-[#0a0a0a]/10 disabled:opacity-60"
+        }
       >
-        <Calendar className="w-3.5 h-3.5 text-[#999] shrink-0" />
-        <span className={value ? "text-[#0a0a0a] flex-1 truncate" : "text-[#bbb] flex-1"}>
+        <Calendar className={`${isCell ? "w-3 h-3" : "w-3.5 h-3.5"} text-[#999] shrink-0`} />
+        <span className={value ? "text-[#0a0a0a] flex-1 truncate" : "text-[#bbb] flex-1 truncate"}>
           {value ? formatDisplay(value, dateOnly) : (placeholder ?? defaultPlaceholder)}
         </span>
       </button>
 
-      {/* Popover */}
-      {open && (
-        <div className="absolute z-50 top-[calc(100%+6px)] left-0 w-68 bg-white border border-[#eaeaea] rounded-xl shadow-xl shadow-black/8 p-4">
-          {quickDates && (
-            <div className="flex items-center gap-1.5 mb-3 pb-3 border-b border-[#f4f4f4]">
-              {shortcuts.map((s) => {
-                const d = new Date();
-                d.setDate(d.getDate() + s.days);
-                return (
-                  <button
-                    key={s.label}
-                    type="button"
-                    onClick={() => applyDate(d)}
-                    className="flex-1 text-[11px] font-medium text-[#444] bg-[#f5f5f5] rounded-md py-1.5 hover:bg-[#eaeaea] transition-colors"
-                  >
-                    {s.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Month navigation */}
-          <div className="flex items-center justify-between mb-4">
-            <button
-              type="button"
-              onClick={prevMonth}
-              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#f5f5f5] transition-colors text-[#666]"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <p className="text-sm font-semibold text-[#0a0a0a] tracking-tight">
-              {MONTH_NAMES[viewMonth]} {viewYear}
-            </p>
-            <button
-              type="button"
-              onClick={nextMonth}
-              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#f5f5f5] transition-colors text-[#666]"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Day-of-week header */}
-          <div className="grid grid-cols-7 mb-1">
-            {DAY_LABELS.map((d) => (
-              <p key={d} className="text-center text-[10px] font-semibold text-[#bbb] py-0.5 uppercase tracking-wider">
-                {d}
-              </p>
-            ))}
-          </div>
-
-          {/* Day grid */}
-          <div className="grid grid-cols-7">
-            {cells.map((day, i) => (
-              <div key={i} className="flex items-center justify-center py-0.5">
-                {day ? (
-                  <button
-                    type="button"
-                    onClick={() => selectDay(day)}
-                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
-                      isSelected(day)
-                        ? "bg-[#0a0a0a] text-white"
-                        : isToday(day)
-                          ? "ring-1 ring-[#0a0a0a] text-[#0a0a0a] hover:bg-[#f0f0f0]"
-                          : isPast(day)
-                            ? "text-[#ccc] hover:bg-[#f5f5f5] cursor-default"
-                            : "text-[#333] hover:bg-[#f5f5f5]"
-                    }`}
-                  >
-                    {day}
-                  </button>
-                ) : null}
-              </div>
-            ))}
-          </div>
-
-          {clearable && value && (
-            <div className="mt-2 pt-2 border-t border-[#f4f4f4]">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedDate(null);
-                  onChange("");
-                  setOpen(false);
-                }}
-                className="w-full text-[11px] font-medium text-[#999] hover:text-[#f31260] py-1.5 rounded-md hover:bg-[#fef2f2] transition-colors"
-              >
-                Clear date
-              </button>
-            </div>
-          )}
-
-          {/* Time section, hidden in dateOnly mode */}
-          {!dateOnly && (
-            <>
-              <div className="mt-3 pt-3 border-t border-[#f4f4f4]">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex items-center gap-1.5 flex-1">
-                    <Clock className="w-3.5 h-3.5 text-[#999] shrink-0" />
-                    <span className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Time</span>
-                  </div>
-                  <input
-                    type="time"
-                    value={time}
-                    onChange={(e) => handleTimeChange(e.target.value)}
-                    className="text-sm font-medium text-[#0a0a0a] bg-[#f5f5f5] border border-transparent rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0a0a0a]/20 focus:bg-white focus:border-[#eaeaea] transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Confirm: only needed when time is selectable */}
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="mt-3 w-full text-xs font-semibold bg-[#0a0a0a] text-white py-2 rounded-lg hover:bg-[#333] transition-colors tracking-wide"
-              >
-                Confirm
-              </button>
-            </>
-          )}
-        </div>
-      )}
+      {open &&
+        (floating ? (
+          <FloatingLayer anchorRef={triggerRef} width={272} onClose={() => setOpen(false)}>
+            {calendar}
+          </FloatingLayer>
+        ) : (
+          calendar
+        ))}
     </div>
   );
 }
