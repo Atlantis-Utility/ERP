@@ -204,7 +204,11 @@ const filterArgs = (f: LeadFilters) => ({
   p_overdue: f.overdue,
   p_stale: f.stale,
   p_stale_days: STALE_DAYS,
-  p_city: f.city || null,
+  // Sent only when set. PostgREST picks the function by the argument names
+  // it's given, so leaving p_city off matches the pre-city version of these
+  // functions too, and the page keeps working against a database where
+  // migration-campaign-approvals.sql hasn't been run yet.
+  ...(f.city ? { p_city: f.city } : {}),
 });
 
 /**
