@@ -101,3 +101,25 @@ export function telHref(raw: string | undefined | null): string {
   const digits = (raw ?? '').replace(/[^\d+]/g, '');
   return `tel:${digits}`;
 }
+
+/**
+ * Makes a stored URL safe to put in an href.
+ *
+ * People type and lists carry "linkedin.com/company/x" and "www.example.com"
+ * far more often than a full URL, and a scheme-less href is a *relative* one:
+ * the browser resolves it against the current page, so clicking a lead's
+ * LinkedIn link navigated to our own domain instead of LinkedIn. Returns
+ * undefined for an empty value so the caller can drop the link entirely
+ * rather than render one that goes nowhere.
+ *
+ * Anything with a scheme is left alone, apart from javascript: and data:,
+ * which have no business coming out of a spreadsheet import and would be a
+ * way to run script from a pasted cell.
+ */
+export function withScheme(url: string | undefined | null): string | undefined {
+  const trimmed = (url ?? '').trim();
+  if (!trimmed) return undefined;
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) return undefined;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}

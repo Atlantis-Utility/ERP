@@ -25,7 +25,7 @@ import {
   isTerminalStatus,
   formatAddress,
 } from "@/lib/leads-constants";
-import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref } from "@/lib/utils";
+import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref, withScheme } from "@/lib/utils";
 import { useDraft } from "@/lib/use-draft";
 
 // Matches FormField's own label styling (components/ui/FormField.tsx), so
@@ -166,11 +166,6 @@ function ViewField({ label, value, href, muted }: { label: string; value: string
       )}
     </div>
   );
-}
-
-function withScheme(url?: string): string | undefined {
-  if (!url) return undefined;
-  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
 }
 
 export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }) {

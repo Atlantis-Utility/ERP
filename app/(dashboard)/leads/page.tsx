@@ -55,7 +55,7 @@ import {
   SOURCE_OPTIONS,
   isFollowUpOverdue,
 } from "@/lib/leads-constants";
-import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref } from "@/lib/utils";
+import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref, withScheme } from "@/lib/utils";
 import {
   Target,
   Plus,
@@ -863,9 +863,9 @@ export default function LeadsPage() {
                               <div className="min-w-0">
                                 <p className="text-sm text-[#0a0a0a] truncate">{l.pocName || "-"}</p>
                                 {l.pocTitle && <p className="text-xs text-[#999] truncate">{l.pocTitle}</p>}
-                                {l.linkedinUrl && (
+                                {withScheme(l.linkedinUrl) && (
                                   <a
-                                    href={l.linkedinUrl}
+                                    href={withScheme(l.linkedinUrl)}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-xs text-[#0070f3] hover:underline flex items-center gap-1 mt-0.5"
@@ -907,14 +907,14 @@ export default function LeadsPage() {
                                 <CopyButton value={l.email} label="email address" revealOnHover />
                               </div>
                             )}
-                            {!l.email && l.website && (
+                            {!l.email && withScheme(l.website) && (
                               <a
-                                href={l.website}
+                                href={withScheme(l.website)}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-xs text-[#0070f3] hover:underline truncate block max-w-44"
                               >
-                                {l.website.replace(/^https?:\/\//, "")}
+                                {(l.website ?? "").replace(/^https?:\/\//, "")}
                               </a>
                             )}
                           </td>
