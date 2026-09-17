@@ -9,6 +9,18 @@ interface Props {
   placeholder?: string;
   className?: string;
   dateOnly?: boolean;
+  /**
+   * Adds a Clear action. Opt-in: a required date shouldn't offer to empty
+   * itself, so the existing callers keep their current behaviour.
+   */
+  clearable?: boolean;
+  /**
+   * Today / Tomorrow / Next week shortcuts. For a follow-up date those are
+   * almost always the answer, and clicking three times through a month grid
+   * to reach tomorrow is the kind of small friction that stops people
+   * setting one at all.
+   */
+  quickDates?: boolean;
 }
 
 const DAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -56,6 +68,8 @@ export default function DateTimePicker({
   placeholder,
   className = "",
   dateOnly = false,
+  clearable = false,
+  quickDates = false,
 }: Props) {
   const today = new Date();
   const parsed = parseValue(value, dateOnly);
@@ -104,6 +118,27 @@ export default function DateTimePicker({
     if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
     else setViewMonth((m) => m + 1);
   }
+
+  /** Jumps the view and the selection to a specific date (the shortcuts). */
+  function applyDate(d: Date) {
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+    setSelectedDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() });
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    if (dateOnly) {
+      onChange(`${d.getFullYear()}-${mm}-${dd}`);
+      setOpen(false);
+    } else {
+      onChange(toLocalDateTimeString(d.getFullYear(), d.getMonth(), d.getDate(), time));
+    }
+  }
+
+  const shortcuts: { label: string; days: number }[] = [
+    { label: "Today", days: 0 },
+    { label: "Tomorrow", days: 1 },
+    { label: "Next week", days: 7 },
+  ];
 
   function selectDay(day: number) {
     const sd = { year: viewYear, month: viewMonth, day };
@@ -161,7 +196,26 @@ export default function DateTimePicker({
 
       {/* Popover */}
       {open && (
-        <div className="absolute z-50 top-[calc(100%+6px)] left-0 w-[272px] bg-white border border-[#eaeaea] rounded-xl shadow-xl shadow-black/8 p-4">
+        <div className="absolute z-50 top-[calc(100%+6px)] left-0 w-68 bg-white border border-[#eaeaea] rounded-xl shadow-xl shadow-black/8 p-4">
+          {quickDates && (
+            <div className="flex items-center gap-1.5 mb-3 pb-3 border-b border-[#f4f4f4]">
+              {shortcuts.map((s) => {
+                const d = new Date();
+                d.setDate(d.getDate() + s.days);
+                return (
+                  <button
+                    key={s.label}
+                    type="button"
+                    onClick={() => applyDate(d)}
+                    className="flex-1 text-[11px] font-medium text-[#444] bg-[#f5f5f5] rounded-md py-1.5 hover:bg-[#eaeaea] transition-colors"
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Month navigation */}
           <div className="flex items-center justify-between mb-4">
             <button
@@ -217,7 +271,23 @@ export default function DateTimePicker({
             ))}
           </div>
 
-          {/* Time section — hidden in dateOnly mode */}
+          {clearable && value && (
+            <div className="mt-2 pt-2 border-t border-[#f4f4f4]">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDate(null);
+                  onChange("");
+                  setOpen(false);
+                }}
+                className="w-full text-[11px] font-medium text-[#999] hover:text-[#f31260] py-1.5 rounded-md hover:bg-[#fef2f2] transition-colors"
+              >
+                Clear date
+              </button>
+            </div>
+          )}
+
+          {/* Time section, hidden in dateOnly mode */}
           {!dateOnly && (
             <>
               <div className="mt-3 pt-3 border-t border-[#f4f4f4]">

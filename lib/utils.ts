@@ -76,3 +76,28 @@ export function formatNumber(amount: number): string {
   if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}k`;
   return `$${amount}`;
 }
+
+/**
+ * US numbers as (XXX)-XXX-XXXX, so a list of them lines up instead of showing
+ * every format a CSV happened to carry: "(805)948-2830", "805 653-6794" and
+ * "8059482830" all read the same way here.
+ *
+ * Anything that isn't a plain 10-digit number is returned untouched rather
+ * than forced into the shape. An extension, a short code or an international
+ * number is still the number someone has to dial, and reformatting it by
+ * guesswork would make it wrong.
+ */
+export function formatPhone(raw: string | undefined | null): string {
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  // Leading country code on an otherwise ordinary US number.
+  const local = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  if (local.length !== 10) return raw.trim();
+  return `(${local.slice(0, 3)})-${local.slice(3, 6)}-${local.slice(6)}`;
+}
+
+/** Digits only, for a tel: href, where punctuation is noise. */
+export function telHref(raw: string | undefined | null): string {
+  const digits = (raw ?? '').replace(/[^\d+]/g, '');
+  return `tel:${digits}`;
+}
