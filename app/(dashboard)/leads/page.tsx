@@ -12,9 +12,14 @@ import AssignLeadsModal from "@/components/leads/AssignLeadsModal";
 import LeadsAccessModal from "@/components/leads/LeadsAccessModal";
 import DiscoverPanel from "@/components/leads/DiscoverPanel";
 import StatusPicker from "@/components/leads/StatusPicker";
-import CampaignsPanel from "@/components/campaigns/CampaignsPanel";
+import LeadsTabs from "@/components/leads/LeadsTabs";
 import AddToCampaignModal from "@/components/campaigns/AddToCampaignModal";
-import { criteriaFromLeadFilters, type CampaignFill } from "@/lib/db/campaigns";
+import {
+  criteriaFromLeadFilters,
+  fetchLeadFieldValues,
+  type CampaignFill,
+  type LeadFacet,
+} from "@/lib/db/campaigns";
 import { useEmployees } from "@/lib/db/employees";
 import { useAuth } from "@/lib/auth-context";
 import { hasPageAccess } from "@/lib/nav-pages";
@@ -78,7 +83,6 @@ import {
 } from "lucide-react";
 
 type View = "table" | "board";
-type Tab = "leads" | "campaigns";
 
 const PAGE_SIZE_OPTIONS = [
   { value: "25", label: "25 per page" },
@@ -107,11 +111,10 @@ export default function LeadsPage() {
   const { authUser } = useAuth();
   // Campaigns is a separate page grant, so the tab is only offered to
   // someone who could actually open a campaign. Without this the tab would
-  // be visible and every campaign behind it would 404.
+  // be visible and the page behind it would 404.
   const canSeeCampaigns = hasPageAccess("/leads/campaigns", authUser?.access);
   const revision = useLeadsRevision();
 
-  const [tab, setTab] = useState<Tab>("leads");
   const [view, setView] = useState<View>("table");
   const [filters, setFilters] = useState<LeadFilters>(EMPTY_FILTERS);
   const [searchInput, setSearchInput] = useState("");
@@ -142,6 +145,29 @@ export default function LeadsPage() {
   const actor = useMemo(
     () => (access.myEmployeeId ? { id: access.myEmployeeId, name: access.myName } : null),
     [access.myEmployeeId, access.myName],
+  );
+
+  // Loaded once: the distinct cities across the leads this reader can see,
+  // with how many are in each. Aggregated in SQL, because working it out
+  // client-side would mean holding every lead.
+  const [cityFacets, setCityFacets] = useState<LeadFacet[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchLeadFieldValues("city")
+      .then((values) => {
+        if (!cancelled) setCityFacets(values);
+      })
+      // A missing facet function just means no city list; the rest of the
+      // page is unaffected, so this isn't worth an error banner.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [revision]);
+
+  const cityOptions = useMemo(
+    () => cityFacets.map((f) => ({ value: f.value, label: `${f.value} (${f.count.toLocaleString()})` })),
+    [cityFacets],
   );
 
   /* ─── Filters ──────────────────────────────────────────────────────── */
@@ -410,7 +436,7 @@ export default function LeadsPage() {
                 className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-3 py-2 rounded-lg hover:bg-[#fafafa] transition-colors"
               >
                 <FileSpreadsheet className="w-4 h-4" />
-                <span className="hidden sm:inline">Import CSV</span>
+                <span className="hidden sm:inline">Import</span>
               </button>
             )}
             {access.canCreate && (
@@ -458,558 +484,546 @@ export default function LeadsPage() {
 
       {notice && <div className="mb-4 px-4 py-2.5 rounded-lg bg-[#f0fdf4] text-[#17c964] text-sm">{notice}</div>}
 
-      {/* Two ways of looking at the same leads: the whole list, or the
-          campaigns carved out of it. Tabs rather than separate pages so the
-          page-access grant for /leads covers both. */}
-      <div className="flex items-center gap-1 mb-5 border-b border-[#eaeaea]">
-        {[
-          { value: "leads" as Tab, label: "All Leads", icon: Target },
-          ...(canSeeCampaigns ? [{ value: "campaigns" as Tab, label: "Campaigns", icon: Megaphone }] : []),
-        ].map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTab(t.value)}
-            className={`flex items-center gap-2 text-[13px] font-medium px-3 py-2.5 -mb-px border-b-2 transition-colors ${
-              tab === t.value ? "border-[#0a0a0a] text-[#0a0a0a]" : "border-transparent text-[#999] hover:text-[#666]"
-            }`}
-          >
-            <t.icon className="w-4 h-4" />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <LeadsTabs active="leads" canSeeCampaigns={canSeeCampaigns} />
 
-      {tab === "campaigns" && canSeeCampaigns && <CampaignsPanel isAdmin={access.isAdmin} actor={actor} />}
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
+          {statCards.map((k) => (
+            <div key={k.label} className="bg-white px-4 py-4 md:px-5 md:py-5">
+              <p className="text-2xl font-bold tabular-nums leading-none text-[#0a0a0a] truncate">{k.value}</p>
+              <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{k.label}</p>
+            </div>
+          ))}
+        </div>
 
-      {(tab === "leads" || !canSeeCampaigns) && (
-        <>
-          {/* KPI strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-5 overflow-hidden">
-            {statCards.map((k) => (
-              <div key={k.label} className="bg-white px-4 py-4 md:px-5 md:py-5">
-                <p className="text-2xl font-bold tabular-nums leading-none text-[#0a0a0a] truncate">{k.value}</p>
-                <p className="text-[11px] text-[#999] mt-1.5 font-medium uppercase tracking-wide">{k.label}</p>
-              </div>
-            ))}
-          </div>
+        {showDiscover && access.isAdmin && (
+          <DiscoverPanel
+            actor={actor}
+            onSaved={() => setNotice("Saved as a new lead. Assign it to someone so they can see it.")}
+          />
+        )}
 
-          {showDiscover && access.isAdmin && (
-            <DiscoverPanel
-              actor={actor}
-              onSaved={() => setNotice("Saved as a new lead. Assign it to someone so they can see it.")}
-            />
-          )}
-
-          <div className="bg-white border border-[#eaeaea] rounded-xl">
-            {/* Toolbar */}
-            <div className="px-4 py-3 border-b border-[#eaeaea] space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 p-1 bg-[#f5f5f5] rounded-lg shrink-0">
-                    {[
-                      { value: "table" as View, label: "Table", icon: Table2 },
-                      { value: "board" as View, label: "Stages", icon: Columns3 },
-                    ].map((v) => (
-                      <button
-                        key={v.value}
-                        onClick={() => setView(v.value)}
-                        className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors ${
-                          view === v.value ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
-                        }`}
-                      >
-                        <v.icon className="w-3.5 h-3.5" />
-                        {v.label}
-                      </button>
-                    ))}
-                  </div>
-                  {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#999]" />}
+        <div className="bg-white border border-[#eaeaea] rounded-xl">
+          {/* Toolbar */}
+          <div className="px-4 py-3 border-b border-[#eaeaea] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 p-1 bg-[#f5f5f5] rounded-lg shrink-0">
+                  {[
+                    { value: "table" as View, label: "Table", icon: Table2 },
+                    { value: "board" as View, label: "Stages", icon: Columns3 },
+                  ].map((v) => (
+                    <button
+                      key={v.value}
+                      onClick={() => setView(v.value)}
+                      className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors ${
+                        view === v.value ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
+                      }`}
+                    >
+                      <v.icon className="w-3.5 h-3.5" />
+                      {v.label}
+                    </button>
+                  ))}
                 </div>
-
-                <div className="relative flex-1 min-w-48 max-w-sm">
-                  <Search className="w-3.5 h-3.5 text-[#bbb] absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search company, contact, phone, city…"
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    className="text-sm border border-[#eaeaea] rounded-lg pl-9 pr-3 py-1.5 w-full outline-none focus:border-[#0070f3] transition-colors"
-                  />
-                </div>
+                {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#999]" />}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {access.myEmployeeId && (
-                  <button
-                    onClick={() =>
-                      applyFilters({
-                        assignedTo: filters.assignedTo === access.myEmployeeId ? "" : access.myEmployeeId,
-                      })
-                    }
-                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                      filters.assignedTo === access.myEmployeeId
-                        ? "border-[#0070f3] bg-[#eff6ff] text-[#0070f3]"
-                        : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
-                    }`}
-                  >
-                    <User className="w-3.5 h-3.5" /> My Leads
-                  </button>
-                )}
-                <button
-                  onClick={() => applyFilters({ overdue: !filters.overdue })}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                    filters.overdue
-                      ? "border-[#f31260] bg-[#fef2f2] text-[#f31260]"
-                      : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
-                  }`}
-                >
-                  <AlertTriangle className="w-3.5 h-3.5" /> Overdue
-                </button>
-                <button
-                  onClick={() => applyFilters({ stale: !filters.stale })}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                    filters.stale
-                      ? "border-[#f5a524] bg-[#fefce8] text-[#f5a524]"
-                      : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
-                  }`}
-                >
-                  <Clock className="w-3.5 h-3.5" /> No activity
-                </button>
-
-                <div className="w-36">
-                  <Select
-                    value={filters.status}
-                    onChange={(v) => applyFilters({ status: v })}
-                    placeholder="All stages"
-                    options={STATUS_OPTIONS}
-                    clearable
-                  />
-                </div>
-                <div className="w-36">
-                  <Select
-                    value={filters.priority}
-                    onChange={(v) => applyFilters({ priority: v })}
-                    placeholder="Any priority"
-                    options={PRIORITY_OPTIONS}
-                    clearable
-                  />
-                </div>
-                <div className="w-36">
-                  <Select
-                    value={filters.source}
-                    onChange={(v) => applyFilters({ source: v })}
-                    placeholder="Any source"
-                    options={SOURCE_OPTIONS}
-                    clearable
-                  />
-                </div>
-                {/* An owner filter only means anything to someone who can see more
-                than their own leads. */}
-                {(access.isAdmin || access.globalLevel) && (
-                  <div className="w-40">
-                    <Select
-                      value={filters.assignedTo}
-                      onChange={(v) => applyFilters({ assignedTo: v })}
-                      placeholder="All owners"
-                      options={ownerOptions}
-                      searchable
-                      clearable
-                    />
-                  </div>
-                )}
-                {hasFilters && (
-                  <button onClick={clearFilters} className="text-xs text-[#666] hover:text-[#0a0a0a] underline px-1">
-                    Clear
-                  </button>
-                )}
+              <div className="relative flex-1 min-w-48 max-w-sm">
+                <Search className="w-3.5 h-3.5 text-[#bbb] absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search company, contact, phone, city…"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="text-sm border border-[#eaeaea] rounded-lg pl-9 pr-3 py-1.5 w-full outline-none focus:border-[#0070f3] transition-colors"
+                />
               </div>
             </div>
 
-            {/* Bulk action bar */}
-            {selectedCount > 0 && access.isAdmin && (
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-[#eff6ff] border-b border-[#eaeaea]">
-                <p className="text-xs font-medium text-[#0070f3]">
-                  {selectedCount.toLocaleString()} selected
-                  {allMatchingSelected && " (everything matching these filters)"}
-                </p>
-                {/* Offering "select all" only makes sense when there's more than
-                this page to select. */}
-                {!allMatchingSelected && total > rows.length && (
-                  <button
-                    onClick={() => {
-                      setAllMatchingSelected(true);
-                      setSelectedIds(new Set());
-                    }}
-                    className="text-xs text-[#0070f3] underline"
-                  >
-                    Select all {total.toLocaleString()}
-                  </button>
-                )}
-                <div className="w-36">
-                  <Select
-                    value=""
-                    onChange={(v) => v && bulkStatus(v as LeadStatus)}
-                    placeholder="Move to stage"
-                    // Setting a stage, so "New" isn't offered, same rule as the
-                    // per-row picker. The filter above still lists it.
-                    options={SETTABLE_STATUS_OPTIONS}
-                  />
-                </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {access.myEmployeeId && (
                 <button
-                  onClick={() => setShowAssign(true)}
-                  disabled={busy}
-                  className="flex items-center gap-1.5 text-xs font-medium bg-[#0070f3] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50"
+                  onClick={() =>
+                    applyFilters({
+                      assignedTo: filters.assignedTo === access.myEmployeeId ? "" : access.myEmployeeId,
+                    })
+                  }
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                    filters.assignedTo === access.myEmployeeId
+                      ? "border-[#0070f3] bg-[#eff6ff] text-[#0070f3]"
+                      : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
+                  }`}
                 >
-                  <UserCheck className="w-3.5 h-3.5" /> Assign / share
+                  <User className="w-3.5 h-3.5" /> My Leads
                 </button>
-                {canSeeCampaigns && (
-                  <button
-                    onClick={() => setShowAddToCampaign(true)}
-                    disabled={busy}
-                    className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#444] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-                  >
-                    <Megaphone className="w-3.5 h-3.5" /> Add to campaign
-                  </button>
-                )}
-                <button
-                  onClick={bulkDelete}
-                  disabled={busy}
-                  className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#f31260] px-3 py-1.5 rounded-lg hover:bg-[#fff0f3] transition-colors disabled:opacity-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Delete
-                </button>
-                <button onClick={clearSelection} className="text-xs text-[#666] hover:text-[#0a0a0a] underline">
-                  Clear selection
-                </button>
-                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0070f3]" />}
-              </div>
-            )}
+              )}
+              <button
+                onClick={() => applyFilters({ overdue: !filters.overdue })}
+                className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                  filters.overdue
+                    ? "border-[#f31260] bg-[#fef2f2] text-[#f31260]"
+                    : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" /> Overdue
+              </button>
+              <button
+                onClick={() => applyFilters({ stale: !filters.stale })}
+                className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                  filters.stale
+                    ? "border-[#f5a524] bg-[#fefce8] text-[#f5a524]"
+                    : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" /> No activity
+              </button>
 
-            {/* States */}
-            {loading && !result && (
-              <div className="p-12 text-center">
-                <Loader2 className="w-5 h-5 text-[#999] mx-auto mb-3 animate-spin" />
-                <p className="text-sm text-[#999]">Loading leads…</p>
-              </div>
-            )}
-
-            {isCurrent && total === 0 && !hasFilters && (
-              <div className="p-12 text-center">
-                <Target className="w-6 h-6 text-[#999] mx-auto mb-3" />
-                <p className="text-sm font-medium text-[#0a0a0a] mb-1">
-                  {access.isAdmin ? "No leads yet" : "No leads assigned to you yet"}
-                </p>
-                <p className="text-xs text-[#999]">
-                  {access.isAdmin
-                    ? "Import a CSV, discover businesses, or add one manually."
-                    : "An administrator will assign leads to you, and they'll show up here."}
-                </p>
-              </div>
-            )}
-
-            {isCurrent && total === 0 && hasFilters && (
-              <div className="p-12 text-center">
-                <p className="text-sm text-[#999] mb-2">No leads match those filters.</p>
-                <button onClick={clearFilters} className="text-xs text-[#0070f3] hover:underline">
-                  Clear filters
-                </button>
-              </div>
-            )}
-
-            {pastEnd && (
-              <div className="p-12 text-center">
-                <p className="text-sm text-[#999] mb-2">
-                  This page is empty now, there are {total.toLocaleString()} leads in total.
-                </p>
-                <button onClick={() => setPage(0)} className="text-xs text-[#0070f3] hover:underline">
-                  Back to the first page
-                </button>
-              </div>
-            )}
-
-            {/* Board */}
-            {view === "board" && total > 0 && (
-              <div className="p-4">
-                {board?.error && <p className="text-sm text-[#f31260] mb-3">{board.error}</p>}
-                <LeadStageBoard
-                  columns={board?.columns ?? {}}
-                  counts={board?.counts ?? {}}
-                  canEditLead={access.canEdit}
-                  onOpen={setOpenLeadId}
-                  onMove={setStatus}
-                  onFocusStage={(status) => {
-                    setView("table");
-                    applyFilters({ status });
-                  }}
+              <div className="w-36">
+                <Select
+                  value={filters.status}
+                  onChange={(v) => applyFilters({ status: v })}
+                  placeholder="All stages"
+                  options={STATUS_OPTIONS}
+                  clearable
                 />
               </div>
-            )}
+              <div className="w-36">
+                <Select
+                  value={filters.priority}
+                  onChange={(v) => applyFilters({ priority: v })}
+                  placeholder="Any priority"
+                  options={PRIORITY_OPTIONS}
+                  clearable
+                />
+              </div>
+              <div className="w-36">
+                <Select
+                  value={filters.source}
+                  onChange={(v) => applyFilters({ source: v })}
+                  placeholder="Any source"
+                  options={SOURCE_OPTIONS}
+                  clearable
+                />
+              </div>
+              {/* Cities come from the leads themselves, with counts, so the
+                  list is what's actually on file rather than a fixed set, and
+                  it's scoped by RLS to the leads this reader can see. */}
+              <div className="w-40">
+                <Select
+                  value={filters.city}
+                  onChange={(v) => applyFilters({ city: v })}
+                  placeholder="Any city"
+                  options={cityOptions}
+                  searchable
+                  clearable
+                />
+              </div>
+              {/* An owner filter only means anything to someone who can see more
+              than their own leads. */}
+              {(access.isAdmin || access.globalLevel) && (
+                <div className="w-40">
+                  <Select
+                    value={filters.assignedTo}
+                    onChange={(v) => applyFilters({ assignedTo: v })}
+                    placeholder="All owners"
+                    options={ownerOptions}
+                    searchable
+                    clearable
+                  />
+                </div>
+              )}
+              {hasFilters && (
+                <button onClick={clearFilters} className="text-xs text-[#666] hover:text-[#0a0a0a] underline px-1">
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
 
-            {/* Table */}
-            {view === "table" && rows.length > 0 && (
-              <>
-                <div className={`overflow-x-auto transition-opacity ${loading ? "opacity-60" : ""}`}>
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#eaeaea] bg-[#fafafa]">
-                        {access.isAdmin && (
-                          <th className="w-10 px-4 py-3">
-                            <input
-                              type="checkbox"
-                              checked={pageFullySelected || allMatchingSelected}
-                              onChange={toggleSelectPage}
-                              aria-label="Select all leads on this page"
-                              className="w-3.5 h-3.5 accent-[#0070f3] cursor-pointer"
-                            />
-                          </th>
-                        )}
-                        <th className="text-left px-4 py-3">{sortButton("company_name", "Company")}</th>
-                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
-                          Point of Contact
+          {/* Bulk action bar */}
+          {selectedCount > 0 && access.isAdmin && (
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-[#eff6ff] border-b border-[#eaeaea]">
+              <p className="text-xs font-medium text-[#0070f3]">
+                {selectedCount.toLocaleString()} selected
+                {allMatchingSelected && " (everything matching these filters)"}
+              </p>
+              {/* Offering "select all" only makes sense when there's more than
+              this page to select. */}
+              {!allMatchingSelected && total > rows.length && (
+                <button
+                  onClick={() => {
+                    setAllMatchingSelected(true);
+                    setSelectedIds(new Set());
+                  }}
+                  className="text-xs text-[#0070f3] underline"
+                >
+                  Select all {total.toLocaleString()}
+                </button>
+              )}
+              <div className="w-36">
+                <Select
+                  value=""
+                  onChange={(v) => v && bulkStatus(v as LeadStatus)}
+                  placeholder="Move to stage"
+                  // Setting a stage, so "New" isn't offered, same rule as the
+                  // per-row picker. The filter above still lists it.
+                  options={SETTABLE_STATUS_OPTIONS}
+                />
+              </div>
+              <button
+                onClick={() => setShowAssign(true)}
+                disabled={busy}
+                className="flex items-center gap-1.5 text-xs font-medium bg-[#0070f3] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50"
+              >
+                <UserCheck className="w-3.5 h-3.5" /> Assign / share
+              </button>
+              {canSeeCampaigns && (
+                <button
+                  onClick={() => setShowAddToCampaign(true)}
+                  disabled={busy}
+                  className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#444] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+                >
+                  <Megaphone className="w-3.5 h-3.5" /> Add to campaign
+                </button>
+              )}
+              <button
+                onClick={bulkDelete}
+                disabled={busy}
+                className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#f31260] px-3 py-1.5 rounded-lg hover:bg-[#fff0f3] transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
+              <button onClick={clearSelection} className="text-xs text-[#666] hover:text-[#0a0a0a] underline">
+                Clear selection
+              </button>
+              {busy && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0070f3]" />}
+            </div>
+          )}
+
+          {/* States */}
+          {loading && !result && (
+            <div className="p-12 text-center">
+              <Loader2 className="w-5 h-5 text-[#999] mx-auto mb-3 animate-spin" />
+              <p className="text-sm text-[#999]">Loading leads…</p>
+            </div>
+          )}
+
+          {isCurrent && total === 0 && !hasFilters && (
+            <div className="p-12 text-center">
+              <Target className="w-6 h-6 text-[#999] mx-auto mb-3" />
+              <p className="text-sm font-medium text-[#0a0a0a] mb-1">
+                {access.isAdmin ? "No leads yet" : "No leads assigned to you yet"}
+              </p>
+              <p className="text-xs text-[#999]">
+                {access.isAdmin
+                  ? "Import a CSV, discover businesses, or add one manually."
+                  : "An administrator will assign leads to you, and they'll show up here."}
+              </p>
+            </div>
+          )}
+
+          {isCurrent && total === 0 && hasFilters && (
+            <div className="p-12 text-center">
+              <p className="text-sm text-[#999] mb-2">No leads match those filters.</p>
+              <button onClick={clearFilters} className="text-xs text-[#0070f3] hover:underline">
+                Clear filters
+              </button>
+            </div>
+          )}
+
+          {pastEnd && (
+            <div className="p-12 text-center">
+              <p className="text-sm text-[#999] mb-2">
+                This page is empty now, there are {total.toLocaleString()} leads in total.
+              </p>
+              <button onClick={() => setPage(0)} className="text-xs text-[#0070f3] hover:underline">
+                Back to the first page
+              </button>
+            </div>
+          )}
+
+          {/* Board */}
+          {view === "board" && total > 0 && (
+            <div className="p-4">
+              {board?.error && <p className="text-sm text-[#f31260] mb-3">{board.error}</p>}
+              <LeadStageBoard
+                columns={board?.columns ?? {}}
+                counts={board?.counts ?? {}}
+                canEditLead={access.canEdit}
+                onOpen={setOpenLeadId}
+                onMove={setStatus}
+                onFocusStage={(status) => {
+                  setView("table");
+                  applyFilters({ status });
+                }}
+              />
+            </div>
+          )}
+
+          {/* Table */}
+          {view === "table" && rows.length > 0 && (
+            <>
+              <div className={`overflow-x-auto transition-opacity ${loading ? "opacity-60" : ""}`}>
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[#eaeaea] bg-[#fafafa]">
+                      {access.isAdmin && (
+                        <th className="w-10 px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={pageFullySelected || allMatchingSelected}
+                            onChange={toggleSelectPage}
+                            aria-label="Select all leads on this page"
+                            className="w-3.5 h-3.5 accent-[#0070f3] cursor-pointer"
+                          />
                         </th>
-                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3 whitespace-nowrap">
-                          Phone / Email
-                        </th>
-                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
-                          Location
-                        </th>
-                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
-                          Owner
-                        </th>
-                        <th className="text-left px-4 py-3">{sortButton("follow_up_date", "Follow-up")}</th>
-                        <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
-                          Stage
-                        </th>
-                        <th className="w-10 px-4 py-3" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((l) => {
-                        const overdue = isFollowUpOverdue(l.followUpDate, l.status);
-                        const editable = access.canEdit(l);
-                        const level = access.levelFor(l);
-                        return (
-                          <tr
-                            key={l.id}
-                            className="group border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors"
-                          >
-                            {access.isAdmin && (
-                              <td className="px-4 py-3">
-                                <input
-                                  type="checkbox"
-                                  checked={allMatchingSelected || selectedIds.has(l.id)}
-                                  onChange={() => toggleSelect(l.id)}
-                                  aria-label={`Select ${l.companyName}`}
-                                  className="w-3.5 h-3.5 accent-[#0070f3] cursor-pointer"
-                                />
-                              </td>
-                            )}
-                            {/* The copy control can't live inside the open-lead
-                            button (nested buttons are invalid), so the name
-                            and the copy sit as siblings in a flex row. */}
-                            <td className="px-4 py-3 min-w-64">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => setOpenLeadId(l.id)}
-                                  className="flex items-center gap-2.5 text-left min-w-0"
-                                >
-                                  <div className="w-7 h-7 rounded-lg bg-[#eff6ff] flex items-center justify-center shrink-0">
-                                    <Building2 className="w-3.5 h-3.5 text-[#0070f3]" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium text-[#0a0a0a] truncate hover:text-[#0070f3] transition-colors">
-                                      {l.companyName}
-                                      {l.dba && <span className="text-[#999] font-normal"> (DBA {l.dba})</span>}
-                                    </p>
-                                    <div className="flex items-center gap-1.5">
-                                      <p className="text-[10px] text-[#bbb] truncate">
-                                        {l.businessType || SOURCE_LABELS[l.source]}
-                                      </p>
-                                      {l.priority && (
-                                        <span
-                                          className={`text-[9px] font-semibold px-1 rounded shrink-0 ${PRIORITY_STYLES[l.priority]}`}
-                                        >
-                                          {l.priority.toUpperCase()}
-                                        </span>
-                                      )}
-                                      {level === "viewer" && (
-                                        <span className="flex items-center gap-0.5 text-[9px] font-semibold text-[#999] shrink-0">
-                                          <Eye className="w-2.5 h-2.5" /> READ-ONLY
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </button>
-                                <CopyButton value={l.companyName ?? ""} label="company name" revealOnHover />
-                              </div>
-                            </td>
+                      )}
+                      <th className="text-left px-4 py-3">{sortButton("company_name", "Company")}</th>
+                      <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
+                        Point of Contact
+                      </th>
+                      <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3 whitespace-nowrap">
+                        Phone / Email
+                      </th>
+                      <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
+                        Location
+                      </th>
+                      <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
+                        Owner
+                      </th>
+                      <th className="text-left px-4 py-3">{sortButton("follow_up_date", "Follow-up")}</th>
+                      <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
+                        Stage
+                      </th>
+                      <th className="w-10 px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((l) => {
+                      const overdue = isFollowUpOverdue(l.followUpDate, l.status);
+                      const editable = access.canEdit(l);
+                      const level = access.levelFor(l);
+                      return (
+                        <tr
+                          key={l.id}
+                          className="group border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors"
+                        >
+                          {access.isAdmin && (
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-1">
-                                <div className="min-w-0">
-                                  <p className="text-sm text-[#0a0a0a] truncate">{l.pocName || "-"}</p>
-                                  {l.pocTitle && <p className="text-xs text-[#999] truncate">{l.pocTitle}</p>}
-                                  {l.linkedinUrl && (
-                                    <a
-                                      href={l.linkedinUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-xs text-[#0070f3] hover:underline flex items-center gap-1 mt-0.5"
-                                    >
-                                      <ExternalLink className="w-3 h-3" /> LinkedIn
-                                    </a>
-                                  )}
-                                </div>
-                                {l.pocName && <CopyButton value={l.pocName} label="contact name" revealOnHover />}
-                              </div>
+                              <input
+                                type="checkbox"
+                                checked={allMatchingSelected || selectedIds.has(l.id)}
+                                onChange={() => toggleSelect(l.id)}
+                                aria-label={`Select ${l.companyName}`}
+                                className="w-3.5 h-3.5 accent-[#0070f3] cursor-pointer"
+                              />
                             </td>
-                            {/* Phone and email never wrap: a number broken over two
-                            lines is unreadable and un-dialable, and it's the
-                            column a caller actually looks at. */}
-                            <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">
-                              <div className="flex items-center gap-1">
-                                {l.phone ? (
-                                  <>
-                                    <a
-                                      href={telHref(l.phone)}
-                                      className="font-mono hover:text-[#0070f3] transition-colors"
-                                    >
-                                      {formatPhone(l.phone)}
-                                    </a>
-                                    <CopyButton value={formatPhone(l.phone)} label="phone number" revealOnHover />
-                                  </>
-                                ) : (
-                                  <span className="text-[#ccc]">-</span>
+                          )}
+                          {/* The copy control can't live inside the open-lead
+                          button (nested buttons are invalid), so the name
+                          and the copy sit as siblings in a flex row. */}
+                          <td className="px-4 py-3 min-w-64">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setOpenLeadId(l.id)}
+                                className="flex items-center gap-2.5 text-left min-w-0"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-[#eff6ff] flex items-center justify-center shrink-0">
+                                  <Building2 className="w-3.5 h-3.5 text-[#0070f3]" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-[#0a0a0a] truncate hover:text-[#0070f3] transition-colors">
+                                    {l.companyName}
+                                    {l.dba && <span className="text-[#999] font-normal"> (DBA {l.dba})</span>}
+                                  </p>
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-[10px] text-[#bbb] truncate">
+                                      {l.businessType || SOURCE_LABELS[l.source]}
+                                    </p>
+                                    {l.priority && (
+                                      <span
+                                        className={`text-[9px] font-semibold px-1 rounded shrink-0 ${PRIORITY_STYLES[l.priority]}`}
+                                      >
+                                        {l.priority.toUpperCase()}
+                                      </span>
+                                    )}
+                                    {level === "viewer" && (
+                                      <span className="flex items-center gap-0.5 text-[9px] font-semibold text-[#999] shrink-0">
+                                        <Eye className="w-2.5 h-2.5" /> READ-ONLY
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                              <CopyButton value={l.companyName ?? ""} label="company name" revealOnHover />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              <div className="min-w-0">
+                                <p className="text-sm text-[#0a0a0a] truncate">{l.pocName || "-"}</p>
+                                {l.pocTitle && <p className="text-xs text-[#999] truncate">{l.pocTitle}</p>}
+                                {l.linkedinUrl && (
+                                  <a
+                                    href={l.linkedinUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs text-[#0070f3] hover:underline flex items-center gap-1 mt-0.5"
+                                  >
+                                    <ExternalLink className="w-3 h-3" /> LinkedIn
+                                  </a>
                                 )}
                               </div>
-                              {l.email && (
-                                <div className="flex items-center gap-1">
+                              {l.pocName && <CopyButton value={l.pocName} label="contact name" revealOnHover />}
+                            </div>
+                          </td>
+                          {/* Phone and email never wrap: a number broken over two
+                          lines is unreadable and un-dialable, and it's the
+                          column a caller actually looks at. */}
+                          <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              {l.phone ? (
+                                <>
                                   <a
-                                    href={`mailto:${l.email}`}
-                                    className="text-xs text-[#0070f3] hover:underline truncate max-w-44"
+                                    href={telHref(l.phone)}
+                                    className="font-mono hover:text-[#0070f3] transition-colors"
                                   >
-                                    {l.email}
+                                    {formatPhone(l.phone)}
                                   </a>
-                                  <CopyButton value={l.email} label="email address" revealOnHover />
-                                </div>
+                                  <CopyButton value={formatPhone(l.phone)} label="phone number" revealOnHover />
+                                </>
+                              ) : (
+                                <span className="text-[#ccc]">-</span>
                               )}
-                              {!l.email && l.website && (
+                            </div>
+                            {l.email && (
+                              <div className="flex items-center gap-1">
                                 <a
-                                  href={l.website}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-xs text-[#0070f3] hover:underline truncate block max-w-44"
+                                  href={`mailto:${l.email}`}
+                                  className="text-xs text-[#0070f3] hover:underline truncate max-w-44"
                                 >
-                                  {l.website.replace(/^https?:\/\//, "")}
+                                  {l.email}
                                 </a>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">
-                              {[l.city, l.state].filter(Boolean).join(", ") || "-"}
-                            </td>
-                            <td className="px-4 py-3">
-                              {l.assignedToName ? (
-                                <div className="flex items-center gap-1.5">
-                                  <div
-                                    className={`w-5 h-5 rounded-full ${getAvatarColor(l.assignedToName).bg} ${getAvatarColor(l.assignedToName).text} flex items-center justify-center shrink-0`}
-                                  >
-                                    <span className="text-[8px] font-semibold">{getInitials(l.assignedToName)}</span>
-                                  </div>
-                                  <span className="text-xs text-[#666] truncate">{l.assignedToName}</span>
+                                <CopyButton value={l.email} label="email address" revealOnHover />
+                              </div>
+                            )}
+                            {!l.email && l.website && (
+                              <a
+                                href={l.website}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-[#0070f3] hover:underline truncate block max-w-44"
+                              >
+                                {l.website.replace(/^https?:\/\//, "")}
+                              </a>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">
+                            {[l.city, l.state].filter(Boolean).join(", ") || "-"}
+                          </td>
+                          <td className="px-4 py-3">
+                            {l.assignedToName ? (
+                              <div className="flex items-center gap-1.5">
+                                <div
+                                  className={`w-5 h-5 rounded-full ${getAvatarColor(l.assignedToName).bg} ${getAvatarColor(l.assignedToName).text} flex items-center justify-center shrink-0`}
+                                >
+                                  <span className="text-[8px] font-semibold">{getInitials(l.assignedToName)}</span>
                                 </div>
-                              ) : (
-                                <span className="text-sm text-[#ccc]">Unassigned</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {l.followUpDate ? (
-                                <span
-                                  className={`flex items-center gap-1 text-xs ${overdue ? "text-[#f31260] font-medium" : "text-[#666]"}`}
-                                >
-                                  {overdue && <AlertTriangle className="w-3 h-3" />}
-                                  {new Date(l.followUpDate).toLocaleDateString("en-US", {
-                                    month: "short",
-                                    day: "numeric",
-                                  })}
-                                </span>
-                              ) : (
-                                <span className="text-sm text-[#ccc]">-</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {/* A read-only viewer gets the stage as a plain badge, the picker would open and then fail on write. */}
-                              {editable ? (
-                                <StatusPicker value={l.status} onChange={(status) => setStatus(l, status)} /> // Same pill, minus the affordance to change it.
-                              ) : (
-                                <span
-                                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${STATUS_STYLES[l.status]}`}
-                                >
-                                  {(() => {
-                                    const Icon = STATUS_ICONS[l.status];
-                                    return Icon ? <Icon className="w-3 h-3 shrink-0" /> : null;
-                                  })()}
-                                  {STATUS_LABELS[l.status]}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {access.canDelete && (
-                                <button
-                                  onClick={() => deleteOne(l)}
-                                  className="p-1.5 rounded-lg text-[#999] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"
-                                  title="Delete lead"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                                <span className="text-xs text-[#666] truncate">{l.assignedToName}</span>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-[#ccc]">Unassigned</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {l.followUpDate ? (
+                              <span
+                                className={`flex items-center gap-1 text-xs ${overdue ? "text-[#f31260] font-medium" : "text-[#666]"}`}
+                              >
+                                {overdue && <AlertTriangle className="w-3 h-3" />}
+                                {new Date(l.followUpDate).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-[#ccc]">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {/* A read-only viewer gets the stage as a plain badge, the picker would open and then fail on write. */}
+                            {editable ? (
+                              <StatusPicker value={l.status} onChange={(status) => setStatus(l, status)} /> // Same pill, minus the affordance to change it.
+                            ) : (
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${STATUS_STYLES[l.status]}`}
+                              >
+                                {(() => {
+                                  const Icon = STATUS_ICONS[l.status];
+                                  return Icon ? <Icon className="w-3 h-3 shrink-0" /> : null;
+                                })()}
+                                {STATUS_LABELS[l.status]}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {access.canDelete && (
+                              <button
+                                onClick={() => deleteOne(l)}
+                                className="p-1.5 rounded-lg text-[#999] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"
+                                title="Delete lead"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-                {/* Pagination */}
-                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-[#eaeaea]">
-                  <p className="text-xs text-[#999] tabular-nums">
-                    {(page * pageSize + 1).toLocaleString()}–{Math.min((page + 1) * pageSize, total).toLocaleString()}{" "}
-                    of {total.toLocaleString()}
-                    <span className="hidden sm:inline"> · sorted by {SORT_LABELS[sort]}</span>
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <div className="w-36">
-                      <Select
-                        value={String(pageSize)}
-                        onChange={(v) => {
-                          setPageSize(Number(v));
-                          setPage(0);
-                        }}
-                        options={PAGE_SIZE_OPTIONS}
-                      />
-                    </div>
-                    <button
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                      disabled={page === 0 || loading}
-                      className="flex items-center gap-1 text-xs font-medium border border-[#eaeaea] bg-white text-[#444] px-2.5 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-40"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" /> Prev
-                    </button>
-                    <span className="text-xs text-[#666] tabular-nums px-1">
-                      {(page + 1).toLocaleString()} / {pageCount.toLocaleString()}
-                    </span>
-                    <button
-                      onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                      disabled={page >= pageCount - 1 || loading}
-                      className="flex items-center gap-1 text-xs font-medium border border-[#eaeaea] bg-white text-[#444] px-2.5 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-40"
-                    >
-                      Next <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
+              {/* Pagination */}
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-[#eaeaea]">
+                <p className="text-xs text-[#999] tabular-nums">
+                  {(page * pageSize + 1).toLocaleString()}–{Math.min((page + 1) * pageSize, total).toLocaleString()}{" "}
+                  of {total.toLocaleString()}
+                  <span className="hidden sm:inline"> · sorted by {SORT_LABELS[sort]}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="w-36">
+                    <Select
+                      value={String(pageSize)}
+                      onChange={(v) => {
+                        setPageSize(Number(v));
+                        setPage(0);
+                      }}
+                      options={PAGE_SIZE_OPTIONS}
+                    />
                   </div>
+                  <button
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={page === 0 || loading}
+                    className="flex items-center gap-1 text-xs font-medium border border-[#eaeaea] bg-white text-[#444] px-2.5 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-40"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                  </button>
+                  <span className="text-xs text-[#666] tabular-nums px-1">
+                    {(page + 1).toLocaleString()} / {pageCount.toLocaleString()}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                    disabled={page >= pageCount - 1 || loading}
+                    className="flex items-center gap-1 text-xs font-medium border border-[#eaeaea] bg-white text-[#444] px-2.5 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-40"
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              </>
-            )}
-          </div>
-        </>
-      )}
+              </div>
+            </>
+          )}
+        </div>
 
       {showImport && access.isAdmin && (
         <ImportLeadsCsvModal

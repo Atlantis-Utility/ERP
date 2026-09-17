@@ -6,11 +6,15 @@ import { useEmployees } from "@/lib/db/employees";
 import { fetchLeadFieldValues, type CampaignCriteria, type LeadFacet, type LeadFacetField } from "@/lib/db/campaigns";
 import { STATUS_OPTIONS, PRIORITY_OPTIONS } from "@/lib/leads-constants";
 
+// Source is deliberately not offered: it records how a lead reached the
+// system (an Azure Maps sweep, a file, typed in by hand), which isn't
+// something anyone builds a calling list around. The criteria type and the
+// SQL still accept it, so it stays filterable without a migration if that
+// ever changes.
 const FACET_FIELDS: { field: LeadFacetField; label: string; key: keyof CampaignCriteria }[] = [
   { field: "city", label: "City", key: "city" },
   { field: "state", label: "State", key: "state" },
   { field: "businessType", label: "Category", key: "category" },
-  { field: "source", label: "Source", key: "source" },
 ];
 
 const inputClass =
