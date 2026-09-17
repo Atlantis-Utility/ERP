@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../supabase/client";
+import { subscribeChanges } from "../supabase/realtime";
 import { getErrorMessage } from "../utils";
 import { STALE_DAYS, type LeadFilters } from "./leads";
 
@@ -275,17 +276,16 @@ export function subscribeCampaigns(cb: (snapshot: CampaignsSnapshot) => void): (
     timer = setTimeout(load, 400);
   };
 
-  const channel = supabase
-    .channel("campaigns-list")
-    .on("postgres_changes", { event: "*", schema: "public", table: "campaigns" }, reload)
-    .on("postgres_changes", { event: "*", schema: "public", table: "campaign_grants" }, reload)
-    .on("postgres_changes", { event: "*", schema: "public", table: "campaign_leads" }, reload)
-    .subscribe();
+  // Shared and ref-counted, not a channel of its own: two components calling
+  // useCampaigns() at once (the Campaigns page renders CampaignsPanel, and
+  // both want the list) would otherwise have the second one add callbacks to
+  // an already-subscribed channel, which throws and takes the page down.
+  const unsubscribe = subscribeChanges("campaigns-list", ["campaigns", "campaign_grants", "campaign_leads"], reload);
 
   return () => {
     cancelled = true;
     if (timer) clearTimeout(timer);
-    supabase.removeChannel(channel);
+    unsubscribe();
   };
 }
 
@@ -703,20 +703,17 @@ export function subscribeCampaignGrants(campaignId: string, cb: (grants: Campaig
 
   load();
 
-  const channel = supabase
-    .channel(`campaign-grants-${campaignId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "campaign_grants", filter: `campaign_id=eq.${campaignId}` },
-      () => {
-        if (!cancelled) load();
-      },
-    )
-    .subscribe();
+  // Watches every grant rather than filtering to this campaign's: the filter
+  // was the only thing this channel gained by being its own, and sharing it
+  // is worth more than the few extra reloads, since a grant change anywhere
+  // is rare. Ref-counted for the same reason as the list above.
+  const unsubscribe = subscribeChanges(`campaign-grants-${campaignId}`, ["campaign_grants"], () => {
+    if (!cancelled) load();
+  });
 
   return () => {
     cancelled = true;
-    supabase.removeChannel(channel);
+    unsubscribe();
   };
 }
 

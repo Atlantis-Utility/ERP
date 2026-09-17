@@ -60,6 +60,47 @@ async function hasSession(): Promise<boolean> {
 }
 
 /**
+ * A ref-counted channel for callers that keep their own loading logic (their
+ * own debounce, their own snapshot shape) and only need telling that
+ * something changed. Several tables per channel, because "reload the campaign
+ * list" is one job whether it was the campaign, a grant or a row that moved.
+ *
+ * Ref-counted for the reason described above: `supabase.channel(topic)` hands
+ * back the *existing* channel for that topic, so a second caller's `.on()`
+ * lands on a channel that has already been `.subscribe()`d and throws
+ * "cannot add `postgres_changes` callbacks for realtime:<topic> after
+ * `subscribe()`". Two components using the same hook is enough to hit it, and
+ * hitting it takes the page down rather than degrading.
+ *
+ * @param topic  The channel name. Must not collide with a bare table name,
+ *               which is what subscribeTable keys its own entries by.
+ */
+export function subscribeChanges(topic: string, tables: string[], onChange: () => void): () => void {
+  let shared = subscriptions.get(topic);
+  if (!shared) {
+    const listeners = new Set<() => void>();
+    const notify = () => listeners.forEach((l) => l());
+    let builder = supabase.channel(topic);
+    for (const table of tables) {
+      builder = builder.on("postgres_changes", { event: "*", schema: "public", table }, notify);
+    }
+    shared = { channel: builder.subscribe(), listeners };
+    subscriptions.set(topic, shared);
+  }
+
+  const entry = shared;
+  entry.listeners.add(onChange);
+
+  return () => {
+    entry.listeners.delete(onChange);
+    if (entry.listeners.size === 0) {
+      supabase.removeChannel(entry.channel);
+      subscriptions.delete(topic);
+    }
+  };
+}
+
+/**
  * @param key       Identifies this subscription. Callers that watch the same
  *                  table with *different* queries (e.g. lead_grants scoped to
  *                  one lead vs. the all-leads ones) must pass distinct
