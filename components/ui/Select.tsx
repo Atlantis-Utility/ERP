@@ -40,7 +40,10 @@ interface SelectProps {
   variant?: "control" | "cell";
   /**
    * Renders the option list in a portal, positioned against the trigger.
-   * Needed inside a scrollable container, which would otherwise clip it.
+   * On by default: an absolutely positioned list is clipped by any scrolling
+   * ancestor, and most of this app's selects sit in one, a modal body, a
+   * drawer, a table viewport. Pass `floating={false}` for a control on a
+   * static page that should keep the list in flow.
    */
   floating?: boolean;
   /**
@@ -75,7 +78,7 @@ export default function Select({
   searchable = false,
   clearable = false,
   variant = "control",
-  floating = false,
+  floating = true,
   allowCustom = false,
   customPlaceholder = "Type a value",
   showUnlistedValue = false,

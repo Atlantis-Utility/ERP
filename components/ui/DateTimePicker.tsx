@@ -17,8 +17,10 @@ interface Props {
    */
   variant?: "control" | "cell";
   /**
-   * Renders the calendar in a portal, positioned against the trigger, for use
-   * inside a scrollable container that would otherwise clip it.
+   * Renders the calendar in a portal, positioned against the trigger. On by
+   * default, for the same reason as Select: a calendar is taller than most of
+   * the containers it opens in, and a scrolling ancestor clips it. Pass
+   * `floating={false}` to keep it in flow.
    */
   floating?: boolean;
   /**
@@ -82,7 +84,7 @@ export default function DateTimePicker({
   dateOnly = false,
   disabled = false,
   variant = "control",
-  floating = false,
+  floating = true,
   clearable = false,
   quickDates = false,
 }: Props) {

@@ -83,11 +83,17 @@ export default function FloatingLayer({
       if (!boxRef.current?.contains(target) && !anchor.contains(target)) closeRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeRef.current();
+      if (e.key !== "Escape") return;
+      // Escape belongs to the topmost thing open, and that's this menu. The
+      // dialog underneath listens on the document too, so without stopping
+      // here one press would close both: capture runs before the document's
+      // bubble listeners, so this claims the key first.
+      e.stopPropagation();
+      closeRef.current();
     };
 
     document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     // Capture, so the menu keeps up with the cell when the sheet itself is
     // scrolled and not just the window.
     window.addEventListener("scroll", place, true);
@@ -96,7 +102,7 @@ export default function FloatingLayer({
     return () => {
       cancelAnimationFrame(frame);
       document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
     };
