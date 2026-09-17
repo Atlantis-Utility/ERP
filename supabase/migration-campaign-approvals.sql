@@ -913,14 +913,19 @@ create trigger campaign_leads_guard_rep_trg
   before update on campaign_leads
   for each row execute function campaign_leads_guard_rep();
 
--- ── 15. manual_tickets was never published ──────────────────────────────
+-- ── 15. manual_tickets in the realtime publication ──────────────────────
 --
--- The table is subscribed to in two places (the Tickets page and, through
--- useUnifiedTickets, the Tasks board) but was missing from the realtime
--- publication, so those subscriptions never fired. A phone or web ticket
--- moved on the board wrote fine and then appeared to snap back, because
--- nothing refetched and the board went on deriving the card's column from
--- the status it had last seen. Nothing updated until a reload.
+-- Two places subscribe to this table (the Tickets page, and the Tasks board
+-- through useUnifiedTickets), and both need it published or a phone or web
+-- ticket changed anywhere sits stale until a reload.
+--
+-- Belt and braces rather than a fix: this was added on the strength of a
+-- probe that reported the table as unpublished, and that probe was wrong,
+-- it was failing to insert its own test row (manual_tickets.id is a uuid,
+-- and ticket_number and description are NOT NULL) and the absent event read
+-- as silence. A later probe with a valid row confirmed the table does
+-- publish. The statement is idempotent, so it stays as a guarantee for a
+-- fresh database rather than being removed.
 do $$
 begin
   begin
