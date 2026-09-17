@@ -61,7 +61,7 @@ import {
   type EditableLeadField,
 } from "@/lib/db/lead-changes";
 import { exportToCsv } from "@/lib/export";
-import { getErrorMessage, formatPhone, telHref } from "@/lib/utils";
+import { getErrorMessage, formatPhone, telHref, emailAddress } from "@/lib/utils";
 
 const PAGE_SIZE = 100;
 
@@ -958,7 +958,7 @@ export default function CampaignSheetPage() {
                         ) : null,
                       )}
                       {factTd(row, "email", (v) =>
-                        v ? (
+                        emailAddress(v) ? (
                           <a
                             href={`mailto:${v}`}
                             title={`Email ${v}`}

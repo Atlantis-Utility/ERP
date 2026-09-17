@@ -26,7 +26,7 @@ import {
   isTerminalStatus,
   formatAddress,
 } from "@/lib/leads-constants";
-import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref, withScheme } from "@/lib/utils";
+import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref, withScheme, emailAddress } from "@/lib/utils";
 import { useDraft } from "@/lib/use-draft";
 
 // Matches FormField's own label styling (components/ui/FormField.tsx), so
@@ -361,7 +361,11 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
     lead.pocName && { label: "Point of Contact", value: lead.pocName },
     lead.pocTitle && { label: "Title", value: lead.pocTitle },
     lead.phone && { label: "Phone", value: formatPhone(lead.phone), href: telHref(lead.phone) },
-    lead.email && { label: "Email", value: lead.email, href: `mailto:${lead.email}` },
+    lead.email && {
+      label: "Email",
+      value: lead.email,
+      href: emailAddress(lead.email) ? `mailto:${lead.email}` : undefined,
+    },
     lead.companySize && { label: "Company Size", value: lead.companySize },
     lead.linkedinUrl && { label: "LinkedIn", value: "View profile", href: withScheme(lead.linkedinUrl) },
     lead.instagramUrl && { label: "Instagram", value: "View profile", href: withScheme(lead.instagramUrl) },

@@ -57,7 +57,7 @@ import {
   SOURCE_LABELS,
   isFollowUpOverdue,
 } from "@/lib/leads-constants";
-import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref, withScheme } from "@/lib/utils";
+import { getAvatarColor, getInitials, getErrorMessage, formatPhone, telHref, withScheme, emailAddress } from "@/lib/utils";
 import {
   Target,
   Plus,
@@ -889,7 +889,7 @@ export default function LeadsPage() {
                                 <span className="text-[#ccc]">-</span>
                               )}
                             </div>
-                            {l.email && (
+                            {l.email && emailAddress(l.email) && (
                               <div className="flex items-center gap-1">
                                 <a
                                   href={`mailto:${l.email}`}
@@ -900,7 +900,7 @@ export default function LeadsPage() {
                                 <CopyButton value={l.email} label="email address" revealOnHover />
                               </div>
                             )}
-                            {!l.email && withScheme(l.website) && (
+                            {!emailAddress(l.email) && withScheme(l.website) && (
                               <a
                                 href={withScheme(l.website)}
                                 target="_blank"

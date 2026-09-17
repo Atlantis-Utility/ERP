@@ -35,7 +35,12 @@ export default function LeadsTabs({
   ];
 
   return (
-    <div className="flex items-center gap-1 mb-5 border-b border-[#eaeaea] overflow-x-auto">
+    // The row scrolls sideways on a narrow screen, and its scrollbars are
+    // hidden: `overflow-x: auto` makes the *other* axis auto as well, and the
+    // tabs overhang the box by the 1px of -mb-px that puts their underline on
+    // the border, which was enough to raise a vertical scrollbar beside two
+    // tabs that had nothing to scroll.
+    <div className="flex items-center gap-1 mb-5 border-b border-[#eaeaea] overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
       {tabs.map((t) => (
         <Link
           key={t.key}

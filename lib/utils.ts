@@ -103,6 +103,24 @@ export function telHref(raw: string | undefined | null): string {
 }
 
 /**
+ * An email address, or nothing.
+ *
+ * The same story as withScheme: a lead list's Email column isn't always email.
+ * 243 leads arrived with their own phone number in it, which the lead table
+ * then rendered under the phone number as a second, differently formatted
+ * line, so every one of those rows appeared to have two numbers. A value with
+ * no @ in it is not an address, and a mailto: built from it goes nowhere.
+ */
+export function emailAddress(raw: string | undefined | null): string | undefined {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return undefined;
+  // Deliberately loose: one @, something either side, no spaces. Enough to
+  // reject a phone number or a street, and not so strict that it throws away
+  // an unusual but real address.
+  return /^[^\s@]+@[^\s@]+$/.test(trimmed) ? trimmed : undefined;
+}
+
+/**
  * Makes a stored URL safe to put in an href.
  *
  * People type and lists carry "linkedin.com/company/x" and "www.example.com"
