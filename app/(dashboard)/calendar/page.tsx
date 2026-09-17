@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import TaskDetailDrawer from "@/components/tasks/TaskDetailDrawer";
 import OutlookEventDetailDrawer, { type OutlookEvent, resolveEventCompany } from "@/components/tasks/OutlookEventDetailDrawer";
+import { outlookLocalDay, outlookTimeRange } from "@/lib/outlook-time";
 import { subscribeTasks, updateTask, removeTask } from "@/lib/db/tasks";
 import type { KanbanCard } from "@/components/tasks/AddTaskDrawer";
 import { ChevronLeft, ChevronRight, Users, Building2, Pencil } from "lucide-react";
@@ -19,9 +20,6 @@ function ymd(d: Date): string {
 
 // Extract YYYY-MM-DD from an Outlook event start string (same rule the Tasks
 // page's calendar view uses, so both stay consistent).
-function outlookDateStr(start: string): string {
-  return start.length === 10 ? start : start.slice(0, 10);
-}
 
 // Full "10:00 AM – 10:30 AM" time range for the Today panel, where there's
 // room to show it properly (unlike the month-grid cells, which stay time-free
@@ -39,16 +37,6 @@ function formatMeetingTimeRange(time?: string, duration?: number): string {
   return `${startLabel} – ${endLabel}`;
 }
 
-function formatOutlookTimeRange(start: string, end: string, isAllDay: boolean): string {
-  if (isAllDay) return "All day";
-  const s = new Date(start);
-  if (isNaN(s.getTime())) return "";
-  const sLabel = s.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  const e = new Date(end);
-  if (isNaN(e.getTime())) return sLabel;
-  const eLabel = e.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return `${sLabel} – ${eLabel}`;
-}
 
 export default function CalendarPage() {
   const router = useRouter();
@@ -156,7 +144,7 @@ export default function CalendarPage() {
   const outlookByDate = useMemo(() => {
     const map = new Map<string, OutlookEvent[]>();
     for (const e of outlookEvents) {
-      const key = outlookDateStr(e.start);
+      const key = outlookLocalDay(e.start);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(e);
     }
@@ -382,7 +370,7 @@ export default function CalendarPage() {
                         <Pencil className="w-3 h-3" />
                       </button>
                     </div>
-                    <p className="text-xs text-[#999] mt-1.5">{formatOutlookTimeRange(e.start, e.end, e.isAllDay)}</p>
+                    <p className="text-xs text-[#999] mt-1.5">{outlookTimeRange(e.start, e.end, e.isAllDay)}</p>
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <Building2 className="w-3 h-3 text-[#bbb] shrink-0" />
                       <p className="flex-1 min-w-0 text-xs text-[#666] truncate">{company}</p>

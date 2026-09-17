@@ -21,6 +21,15 @@ interface GraphEvent {
   body?: { contentType?: string; content?: string };
 }
 
+// Graph's dateTime carries no offset, so it has to be labelled before anyone
+// parses it. Idempotent: a value that already ends in Z or an offset is left
+// alone, and an all-day event's plain date has no time to label.
+function asUtc(value: string | undefined): string {
+  if (!value) return "";
+  if (value.length === 10) return value;
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+}
+
 // Converts an event body's HTML into plain text, preserving line breaks
 // where the markup implies them, so the description reads naturally.
 function htmlToText(html: string): string {
@@ -131,8 +140,13 @@ export async function GET(req: NextRequest) {
     const events = (data.value ?? []).map((e) => ({
       id:            e.id,
       title:         e.subject ?? "(No title)",
-      start:         e.start?.dateTime ?? "",
-      end:           e.end?.dateTime   ?? "",
+      // Marked as the UTC it is. Graph answers a
+      // Prefer: outlook.timezone="UTC" request with a naive string and the
+      // zone in a field of its own, and a naive date-time is read as local
+      // time by every consumer, which put meetings hours and sometimes a
+      // whole day out. See lib/outlook-time.ts.
+      start:         asUtc(e.start?.dateTime),
+      end:           asUtc(e.end?.dateTime),
       htmlLink:      e.webLink ?? null,
       onlineJoinUrl: e.onlineMeeting?.joinUrl ?? null,
       isAllDay:      e.isAllDay ?? false,

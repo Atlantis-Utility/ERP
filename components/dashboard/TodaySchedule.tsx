@@ -5,26 +5,12 @@ import Link from "next/link";
 import { Video, Clock, CalendarPlus, MapPin } from "lucide-react";
 import type { KanbanCard } from "@/components/tasks/AddTaskDrawer";
 import type { OutlookEvent } from "@/components/tasks/OutlookEventDetailDrawer";
+import { outlookLocalDay, outlookSortKey, outlookTimeRange } from "@/lib/outlook-time";
 
 function ymd(d: Date): string {
   // Local date, not toISOString: at 6pm Pacific the UTC date is already
   // tomorrow, which would put today's meetings under the wrong day.
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** Matches the Calendar page: Graph sends a local date-time, so the day is its first ten characters. */
-function outlookDateStr(start: string): string {
-  return start.length === 10 ? start : start.slice(0, 10);
-}
-
-function outlookTimeLabel(event: OutlookEvent): string {
-  if (event.isAllDay) return "All day";
-  const start = new Date(event.start);
-  if (isNaN(start.getTime())) return "";
-  const from = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  const end = new Date(event.end);
-  if (isNaN(end.getTime())) return from;
-  return `${from} – ${end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 }
 
 /** A meeting from either source, in the order the day runs. */
@@ -133,12 +119,12 @@ export default function TodaySchedule({ cards }: { cards: KanbanCard[] }) {
       }));
 
     const outlook = events
-      .filter((e) => outlookDateStr(e.start) === selected)
+      .filter((e) => outlookLocalDay(e.start) === selected)
       .map((e) => ({
         key: `outlook-${e.id}`,
         title: e.title,
-        timeLabel: outlookTimeLabel(e),
-        sortKey: e.isAllDay ? "" : e.start.slice(11, 16),
+        timeLabel: outlookTimeRange(e.start, e.end, e.isAllDay),
+        sortKey: outlookSortKey(e.start, e.isAllDay),
         fromOutlook: true,
         joinUrl: e.onlineJoinUrl,
         location: e.location,
@@ -149,7 +135,7 @@ export default function TodaySchedule({ cards }: { cards: KanbanCard[] }) {
 
   const countFor = (key: string) =>
     cards.filter((c) => c.type === "meeting" && c.meetingDate === key).length +
-    events.filter((e) => outlookDateStr(e.start) === key).length;
+    events.filter((e) => outlookLocalDay(e.start) === key).length;
 
   return (
     <div className="flex flex-col h-full">
