@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { X, Check, Loader2, AlertCircle, ArrowRight, ClipboardCheck } from "lucide-react";
 import {
   fetchPendingChanges,
+  countPendingChanges,
   approveLeadChanges,
   rejectLeadChanges,
   changesError,
   LEAD_FIELD_LABELS,
+  PENDING_PAGE_SIZE,
   type LeadChangeRequest,
 } from "@/lib/db/lead-changes";
 
@@ -35,6 +37,10 @@ export default function ReviewChangesModal({
   onReviewed: (approved: number, rejected: number) => void;
 }) {
   const [requests, setRequests] = useState<LeadChangeRequest[]>([]);
+  // Everything pending, which is what the footer's "approve all" acts on.
+  // The list itself is one page, so with a big queue the two differ and the
+  // button must not claim to be approving only what's on screen.
+  const [totalPending, setTotalPending] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -45,10 +51,11 @@ export default function ReviewChangesModal({
     let cancelled = false;
     // `loading` starts true, so there's nothing to set here: the queue is
     // fetched once for the campaign this modal was opened for.
-    fetchPendingChanges(campaignId)
-      .then((rows) => {
+    Promise.all([fetchPendingChanges(campaignId), countPendingChanges(campaignId)])
+      .then(([rows, total]) => {
         if (cancelled) return;
         setRequests(rows);
+        setTotalPending(total);
         // Pre-selected: the reviewer is here to clear the queue, and
         // unticking the two they disagree with is less work than ticking the
         // ninety-eight they don't.
@@ -117,8 +124,9 @@ export default function ReviewChangesModal({
       // Reload rather than filtering locally: approving one field of a lead
       // can leave others outstanding, and the queue is the source of truth
       // for what's left.
-      const rows = await fetchPendingChanges(campaignId);
+      const [rows, total] = await Promise.all([fetchPendingChanges(campaignId), countPendingChanges(campaignId)]);
       setRequests(rows);
+      setTotalPending(total);
       setSelected(new Set(rows.map((r) => r.id)));
       if (rows.length === 0) onClose();
     } catch (err) {
@@ -168,6 +176,13 @@ export default function ReviewChangesModal({
                 {groups.length.toLocaleString()} compan{groups.length !== 1 ? "ies" : "y"}. Approving writes the new
                 value onto the lead and records it in that lead&apos;s history. Turning one down leaves the lead as it
                 is.
+                {totalPending > requests.length && (
+                  <span className="text-[#946c00]">
+                    {" "}
+                    Showing the first {PENDING_PAGE_SIZE.toLocaleString()} of {totalPending.toLocaleString()}, review
+                    these and the rest will load.
+                  </span>
+                )}
               </p>
 
               <div className="space-y-3">
@@ -249,7 +264,7 @@ export default function ReviewChangesModal({
               className="text-xs font-medium text-[#666] px-2.5 py-1.5 rounded-md hover:bg-[#fafafa] transition-colors disabled:opacity-50"
               title="Approve every correction in this queue, including any not shown"
             >
-              Approve all {requests.length.toLocaleString()}
+              Approve all {Math.max(totalPending, requests.length).toLocaleString()}
             </button>
             <div className="flex items-center gap-2">
               <button

@@ -56,6 +56,13 @@ export const LEAD_FIELD_LABELS: Record<EditableLeadField, string> = {
   description: "Description",
 };
 
+/**
+ * How many requests one look at the queue loads. Kept below PostgREST's
+ * 1000-row ceiling, which truncates a response silently, so a longer queue
+ * is reported as a first page rather than quietly cut off.
+ */
+export const PENDING_PAGE_SIZE = 500;
+
 export interface LeadChangeRequest {
   id: string;
   leadId: string;
@@ -128,7 +135,7 @@ interface RawRequest {
 
 export async function fetchPendingChanges(campaignId?: string): Promise<LeadChangeRequest[]> {
   const { data, error } = await withTimeout(
-    supabase.rpc("lead_changes_pending", { p_campaign_id: campaignId ?? null, p_limit: 500 }),
+    supabase.rpc("lead_changes_pending", { p_campaign_id: campaignId ?? null, p_limit: PENDING_PAGE_SIZE }),
   );
   if (error) throw error;
   return ((data ?? []) as RawRequest[]).map((r) => ({

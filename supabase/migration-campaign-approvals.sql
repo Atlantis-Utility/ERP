@@ -400,6 +400,29 @@ create policy "admin or requester can read change requests" on lead_change_reque
 
 -- ── 8. Proposing a change ────────────────────────────────────────────────
 
+-- The activity trail is read by people, so it names the field the way the UI
+-- does rather than by its JSON key.
+create or replace function lead_field_label(p_field text) returns text
+language sql immutable
+as $$
+  select case p_field
+    when 'companyName'  then 'Company name'
+    when 'dba'          then 'DBA'
+    when 'pocName'      then 'Contact name'
+    when 'pocTitle'     then 'Title'
+    when 'phone'        then 'Phone'
+    when 'email'        then 'Email'
+    when 'website'      then 'Website'
+    when 'street'       then 'Address'
+    when 'city'         then 'City'
+    when 'state'        then 'State'
+    when 'zip'          then 'Zip'
+    when 'businessType' then 'Category'
+    when 'description'  then 'Description'
+    else p_field
+  end;
+$$;
+
 create or replace function campaign_request_change(p_campaign_id uuid,
   p_lead_id     text,
   p_field       text,
@@ -449,8 +472,8 @@ begin
      where id = p_lead_id;
 
     insert into lead_activity (lead_id, actor_id, actor_name, kind, summary, detail)
-    values (p_lead_id, v_actor, v_name, 'update',
-      format('%s changed on a campaign sheet', p_field),
+    values (p_lead_id, v_actor, v_name, 'field',
+      format('%s changed on a campaign sheet', lead_field_label(p_field)),
       jsonb_build_object('field', p_field, 'from', v_old, 'to', v_new, 'campaignId', p_campaign_id));
 
     delete from lead_change_requests
@@ -544,8 +567,8 @@ begin
      where id = r.lead_id;
 
     insert into lead_activity (lead_id, actor_id, actor_name, kind, summary, detail)
-    values (r.lead_id, v_actor, v_name, 'update',
-      format('%s updated, approved from a campaign sheet', r.field),
+    values (r.lead_id, v_actor, v_name, 'field',
+      format('%s updated, approved from a campaign sheet', lead_field_label(r.field)),
       jsonb_build_object('field', r.field, 'from', r.old_value, 'to', r.new_value,
         'requestedBy', r.requested_by_name, 'campaignId', r.campaign_id));
 
