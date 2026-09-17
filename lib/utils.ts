@@ -120,6 +120,20 @@ export function withScheme(url: string | undefined | null): string | undefined {
   const trimmed = (url ?? '').trim();
   if (!trimmed) return undefined;
   if (/^(javascript|data|vbscript):/i.test(trimmed)) return undefined;
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  if (/^mailto:/i.test(trimmed)) return trimmed;
+
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(candidate);
+    // A host with no dot in it cannot be a public site, and that is where a
+    // mis-mapped import column lands: 250 leads arrived with a LinkedIn URL
+    // of "CA", the state column one place over, which rendered as a
+    // confident-looking link to https://CA. Returning nothing means the
+    // caller shows no link at all, which is the honest answer.
+    if (!parsed.hostname.includes('.')) return undefined;
+    return candidate;
+  } catch {
+    // Not a URL at all. Same reasoning: better no link than a dead one.
+    return undefined;
+  }
 }

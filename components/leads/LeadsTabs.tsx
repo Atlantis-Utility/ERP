@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Megaphone, Target } from "lucide-react";
 
@@ -19,9 +20,12 @@ import { Megaphone, Target } from "lucide-react";
 export default function LeadsTabs({
   active,
   canSeeCampaigns,
+  actions,
 }: {
   active: "leads" | "campaigns";
   canSeeCampaigns: boolean;
+  /** Sits at the right end of the tab row, on the tabs' own baseline. */
+  actions?: ReactNode;
 }) {
   const tabs = [
     { key: "leads" as const, href: "/leads", label: "All Leads", icon: Target },
@@ -46,6 +50,7 @@ export default function LeadsTabs({
           {t.label}
         </Link>
       ))}
+      {actions && <div className="ml-auto flex items-center gap-2 pb-2">{actions}</div>}
     </div>
   );
 }

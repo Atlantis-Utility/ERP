@@ -717,6 +717,39 @@ export function subscribeCampaignGrants(campaignId: string, cb: (grants: Campaig
   };
 }
 
+/**
+ * Every grant the reader can see, across campaigns, for the list's "who is
+ * on this" avatars. One query rather than one per row: RLS already limits it
+ * to campaigns they hold, and the table holds a handful of rows per campaign.
+ */
+export function useAllCampaignGrants(): CampaignGrant[] {
+  const [grants, setGrants] = useState<CampaignGrant[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { data, error } = await withTimeout(
+          supabase.from("campaign_grants").select(GRANT_COLUMNS).order("granted_at"),
+        );
+        if (error) throw error;
+        if (!cancelled) setGrants(((data ?? []) as GrantRowRaw[]).map(fromGrantRow));
+      } catch (err) {
+        console.error("[campaign_grants]", err);
+      }
+    };
+
+    load();
+    const unsubscribe = subscribeChanges("campaign-grants-all", ["campaign_grants"], load);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  return grants;
+}
+
 export function useCampaignGrants(campaignId: string): CampaignGrant[] {
   const [grants, setGrants] = useState<CampaignGrant[]>([]);
   useEffect(() => subscribeCampaignGrants(campaignId, setGrants), [campaignId]);

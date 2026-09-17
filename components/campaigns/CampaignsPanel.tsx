@@ -1,20 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Megaphone, Plus, Loader2, Users, Trash2, ChevronRight, Eye, Pencil } from "lucide-react";
-import CreateCampaignModal from "@/components/campaigns/CreateCampaignModal";
+import { Megaphone, Loader2, Users, Trash2, Eye, Pencil } from "lucide-react";
 import CampaignAccessModal from "@/components/campaigns/CampaignAccessModal";
-import { useCampaigns, deleteCampaign, updateCampaign, type Campaign, type CampaignStatus } from "@/lib/db/campaigns";
+import {
+  useCampaigns,
+  useAllCampaignGrants,
+  deleteCampaign,
+  updateCampaign,
+  type Campaign,
+  type CampaignStatus,
+} from "@/lib/db/campaigns";
+import { useEmployees } from "@/lib/db/employees";
 import { CAMPAIGN_STATUS_OPTIONS, CAMPAIGN_STATUS_STYLES, calledPercent } from "@/lib/campaign-constants";
 import Select from "@/components/ui/Select";
-import { getErrorMessage } from "@/lib/utils";
+import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import { useIsOwner } from "@/lib/db/ownership";
 
 /**
- * The Campaigns tab: every campaign the user can see, with progress, and the
- * controls an administrator needs (access, status, delete). Opening one goes
- * to its call sheet.
+ * The list of campaigns the reader can see, with progress and the controls an
+ * administrator needs on each (access, status, delete). Opening one goes to
+ * its call sheet.
+ *
+ * Just the list: the page above owns the heading and the New campaign
+ * button, which belongs on the tab row rather than in a second header saying
+ * "Campaigns" directly under the first one.
  */
 export default function CampaignsPanel({
   isAdmin,
@@ -25,7 +36,10 @@ export default function CampaignsPanel({
 }) {
   const { campaigns, loading, error: loadError } = useCampaigns();
   const isOwner = useIsOwner();
-  const [showCreate, setShowCreate] = useState(false);
+  // Who is on each campaign, for the faces on its row.
+  const grants = useAllCampaignGrants();
+  const employees = useEmployees();
+  const nameById = useMemo(() => new Map(employees.map((e) => [e.id, e.name])), [employees]);
   const [accessFor, setAccessFor] = useState<Campaign | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -65,24 +79,6 @@ export default function CampaignsPanel({
 
   return (
     <div className="bg-white border border-[#eaeaea] rounded-xl">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b border-[#eaeaea]">
-        <div>
-          <p className="text-sm font-semibold text-[#0a0a0a]">Campaigns</p>
-          <p className="text-[11px] text-[#999] mt-0.5">
-            {loading ? "Loading…" : `${campaigns.length} campaign${campaigns.length !== 1 ? "s" : ""}`}
-          </p>
-        </div>
-        {isAdmin && (
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 bg-[#0a0a0a] text-white text-[13px] font-medium px-3.5 py-2 rounded-md hover:bg-[#333] transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New campaign
-          </button>
-        )}
-      </div>
-
       {(error || loadError) && (
         <p className="px-5 py-3 text-[13px] text-[#f31260] border-b border-[#f0f0f0]">{error || loadError}</p>
       )}
@@ -112,6 +108,17 @@ export default function CampaignsPanel({
           {campaigns.map((c) => {
             const percent = calledPercent(c.calledCount, c.leadCount);
             const busy = busyId === c.id;
+            // Creator first, then the people it was shared with, deduplicated
+            // by name: the person who made it is usually on it as well.
+            const people = [
+              ...(c.createdByName ? [{ name: c.createdByName, role: "created this campaign" }] : []),
+              ...grants
+                .filter((g) => g.campaignId === c.id)
+                .map((g) => ({
+                  name: nameById.get(g.employeeId) ?? g.employeeId,
+                  role: g.level === "editor" ? "can edit" : "read-only",
+                })),
+            ].filter((person, i, all) => person.name && all.findIndex((x) => x.name === person.name) === i);
             return (
               <li
                 key={c.id}
@@ -176,29 +183,42 @@ export default function CampaignsPanel({
                   </div>
                 </div>
 
-                {/* Muted until the row is hovered, rather than appearing from
-                    nothing: the row keeps its shape and the controls are
-                    still discoverable. */}
-                <div className="relative flex items-center gap-1 shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                <div className="relative flex items-center gap-2 shrink-0">
+                  {/* Who is on this campaign: whoever made it, then whoever
+                      it was shared with. Faces rather than a list of names,
+                      because the row has to stay a row; the name and what
+                      they can do are on hover. */}
+                  {people.length > 0 && (
+                    <div className="flex items-center -space-x-1.5">
+                      {people.slice(0, 4).map((person) => (
+                        <span
+                          key={person.name}
+                          title={`${person.name} · ${person.role}`}
+                          className={`w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-semibold ${getAvatarColor(person.name)}`}
+                        >
+                          {getInitials(person.name)}
+                        </span>
+                      ))}
+                      {people.length > 4 && (
+                        <span
+                          title={people.slice(4).map((x) => `${x.name} · ${x.role}`).join("\n")}
+                          className="w-6 h-6 rounded-full ring-2 ring-white bg-[#f0f0f0] text-[#666] flex items-center justify-center text-[9px] font-semibold"
+                        >
+                          +{people.length - 4}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {isAdmin && (
-                    <>
-                      <div className="w-24">
-                        <Select
-                          value={c.status}
-                          onChange={(v) => setStatus(c, v as CampaignStatus)}
-                          options={CAMPAIGN_STATUS_OPTIONS}
-                          disabled={busy}
-                        />
-                      </div>
-                      <button
-                        onClick={() => setAccessFor(c)}
-                        className="flex items-center gap-1.5 text-xs font-medium text-[#666] hover:text-[#0a0a0a] px-2.5 py-2 rounded-md hover:bg-[#f0f0f0] transition-colors"
-                        title="Manage who works this campaign"
-                      >
-                        <Users className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Access</span>
-                      </button>
-                    </>
+                    <button
+                      onClick={() => setAccessFor(c)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-[#666] hover:text-[#0a0a0a] px-2.5 py-2 rounded-md hover:bg-[#f0f0f0] transition-colors"
+                      title="Manage who works this campaign"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Access</span>
+                    </button>
                   )}
                   {/* Deleting a campaign takes its whole sheet with it, so it
                       is the owner's to do, not every administrator's. The
@@ -215,7 +235,19 @@ export default function CampaignsPanel({
                       {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                     </button>
                   )}
-                  <ChevronRight className="w-4 h-4 text-[#ddd] group-hover:text-[#999] transition-colors" />
+
+                  {/* Last, and the only control here that changes the
+                      campaign itself rather than opening something. */}
+                  {isAdmin && (
+                    <div className="w-28">
+                      <Select
+                        value={c.status}
+                        onChange={(v) => setStatus(c, v as CampaignStatus)}
+                        options={CAMPAIGN_STATUS_OPTIONS}
+                        disabled={busy}
+                      />
+                    </div>
+                  )}
                 </div>
               </li>
             );
@@ -223,16 +255,6 @@ export default function CampaignsPanel({
         </ul>
       )}
 
-      {showCreate && isAdmin && (
-        <CreateCampaignModal
-          actor={actor}
-          onClose={() => setShowCreate(false)}
-          onCreated={(_id, message) => {
-            setNotice(message);
-            setShowCreate(false);
-          }}
-        />
-      )}
       {accessFor && <CampaignAccessModal campaign={accessFor} actor={actor} onClose={() => setAccessFor(null)} />}
     </div>
   );

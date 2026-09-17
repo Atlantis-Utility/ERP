@@ -33,6 +33,7 @@ import { useEmployees } from "@/lib/db/employees";
 import { useLeadsAccess } from "@/lib/leads-access";
 import {
   useCampaigns,
+  useCampaignGrants,
   querySheet,
   sheetQueryKey,
   updateSheetRow,
@@ -189,6 +190,8 @@ export default function CampaignSheetPage() {
   const employees = useEmployees();
   const access = useLeadsAccess();
   const { campaigns, loading: campaignsLoading } = useCampaigns();
+  // Who this campaign was handed to, which is who its rows can be assigned to.
+  const grants = useCampaignGrants(campaignId);
 
   const campaign = campaigns.find((c) => c.id === campaignId) ?? null;
   const canEdit = campaign?.myLevel === "admin" || campaign?.myLevel === "editor";
@@ -515,6 +518,36 @@ export default function CampaignSheetPage() {
     }
   }
 
+  /**
+   * Who a row on this sheet can be assigned to: the people the campaign was
+   * given edit access to, not the whole staff list. Assigning a row to
+   * someone who can't open the sheet makes a row nobody works, and a picker
+   * of forty names for a campaign two people share is just noise.
+   *
+   * Viewers are left out for the same reason, they can read the sheet but
+   * not fill anything in. Anyone already named on a row stays in the list
+   * even if their access has since been revoked, so their cells keep showing
+   * a name instead of going blank.
+   */
+  const repOptions = useMemo(() => {
+    const nameById = new Map(employees.map((e) => [e.id, e.name]));
+    const options = grants
+      .filter((g) => g.level === "editor")
+      .map((g) => ({ value: g.employeeId, label: nameById.get(g.employeeId) ?? g.employeeId }));
+
+    const seen = new Set(options.map((o) => o.value));
+    for (const row of rows) {
+      if (row.assignedRep && !seen.has(row.assignedRep)) {
+        seen.add(row.assignedRep);
+        options.push({
+          value: row.assignedRep,
+          label: row.assignedRepName ?? nameById.get(row.assignedRep) ?? row.assignedRep,
+        });
+      }
+    }
+    return options.sort((a, b) => a.label.localeCompare(b.label));
+  }, [grants, employees, rows]);
+
   /* ─── Empty / missing states ───────────────────────────────────────── */
 
   if (!campaignsLoading && !campaign) {
@@ -532,7 +565,6 @@ export default function CampaignSheetPage() {
     );
   }
 
-  const repOptions = employees.map((e) => ({ value: e.id, label: e.name }));
   // The column model, and where the frozen pane's cells sit within it. Both
   // come from the same numbers, so the pane can't drift out of alignment
   // with the columns it's pinned over.

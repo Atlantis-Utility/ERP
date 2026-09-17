@@ -6,11 +6,12 @@
 --
 --  Three changes, in one file because they all touch the same functions:
 --
---  1. A campaign no longer grants its members access to the leads on it via
---     the leads table. Being on a shared campaign used to make every lead in
---     it readable on the Leads page as well, so a caller given one campaign
---     of 10,000 rows could browse all 10,000 leads. The sheet still shows
---     what it must; see campaign_rows/campaign_stats below.
+--  1. The Leads page shows the leads on the campaigns you hold, alongside
+--     the ones assigned or shared with you. A campaign is a work list, so
+--     its leads belong in the holder's Leads page, as sight only: the lead
+--     record itself stays read-only unless it was assigned or shared.
+--     campaign_rows/campaign_stats read with definer rights and check
+--     campaign access themselves, so the sheet doesn't depend on this.
 --
 --  2. City becomes a filter, like state and category already were.
 --
@@ -336,18 +337,37 @@ begin
 end;
 $$;
 
--- ── 6. The leads read policy loses its campaign branch ───────────────────
--- Being on a campaign is access to that campaign's sheet, not to the lead
--- records behind it. The Leads page is now exactly "assigned to me, shared
--- with me, or I'm an administrator", which is what it says it is.
+-- ── 6. What the Leads page shows ─────────────────────────────────────────
+-- Assigned to me, shared with me, on a campaign I hold, or I'm an
+-- administrator.
+--
+-- The campaign branch is deliberate: a campaign is somebody's work list, so
+-- the leads on it belong in their Leads page too. It was briefly removed
+-- because one person could see all 20,605 leads through it, but the cause of
+-- that was an all-leads grant (lead_grants with a null lead_id), not the
+-- campaign: with that grant gone, this branch shows exactly the leads on the
+-- campaigns they hold and nothing else.
+--
+-- It grants sight, not control. leads_search labels these rows 'viewer', so
+-- the lead record stays read-only on the Leads page unless the lead itself
+-- was assigned or shared; the campaign sheet is where its owner fills things
+-- in.
+create or replace function leads_campaign_lead_ids()
+returns setof text
+language sql stable security definer set search_path = public
+as $$
+  select cl.lead_id
+    from campaign_leads cl
+   where cl.campaign_id in (select my_campaign_ids());
+$$;
+
 drop policy if exists "assigned, granted, or admin can read" on leads;
 create policy "assigned, granted, or admin can read" on leads
   for select using ((select erp_is_admin())
     or (assigned_to is not null and assigned_to = (select erp_actor_employee_id()))
     or (select leads_has_global_grant())
-    or id in (select leads_granted_ids()));
-
-drop function if exists leads_campaign_lead_ids() cascade;
+    or id in (select leads_granted_ids())
+    or id in (select leads_campaign_lead_ids()));
 
 -- ── 7. Change requests ───────────────────────────────────────────────────
 
