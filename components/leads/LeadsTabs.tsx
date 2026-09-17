@@ -35,7 +35,7 @@ export default function LeadsTabs({
   ];
 
   return (
-    <div className="flex items-center gap-1 mb-5 border-b border-[#eaeaea]">
+    <div className="flex items-center gap-1 mb-5 border-b border-[#eaeaea] overflow-x-auto">
       {tabs.map((t) => (
         <Link
           key={t.key}

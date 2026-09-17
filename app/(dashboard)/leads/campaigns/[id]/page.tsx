@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useConfirm } from "@/lib/confirm";
+import { useToast } from "@/lib/toast";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -18,7 +19,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  X,
   ClipboardCheck,
   Phone,
   Mail,
@@ -220,8 +220,7 @@ export default function CampaignSheetPage() {
   const [showReview, setShowReview] = useState(false);
   const [showAddLeads, setShowAddLeads] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const { success, error: notifyError } = useToast();
 
   const actor = useMemo(
     () => (access.myEmployeeId ? { id: access.myEmployeeId, name: access.myName } : null),
@@ -251,11 +250,6 @@ export default function CampaignSheetPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(() => setNotice(""), 5000);
-    return () => clearTimeout(t);
-  }, [notice]);
 
   const isCurrent = result?.key === queryKey;
   const loading = !isCurrent;
@@ -302,10 +296,10 @@ export default function CampaignSheetPage() {
         // than silently reverting: losing what someone typed mid-call is
         // worse than showing it as unsaved.
         setSaveState((prev) => ({ ...prev, [row.rowId]: "error" }));
-        setError(getErrorMessage(err, "Couldn't save that change"));
+        notifyError(getErrorMessage(err, "Couldn't save that change"));
       }
     },
-    [actor],
+    [actor, notifyError],
   );
 
   // A queued correction changes the pending count the Review button reads,
@@ -367,15 +361,15 @@ export default function CampaignSheetPage() {
           1500,
         );
         if (outcome === "pending") {
-          setNotice(`${LEAD_FIELD_LABELS[field]} change sent for review.`);
+          success(`${LEAD_FIELD_LABELS[field]} change sent for review.`);
           scheduleRefresh();
         }
       } catch (err) {
         setSaveState((prev) => ({ ...prev, [row.rowId]: "error" }));
-        setError(changesError(err, "Couldn't send that correction"));
+        notifyError(changesError(err, "Couldn't send that correction"));
       }
     },
-    [campaignId, factCell, scheduleRefresh],
+    [campaignId, factCell, scheduleRefresh, success, notifyError],
   );
 
   /**
@@ -423,14 +417,13 @@ export default function CampaignSheetPage() {
     });
     if (!ok) return;
     setBusy(true);
-    setError("");
     try {
       await removeSheetRows(ids);
       setSelected(new Set());
       setRevision((r) => r + 1);
-      setNotice(`Removed ${ids.length} row${ids.length !== 1 ? "s" : ""}.`);
+      success(`Removed ${ids.length} row${ids.length !== 1 ? "s" : ""}.`);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to remove those rows"));
+      notifyError(getErrorMessage(err, "Failed to remove those rows"));
     } finally {
       setBusy(false);
     }
@@ -438,13 +431,12 @@ export default function CampaignSheetPage() {
 
   async function renumber() {
     setBusy(true);
-    setError("");
     try {
       const moved = await renumberCampaign(campaignId);
       setRevision((r) => r + 1);
-      setNotice(moved === 0 ? "Numbering was already in order." : `Renumbered ${moved.toLocaleString()} rows.`);
+      success(moved === 0 ? "Numbering was already in order." : `Renumbered ${moved.toLocaleString()} rows.`);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to renumber"));
+      notifyError(getErrorMessage(err, "Failed to renumber"));
     } finally {
       setBusy(false);
     }
@@ -457,7 +449,6 @@ export default function CampaignSheetPage() {
    */
   async function exportSheet() {
     setBusy(true);
-    setError("");
     try {
       const all: CampaignRow[] = [];
       for (let p = 0; ; p++) {
@@ -514,9 +505,9 @@ export default function CampaignSheetPage() {
           r.doNotCall ? "Yes" : "",
         ]),
       );
-      setNotice(`Exported ${all.length.toLocaleString()} rows.`);
+      success(`Exported ${all.length.toLocaleString()} rows.`);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to export"));
+      notifyError(getErrorMessage(err, "Failed to export"));
     } finally {
       setBusy(false);
     }
@@ -659,17 +650,12 @@ export default function CampaignSheetPage() {
         </div>
       )}
 
-      {(error || result?.error) && (
-        <div className="flex items-start justify-between gap-2 mb-4 px-4 py-2.5 rounded-lg bg-[#fef2f2] text-[#f31260] text-sm">
-          <p>{error || result?.error}</p>
-          {error && (
-            <button onClick={() => setError("")} className="shrink-0 p-0.5 rounded hover:bg-[#fff0f3]">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+      {/* A page that couldn't load its rows is a state you need to keep
+          reading, not an event, so it stays here. Everything that happens
+          because of an action is a toast. */}
+      {result?.error && (
+        <div className="mb-4 px-4 py-2.5 rounded-lg bg-[#fef2f2] text-[#f31260] text-sm">{result?.error}</div>
       )}
-      {notice && <div className="mb-4 px-4 py-2.5 rounded-lg bg-[#f0fdf4] text-[#17c964] text-sm">{notice}</div>}
 
       {/* Stats */}
       {stats && (
@@ -722,7 +708,11 @@ export default function CampaignSheetPage() {
             </button>
           )}
 
-          <div className="flex-1" />
+          {/* The spacer is what pins the filters right, but in a wrapping row
+              on a phone it claims a line of its own and leaves an empty band
+              between the search box and the filters. Below sm the search is
+              full width anyway, so there's nothing to push. */}
+          <div className="hidden sm:block flex-1" />
 
           <button
             onClick={() => applyFilters({ uncalled: !filters.uncalled })}
@@ -1189,7 +1179,7 @@ export default function CampaignSheetPage() {
           campaignName={campaign.name}
           onClose={() => setShowAddLeads(false)}
           onAdded={(message) => {
-            setNotice(message);
+            success(message);
             setRevision((r) => r + 1);
           }}
         />
@@ -1209,7 +1199,7 @@ export default function CampaignSheetPage() {
               approved > 0 && `Approved ${approved.toLocaleString()}`,
               rejected > 0 && `turned down ${rejected.toLocaleString()}`,
             ].filter(Boolean);
-            if (parts.length > 0) setNotice(`${parts.join(", ")}.`);
+            if (parts.length > 0) success(`${parts.join(", ")}.`);
           }}
         />
       )}

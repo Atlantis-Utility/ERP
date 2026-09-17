@@ -77,7 +77,9 @@ export default function CampaignsPage() {
               className="flex items-center gap-1.5 bg-[#0a0a0a] text-white text-[13px] font-medium px-3 py-1.5 rounded-md hover:bg-[#333] transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              New campaign
+              {/* Two tabs and a full label don't fit a 320px row. */}
+              <span className="hidden sm:inline">New campaign</span>
+              <span className="sm:hidden">New</span>
             </button>
           ) : undefined
         }

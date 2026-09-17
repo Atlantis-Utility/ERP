@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/lib/confirm";
+import { useToast } from "@/lib/toast";
 import Header from "@/components/layout/Header";
 import Select from "@/components/ui/Select";
 import CopyButton from "@/components/ui/CopyButton";
@@ -72,7 +73,6 @@ import {
   UserCheck,
   Eye,
   Loader2,
-  X,
   Search,
   Clock,
   Compass,
@@ -142,8 +142,7 @@ export default function LeadsPage() {
   const [showAccess, setShowAccess] = useState(false);
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const { success, error: notifyError } = useToast();
 
   const actor = useMemo(
     () => (access.myEmployeeId ? { id: access.myEmployeeId, name: access.myName } : null),
@@ -233,11 +232,6 @@ export default function LeadsPage() {
   // they didn't ask to go.
   const pastEnd = isCurrent && rows.length === 0 && page > 0 && total > 0;
 
-  useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(() => setNotice(""), 6000);
-    return () => clearTimeout(t);
-  }, [notice]);
 
   /* ─── Selection ────────────────────────────────────────────────────── */
 
@@ -283,29 +277,27 @@ export default function LeadsPage() {
   /* ─── Mutations ────────────────────────────────────────────────────── */
 
   async function setStatus(lead: Lead, status: LeadStatus) {
-    setError("");
     try {
       await updateLead(lead.id, { status }, actor);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to update stage"));
+      notifyError(getErrorMessage(err, "Failed to update stage"));
     }
   }
 
   async function bulkStatus(status: LeadStatus) {
     setBusy(true);
-    setError("");
     try {
       const changed = await setLeadsStatusBulk(bulkTarget, status, actor);
       // Reports what actually happened, not what was asked: leads already in
       // that stage aren't counted, and a member without rights gets 0.
-      setNotice(
+      success(
         changed === 0
           ? "No leads were moved, they may already be in that stage, or you may not have permission to change them."
           : `Moved ${changed.toLocaleString()} lead${changed !== 1 ? "s" : ""} to ${STATUS_LABELS[status]}.`,
       );
       clearSelection();
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to move leads"));
+      notifyError(getErrorMessage(err, "Failed to move leads"));
     } finally {
       setBusy(false);
     }
@@ -321,19 +313,18 @@ export default function LeadsPage() {
     });
     if (!ok) return;
     setBusy(true);
-    setError("");
     try {
       const deleted = await deleteLeadsBulk(bulkTarget);
       // The current offset may no longer exist after removing this many rows.
       setPage(0);
-      setNotice(
+      success(
         deleted === 0
           ? "Nothing was deleted, you may not have permission to delete these leads."
           : `Deleted ${deleted.toLocaleString()} lead${deleted !== 1 ? "s" : ""}.`,
       );
       clearSelection();
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to delete leads"));
+      notifyError(getErrorMessage(err, "Failed to delete leads"));
     } finally {
       setBusy(false);
     }
@@ -345,12 +336,11 @@ export default function LeadsPage() {
       description: "Its notes and history go too. This can't be undone.",
     });
     if (!ok) return;
-    setError("");
     try {
       const deleted = await deleteLeadsBulk({ kind: "ids", ids: [lead.id] });
-      if (deleted === 0) setError("That lead wasn't deleted, you may not have permission.");
+      if (deleted === 0) notifyError("That lead wasn't deleted, you may not have permission.");
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to delete lead"));
+      notifyError(getErrorMessage(err, "Failed to delete lead"));
     }
   }
 
@@ -482,18 +472,13 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {(error || queryError) && (
-        <div className="flex items-start justify-between gap-2 mb-4 px-4 py-2.5 rounded-lg bg-[#fef2f2] text-[#f31260] text-sm">
-          <p>{error || queryError}</p>
-          {error && (
-            <button onClick={() => setError("")} className="shrink-0 p-0.5 rounded hover:bg-[#fff0f3]">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+      {/* A page that couldn't load its rows is a state you need to keep
+          reading, not an event, so it stays here. Everything that happens
+          because of an action is a toast. */}
+      {queryError && (
+        <div className="mb-4 px-4 py-2.5 rounded-lg bg-[#fef2f2] text-[#f31260] text-sm">{queryError}</div>
       )}
 
-      {notice && <div className="mb-4 px-4 py-2.5 rounded-lg bg-[#f0fdf4] text-[#17c964] text-sm">{notice}</div>}
 
       <LeadsTabs active="leads" canSeeCampaigns={canSeeCampaigns} />
 
@@ -510,7 +495,7 @@ export default function LeadsPage() {
         {showDiscover && access.isAdmin && (
           <DiscoverPanel
             actor={actor}
-            onSaved={() => setNotice("Saved as a new lead. Assign it to someone so they can see it.")}
+            onSaved={() => success("Saved as a new lead. Assign it to someone so they can see it.")}
           />
         )}
 
@@ -1037,7 +1022,7 @@ export default function LeadsPage() {
         <ImportLeadsCsvModal
           onClose={() => setShowImport(false)}
           onImported={(count) =>
-            setNotice(
+            success(
               `Imported ${count.toLocaleString()} lead${count !== 1 ? "s" : ""}. Select them to assign an owner.`,
             )
           }
@@ -1047,7 +1032,7 @@ export default function LeadsPage() {
       {showAdd && (
         <LeadFormModal
           onClose={() => setShowAdd(false)}
-          onSaved={() => setNotice("Lead added.")}
+          onSaved={() => success("Lead added.")}
           actor={actor}
           canAssign={access.canAssign}
           selfEmployeeId={access.myEmployeeId}
@@ -1061,7 +1046,7 @@ export default function LeadsPage() {
           actor={actor}
           onClose={() => setShowAssign(false)}
           onDone={(message) => {
-            setNotice(message);
+            success(message);
             clearSelection();
           }}
         />
@@ -1072,7 +1057,7 @@ export default function LeadsPage() {
           count={selectedCount}
           onClose={() => setShowAddToCampaign(false)}
           onDone={(message) => {
-            setNotice(message);
+            success(message);
             clearSelection();
           }}
         />
