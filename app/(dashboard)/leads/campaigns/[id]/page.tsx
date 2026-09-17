@@ -85,7 +85,7 @@ const READ_CELL = `${CELL} text-[12px] text-[#666] whitespace-nowrap truncate`;
  */
 const COL = {
   check: 36,
-  no: 56,
+  no: 68,
   company: 232,
   contact: 176,
   address1: 184,
@@ -106,7 +106,6 @@ const COL = {
   nextAction: 184,
   rep: 168,
   dnc: 52,
-  saveState: 40,
 } as const;
 
 /** In render order, so <colgroup> and the offsets below can't disagree. */
@@ -134,7 +133,6 @@ function sheetColumnWidths(canEdit: boolean): number[] {
     COL.nextAction,
     COL.rep,
     COL.dnc,
-    COL.saveState,
   ];
 }
 
@@ -802,7 +800,6 @@ export default function CampaignSheetPage() {
                       {h}
                     </th>
                   ))}
-                  <th className="bg-[#fafafa] border-b border-[#eaeaea] w-8 px-2 h-9" />
                 </tr>
               </thead>
               <tbody>
@@ -841,7 +838,22 @@ export default function CampaignSheetPage() {
                         style={{ left: pins.no }}
                         className={`sticky z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] text-[11px] text-[#999] tabular-nums`}
                       >
-                        {row.position}
+                        {/* The save indicator sits with the row number rather
+                            than in a column of its own at the far right, which
+                            was blank whenever nothing was saving and, being
+                            past twenty other columns, was never on screen at
+                            the moment it had something to say. Here it is in
+                            the frozen pane, next to the row it refers to. */}
+                        <div className="flex items-center justify-between gap-1">
+                          <span>{row.position}</span>
+                          {state === "saving" && <Loader2 className="w-3 h-3 animate-spin text-[#bbb] shrink-0" />}
+                          {state === "saved" && <Check className="w-3 h-3 text-[#17c964] shrink-0" />}
+                          {state === "error" && (
+                            <span title="Not saved. Check the error above" className="shrink-0">
+                              <AlertTriangle className="w-3 h-3 text-[#f31260]" />
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td
                         style={{ left: pins.company }}
@@ -1065,15 +1077,6 @@ export default function CampaignSheetPage() {
                           aria-label="Do not call"
                           className="w-3 h-3 accent-[#f31260] cursor-pointer"
                         />
-                      </td>
-                      <td className="border-b border-[#f0f0f0] w-8 px-1 text-center">
-                        {state === "saving" && <Loader2 className="w-3 h-3 animate-spin text-[#bbb] inline" />}
-                        {state === "saved" && <Check className="w-3 h-3 text-[#17c964] inline" />}
-                        {state === "error" && (
-                          <span title="Not saved. Check the error above">
-                            <AlertTriangle className="w-3 h-3 text-[#f31260] inline" />
-                          </span>
-                        )}
                       </td>
                     </tr>
                   );
