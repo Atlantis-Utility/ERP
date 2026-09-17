@@ -190,15 +190,21 @@ export default function CampaignsPanel({
                       they can do are on hover. */}
                   {people.length > 0 && (
                     <div className="flex items-center -space-x-1.5">
-                      {people.slice(0, 4).map((person) => (
-                        <span
-                          key={person.name}
-                          title={`${person.name} · ${person.role}`}
-                          className={`w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-semibold ${getAvatarColor(person.name)}`}
-                        >
-                          {getInitials(person.name)}
-                        </span>
-                      ))}
+                      {people.slice(0, 4).map((person) => {
+                        // getAvatarColor returns { bg, text }, so both halves
+                        // have to be applied: interpolating the object gave
+                        // "[object Object]" and no colour at all.
+                        const avatar = getAvatarColor(person.name);
+                        return (
+                          <span
+                            key={person.name}
+                            title={`${person.name} · ${person.role}`}
+                            className={`w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-semibold ${avatar.bg} ${avatar.text}`}
+                          >
+                            {getInitials(person.name)}
+                          </span>
+                        );
+                      })}
                       {people.length > 4 && (
                         <span
                           title={people.slice(4).map((x) => `${x.name} · ${x.role}`).join("\n")}
