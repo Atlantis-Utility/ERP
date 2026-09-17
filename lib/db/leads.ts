@@ -804,11 +804,32 @@ export interface LeadDedupeRecord {
  * 10,000 leads this is a few hundred KB instead of several megabytes.
  */
 export async function fetchDedupeIndex(): Promise<LeadDedupeRecord[]> {
-  const { data, error } = await withTimeout(supabase.rpc("leads_dedupe_index"), 60_000);
-  if (error) throw error;
-  return ((data ?? []) as { id: string; company_name: string | null; poc_name: string | null }[]).map((r) => ({
-    id: r.id,
-    companyName: r.company_name ?? "",
-    pocName: r.poc_name ?? undefined,
-  }));
+  // Paged. PostgREST applies db-max-rows (1000) to a set-returning function
+  // too, so a single call against 20,000 leads returns exactly 1000 rows with
+  // no error and no indication it truncated — and an import would then
+  // de-duplicate against a twentieth of the table and re-add the rest as new.
+  // Verified against the live database: .range() pages the RPC correctly.
+  const PAGE = 1000;
+  const out: LeadDedupeRecord[] = [];
+
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await withTimeout(
+      supabase.rpc("leads_dedupe_index").range(from, from + PAGE - 1),
+      60_000,
+    );
+    if (error) throw error;
+    const rows = (data ?? []) as { id: string; company_name: string | null; poc_name: string | null }[];
+    out.push(
+      ...rows.map((r) => ({
+        id: r.id,
+        companyName: r.company_name ?? "",
+        pocName: r.poc_name ?? undefined,
+      })),
+    );
+    // A short page is the last page. Guarded against a runaway loop if the
+    // server ever returns a full page forever.
+    if (rows.length < PAGE || out.length > 500_000) break;
+  }
+
+  return out;
 }
