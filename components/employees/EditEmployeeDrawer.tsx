@@ -45,7 +45,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
   const errorRef = useRef<HTMLDivElement>(null);
 
   // The form is long (Page Access alone can run past a screen's height), and
-  // the Save button lives in a fixed footer — so a validation or save error
+  // the Save button lives in a fixed footer, so a validation or save error
   // can land off-screen above the fold, looking like the click did nothing.
   useEffect(() => {
     if (saveError || Object.keys(errors).length > 0) {
@@ -53,7 +53,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     }
   }, [saveError, errors]);
 
-  // Keyed on [open, employee.id] rather than the whole `employee` object —
+  // Keyed on [open, employee.id] rather than the whole `employee` object:
   // that object comes from a live Supabase subscription in the parent page
   // and gets a brand-new reference on every unrelated background refetch
   // (including the reconnect a browser tab does when it regains focus after
@@ -116,7 +116,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     };
     try {
       await updateEmployee(employee.id, patch);
-      // Access role and page access are permission grants — only admins can
+      // Access role and page access are permission grants: only admins can
       // change them, enforced server-side too (see updateEmployeeAccess).
       if (isAdmin) {
         await updateEmployeeAccess(employee.id, { access, accessRole: form.accessRole });
@@ -128,7 +128,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
       return;
     }
 
-    // The database write already succeeded — logging is best-effort, so a
+    // The database write already succeeded; logging is best-effort, so a
     // failure here must not be reported as "the save failed" or block the close.
     // Page-access changes reach the sidebar via auth-context's live Supabase
     // subscription on the employee row, not a local mirror.

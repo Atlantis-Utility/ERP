@@ -305,7 +305,7 @@ export default function DateTimePicker({
                 </div>
               </div>
 
-              {/* Confirm — only needed when time is selectable */}
+              {/* Confirm: only needed when time is selectable */}
               <button
                 type="button"
                 onClick={() => setOpen(false)}

@@ -227,7 +227,8 @@ export default function ImportLeadsCsvModal({
   //      incoming rows collide with something already there;
   //   2. fetch just those colliding leads in full, which is what the
   //      field-level merge actually needs.
-  // Matching against a full client-side copy of the table (the old approach)   // both moved megabytes and, once the page stopped syncing every lead, would
+  // Matching against a full client-side copy of the table (the old approach)
+  // both moved megabytes and, once the page stopped syncing every lead, would
   // have silently compared against only the rows that happened to be loaded
   // and re-imported everything else as a duplicate.
   async function handleImportClick() {

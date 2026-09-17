@@ -20,7 +20,7 @@ const labelClass = "text-[11px] font-medium text-[#666]";
 /**
  * Which leads to pull into a campaign. Shared by the create dialog and the
  * sheet's own "add leads", so the two can't drift on what a criteria set
- * means — and neither can drift from campaign_selection_matches in SQL,
+ * means, and neither can drift from campaign_selection_matches in SQL,
  * which is what actually applies them.
  *
  * City / state / category / source options are read from the leads on file

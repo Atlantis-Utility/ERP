@@ -47,7 +47,7 @@ import { getErrorMessage, formatPhone, telHref } from "@/lib/utils";
 const PAGE_SIZE = 100;
 
 // Shared cell chrome. A spreadsheet reads as a grid, so every cell is the
-// same height with a hairline border and no rounded corners — the editable
+// same height with a hairline border and no rounded corners: the editable
 // ones only differ by being focusable.
 const CELL = "border-r border-b border-[#f0f0f0] px-2 h-9 align-middle";
 const READ_CELL = `${CELL} text-[12px] text-[#666] whitespace-nowrap max-w-52 truncate`;
@@ -144,7 +144,7 @@ export default function CampaignSheetPage() {
 
   const commit = useCallback(
     async (row: CampaignRow, patch: CampaignRowPatch) => {
-      // Nothing changed — don't write, and don't flash a "saved" tick at
+      // Nothing changed: don't write, and don't flash a "saved" tick at
       // someone who just tabbed through a cell.
       const unchanged = (Object.keys(patch) as (keyof CampaignRowPatch)[]).every(
         (k) => (patch[k] ?? null) === (row[k] ?? null),
@@ -162,7 +162,7 @@ export default function CampaignSheetPage() {
         );
       } catch (err) {
         // The optimistic value stays on screen with an error marker rather
-        // than silently reverting — losing what someone typed mid-call is
+        // than silently reverting: losing what someone typed mid-call is
         // worse than showing it as unsaved.
         setSaveState((prev) => ({ ...prev, [row.rowId]: "error" }));
         setError(getErrorMessage(err, "Couldn't save that change"));
@@ -207,7 +207,7 @@ export default function CampaignSheetPage() {
   }
 
   /**
-   * Exports the whole sheet, not just the page on screen — a 4,000-row
+   * Exports the whole sheet, not just the page on screen: a 4,000-row
    * campaign exported as the visible 100 would be quietly wrong. Paged
    * through in 500s, which is the ceiling campaign_rows allows.
    */
@@ -578,7 +578,7 @@ export default function CampaignSheetPage() {
                       >
                         <div className="flex items-center gap-1">
                           <span className="text-[12px] font-medium text-[#0a0a0a] whitespace-nowrap truncate">
-                            {row.companyName ?? "—"}
+                            {row.companyName ?? "-"}
                           </span>
                           <CopyButton value={row.companyName ?? ""} label="company name" revealOnHover />
                         </div>
@@ -586,7 +586,7 @@ export default function CampaignSheetPage() {
 
                       {/* Lead facts: read-only here on purpose. They belong to
                           the lead, and a campaign grant gives sight of the
-                          lead, not permission to rewrite it — edit those on
+                          lead, not permission to rewrite it. Edit those on
                           the lead itself. */}
                       <td className={READ_CELL}>
                         <div className="flex items-center gap-1">
@@ -607,7 +607,7 @@ export default function CampaignSheetPage() {
                             <CopyButton value={formatPhone(row.phone)} label="phone number" revealOnHover />
                           </div>
                         ) : (
-                          <span className="text-[#ccc]">—</span>
+                          <span className="text-[#ccc]">-</span>
                         )}
                       </td>
                       <td className={`${CELL} text-[12px] whitespace-nowrap`}>
@@ -622,7 +622,7 @@ export default function CampaignSheetPage() {
                             <CopyButton value={row.email} label="email address" revealOnHover />
                           </div>
                         ) : (
-                          <span className="text-[#ccc]">—</span>
+                          <span className="text-[#ccc]">-</span>
                         )}
                       </td>
                       <td className={READ_CELL}>{row.category ?? ""}</td>
@@ -663,7 +663,7 @@ export default function CampaignSheetPage() {
                           onChange={(e) => commit(row, { callOutcome: e.target.value || null })}
                           className={`${INPUT} w-40 ${row.callOutcome ? (CALL_OUTCOME_STYLES[row.callOutcome] ?? "") : ""} rounded`}
                         >
-                          <option value="">—</option>
+                          <option value="">-</option>
                           {/* A value saved before this list changed still
                               needs to be selectable, or opening the row would
                               silently blank it. */}
@@ -784,7 +784,7 @@ export default function CampaignSheetPage() {
                         {state === "saving" && <Loader2 className="w-3 h-3 animate-spin text-[#bbb] inline" />}
                         {state === "saved" && <Check className="w-3 h-3 text-[#17c964] inline" />}
                         {state === "error" && (
-                          <span title="Not saved — check the error above">
+                          <span title="Not saved. Check the error above">
                             <AlertTriangle className="w-3 h-3 text-[#f31260] inline" />
                           </span>
                         )}

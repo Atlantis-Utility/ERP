@@ -44,7 +44,7 @@ export default function AddToCampaignModal({
       const name = selected?.name ?? "the campaign";
       onDone(
         added === 0
-          ? `Nothing added — those leads are already on ${name}.`
+          ? `Nothing added. Those leads are already on ${name}.`
           : `Added ${added.toLocaleString()} lead${added !== 1 ? "s" : ""} to ${name}.`,
       );
       onClose();

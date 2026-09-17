@@ -134,7 +134,7 @@ export default function CreateCampaignModal({
         `Campaign "${csvCampaign.name}" created with ${added.toLocaleString()} of ${count.toLocaleString()} imported lead${count !== 1 ? "s" : ""}.`,
       );
     } catch (err) {
-      // The leads did import — they're on the Leads tab either way — so say
+      // The leads did import, they're on the Leads tab either way, so say
       // what actually happened rather than implying the file was lost.
       setCsvCampaign(null);
       setError(
@@ -198,7 +198,7 @@ export default function CreateCampaignModal({
                 onChange={(e) => setName(e.target.value)}
                 onBlur={() => setTouched(true)}
                 className={`${inputClass} ${showNameError ? "border-[#f31260]" : ""}`}
-                placeholder="e.g. Ventura CA — cold calls"
+                placeholder="e.g. Ventura CA, cold calls"
                 autoFocus
                 aria-invalid={showNameError}
               />
@@ -269,7 +269,7 @@ export default function CreateCampaignModal({
             <>
               <LeadCriteriaFields criteria={criteria} onChange={setCriteria} onError={setError} />
 
-              {/* How many, as a first-class choice rather than a footnote —
+              {/* How many, as a first-class choice rather than a footnote:
                   "everything in Ventura" and "the first 200 of them" are
                   different jobs. */}
               <div className="border-t border-[#f0f0f0] pt-4">
@@ -335,7 +335,7 @@ export default function CreateCampaignModal({
             ) : preview?.failed ? (
               "Couldn't count the matches."
             ) : matching === null ? (
-              "—"
+              "-"
             ) : !activeCriteria && limitAll ? (
               `All ${matching.toLocaleString()} leads will be added.`
             ) : (

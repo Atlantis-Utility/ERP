@@ -94,8 +94,9 @@ interface Row {
 }
 
 // Stage names this app has used before. An unmapped status renders as an
-// empty, unstyled pill, so anything still carrying an old value, a stale
-// draft, an old export, a row written before the stages were simplified, // is translated on read rather than showing up blank.
+// empty, unstyled pill, so an old value is translated on read rather than
+// showing up blank: a stale draft, an old export, or a row written before
+// the stages were simplified.
 const LEGACY_STATUS: Record<string, LeadStatus> = {
   converted: "appointment",
   won: "appointment",
@@ -806,7 +807,7 @@ export interface LeadDedupeRecord {
 export async function fetchDedupeIndex(): Promise<LeadDedupeRecord[]> {
   // Paged. PostgREST applies db-max-rows (1000) to a set-returning function
   // too, so a single call against 20,000 leads returns exactly 1000 rows with
-  // no error and no indication it truncated — and an import would then
+  // no error and no indication it truncated, so an import would then
   // de-duplicate against a twentieth of the table and re-add the rest as new.
   // Verified against the live database: .range() pages the RPC correctly.
   const PAGE = 1000;

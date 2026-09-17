@@ -129,7 +129,7 @@ export default function LeadAccessPanel({
           ) : (
             <>
               <div className="w-7 h-7 rounded-full bg-[#f5f5f5] flex items-center justify-center shrink-0">
-                <span className="text-[10px] font-semibold text-[#bbb]">, </span>
+                <span className="text-[10px] font-semibold text-[#bbb]">-</span>
               </div>
               <p className="text-[13px] text-[#999] flex-1 truncate">Unassigned</p>
               <span className="text-[11px] text-[#bbb] shrink-0">Administrators only</span>

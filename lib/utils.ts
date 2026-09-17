@@ -1,11 +1,11 @@
-// `err instanceof Error` is unreliable for Supabase/fetch rejections — realm-crossing
+// `err instanceof Error` is unreliable for Supabase/fetch rejections: realm-crossing
 // or non-Error throws (stale session, network blips) fail that check even though the
 // object carries a real message. Read fields directly instead of gating on the type.
 export function getErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === "object") {
     const e = err as { message?: unknown; hint?: unknown; code?: unknown };
     if (typeof e.message === "string" && e.message) {
-      // The browser's fetch() never got a response at all (no HTTP status, no body) —
+      // The browser's fetch() never got a response at all (no HTTP status, no body):
       // could be offline, a VPN/firewall, or an extension blocking the request. Postgres/RLS
       // errors always come back with a real code, so this is the one case worth naming
       // explicitly instead of showing the raw "TypeError: Failed to fetch".

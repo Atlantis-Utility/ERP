@@ -61,7 +61,7 @@ export default function AddLeadsToSheetModal({
       });
       onAdded(
         added === 0
-          ? "Nothing to add — every matching lead is already on this sheet."
+          ? "Nothing to add. Every matching lead is already on this sheet."
           : `Added ${added.toLocaleString()} lead${added !== 1 ? "s" : ""} to ${campaignName}.`,
       );
       onClose();
@@ -144,7 +144,7 @@ export default function AddLeadsToSheetModal({
             ) : preview?.failed ? (
               "Couldn't count the matches."
             ) : preview === null ? (
-              "—"
+              "-"
             ) : (
               <>
                 {(willAdd ?? 0).toLocaleString()} to add

@@ -34,7 +34,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!authUser) return null;
 
-  // A revoked/never-granted page renders as a genuine 404, not a redirect —
+  // A revoked/never-granted page renders as a genuine 404, not a redirect;
   // it shouldn't even confirm to the visitor that the route exists. Because
   // authUser.access updates live (auth-context's realtime subscription),
   // this also kicks in the moment an admin revokes access to the page an

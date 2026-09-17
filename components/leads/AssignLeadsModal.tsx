@@ -55,7 +55,8 @@ export default function AssignLeadsModal({
     setSaving(true);
     try {
       if (mode === "assign") {
-        // No employee picked means "unassign", which is a legitimate action, // it returns leads to the admin-only pool.
+        // No employee picked means "unassign", which is a legitimate action:
+        // it returns leads to the admin-only pool.
         const changed = await assignLeadsBulk(
           target,
           selected ? { id: selected.id, name: selected.name } : null,

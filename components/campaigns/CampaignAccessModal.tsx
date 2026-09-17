@@ -19,7 +19,7 @@ import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
  * Who works this campaign. An editor fills the sheet in; a viewer reads it.
  *
  * Being on a campaign also grants sight of the leads on its sheet and nothing
- * else (leads_campaign_lead_ids in supabase/migration-campaigns.sql) — which
+ * else (leads_campaign_lead_ids in supabase/migration-campaigns.sql), which
  * is the point: a rep can work a list without being handed ownership of every
  * company on it.
  */
@@ -167,7 +167,7 @@ export default function CampaignAccessModal({
         </div>
 
         <div className="px-6 py-3 border-t border-[#f0f0f0] flex items-center justify-between gap-3">
-          <p className="text-[11px] text-[#bbb]">Being on a campaign also shows its leads — nothing outside it.</p>
+          <p className="text-[11px] text-[#bbb]">Being on a campaign also shows its leads, and nothing outside it.</p>
           {error && <p className="text-[11px] text-[#f31260] truncate">{error}</p>}
         </div>
       </div>
