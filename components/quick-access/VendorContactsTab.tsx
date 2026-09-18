@@ -19,9 +19,9 @@ import {
   type VendorContact,
 } from "@/lib/db/vendor-contacts";
 
-// A labelled contact line that turns into a tel:/mailto: link when we have a
-// value, and a muted em dash when we don't — so a blank field reads as "nobody
-// has filled this in yet" rather than looking broken.
+// A contact line, or nothing at all. A card full of dashes under headings
+// with nothing under them says less than a short card does: the blanks read
+// as broken rather than as "we don't have that".
 function ContactLine({
   icon: Icon,
   value,
@@ -31,14 +31,7 @@ function ContactLine({
   value: string;
   href?: string;
 }) {
-  if (!value) {
-    return (
-      <div className="flex items-center gap-2 text-[#ccc]">
-        <Icon className="w-3.5 h-3.5 shrink-0" />
-        <span className="text-[12px]">-</span>
-      </div>
-    );
-  }
+  if (!value) return null;
   const content = (
     <>
       <Icon className="w-3.5 h-3.5 shrink-0 text-[#999]" />
@@ -170,6 +163,7 @@ export default function VendorContactsTab() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {filtered.map((c) => {
             const people = vendorPeople(c);
+            const hasSupport = Boolean(c.supportPhone || c.supportEmail || c.portal);
             return (
             <div
               key={c.id}
@@ -223,7 +217,9 @@ export default function VendorContactsTab() {
                 )}
               </div>
 
+              {(hasSupport || people.length > 0) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mt-4 pt-3 border-t border-[#f7f7f7]">
+                {hasSupport && (
                 <div className="space-y-2 min-w-0">
                   <p className="text-[10px] font-semibold text-[#bbb] uppercase tracking-wider">Support</p>
                   <ContactLine icon={Phone} value={c.supportPhone} href={c.supportPhone ? `tel:${c.supportPhone.replace(/[^\d+]/g, "")}` : undefined} />
@@ -240,17 +236,17 @@ export default function VendorContactsTab() {
                     </a>
                   )}
                 </div>
+                )}
 
                 {/* Every named contact, not just the first: which one you
                     want depends on whether you're chasing an invoice or an
                     outage, and both have to be dialable from here. */}
+                {people.length > 0 && (
                 <div className="space-y-2 min-w-0">
                   <p className="text-[10px] font-semibold text-[#bbb] uppercase tracking-wider">
                     {people.length > 1 ? `Contacts (${people.length})` : "Point of contact"}
                   </p>
-                  {people.length === 0 ? (
-                    <ContactLine icon={User} value="" />
-                  ) : (
+                  {(
                     people.map((p, i) => (
                       <div
                         key={p.id}
@@ -265,7 +261,9 @@ export default function VendorContactsTab() {
                     ))
                   )}
                 </div>
+                )}
               </div>
+              )}
 
               {c.notes && (
                 <p className="text-[11px] text-[#888] mt-3 pt-3 border-t border-[#f7f7f7] whitespace-pre-wrap">
