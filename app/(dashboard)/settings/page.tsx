@@ -275,7 +275,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-[#eaeaea] mb-6 flex gap-0 overflow-x-auto">
+      <div className="border-b border-[#eaeaea] mb-6 flex gap-0 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
         {TABS.map((tab) => (
           <button
             key={tab.key}

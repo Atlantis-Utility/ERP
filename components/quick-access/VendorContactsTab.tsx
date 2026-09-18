@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Plus, Pencil, Trash2, Phone, Mail, ExternalLink, User, Search, Building2, Download,
 } from "lucide-react";
@@ -8,26 +8,16 @@ import BrandLogo from "@/components/quick-access/BrandLogo";
 import VendorContactDrawer from "@/components/quick-access/VendorContactDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast";
 import {
   useVendorContacts,
   removeVendorContact,
   seedVendorContacts,
   vendorLogoDomain,
+  vendorPeople,
   VENDOR_SEED,
   type VendorContact,
 } from "@/lib/db/vendor-contacts";
-
-function Toast({ message, onDone }: { message: string; onDone: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onDone, 2200);
-    return () => clearTimeout(t);
-  }, [onDone]);
-  return (
-    <div className="fixed bottom-6 right-6 z-50 bg-[#0a0a0a] text-white text-[13px] font-medium px-4 py-2.5 rounded-lg shadow-lg">
-      {message}
-    </div>
-  );
-}
 
 // A labelled contact line that turns into a tel:/mailto: link when we have a
 // value, and a muted em dash when we don't — so a blank field reads as "nobody
@@ -74,13 +64,20 @@ export default function VendorContactsTab() {
   const [editing, setEditing] = useState<VendorContact | null>(null);
   const [deleting, setDeleting] = useState<VendorContact | null>(null);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState("");
+  const { success, error: notifyError } = useToast();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return contacts;
     return contacts.filter((c) =>
-      [c.company, c.category, c.supportPhone, c.supportEmail, c.pocName, c.pocEmail, c.notes]
+      [
+        c.company,
+        c.category,
+        c.supportPhone,
+        c.supportEmail,
+        ...vendorPeople(c).flatMap((p) => [p.name, p.title, p.phone, p.email]),
+        c.notes,
+      ]
         .join(" ")
         .toLowerCase()
         .includes(q),
@@ -96,9 +93,9 @@ export default function VendorContactsTab() {
     setBusy(true);
     try {
       const n = await seedVendorContacts(contacts);
-      setToast(n === 0 ? "Already up to date" : `Added ${n} provider${n === 1 ? "" : "s"}`);
+      success(n === 0 ? "Already up to date" : `Added ${n} provider${n === 1 ? "" : "s"}`);
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "Failed to add providers");
+      notifyError(e instanceof Error ? e.message : "Failed to add providers");
     } finally {
       setBusy(false);
     }
@@ -109,10 +106,10 @@ export default function VendorContactsTab() {
     setBusy(true);
     try {
       await removeVendorContact(deleting.id);
-      setToast(`Removed ${deleting.company}`);
+      success(`Removed ${deleting.company}`);
       setDeleting(null);
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "Failed to remove");
+      notifyError(e instanceof Error ? e.message : "Failed to remove");
     } finally {
       setBusy(false);
     }
@@ -171,7 +168,9 @@ export default function VendorContactsTab() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filtered.map((c) => (
+          {filtered.map((c) => {
+            const people = vendorPeople(c);
+            return (
             <div
               key={c.id}
               className="border border-[#eaeaea] rounded-xl bg-white p-4 hover:border-[#d4d4d4] transition-colors"
@@ -242,16 +241,29 @@ export default function VendorContactsTab() {
                   )}
                 </div>
 
+                {/* Every named contact, not just the first: which one you
+                    want depends on whether you're chasing an invoice or an
+                    outage, and both have to be dialable from here. */}
                 <div className="space-y-2 min-w-0">
                   <p className="text-[10px] font-semibold text-[#bbb] uppercase tracking-wider">
-                    Point of contact
+                    {people.length > 1 ? `Contacts (${people.length})` : "Point of contact"}
                   </p>
-                  <ContactLine
-                    icon={User}
-                    value={c.pocName ? (c.pocTitle ? `${c.pocName} · ${c.pocTitle}` : c.pocName) : ""}
-                  />
-                  <ContactLine icon={Phone} value={c.pocPhone} href={c.pocPhone ? `tel:${c.pocPhone.replace(/[^\d+]/g, "")}` : undefined} />
-                  <ContactLine icon={Mail} value={c.pocEmail} href={c.pocEmail ? `mailto:${c.pocEmail}` : undefined} />
+                  {people.length === 0 ? (
+                    <ContactLine icon={User} value="" />
+                  ) : (
+                    people.map((p, i) => (
+                      <div
+                        key={p.id}
+                        className={`space-y-2 min-w-0 ${i > 0 ? "pt-2 border-t border-[#f7f7f7]" : ""}`}
+                      >
+                        <ContactLine icon={User} value={p.name ? (p.title ? `${p.name} · ${p.title}` : p.name) : p.title} />
+                        {p.phone && (
+                          <ContactLine icon={Phone} value={p.phone} href={`tel:${p.phone.replace(/[^\d+]/g, "")}`} />
+                        )}
+                        {p.email && <ContactLine icon={Mail} value={p.email} href={`mailto:${p.email}`} />}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -261,7 +273,8 @@ export default function VendorContactsTab() {
                 </p>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -272,7 +285,7 @@ export default function VendorContactsTab() {
           key={editing?.id ?? "new"}
           contact={editing}
           onClose={() => setDrawerOpen(false)}
-          onSaved={setToast}
+          onSaved={success}
         />
       )}
 
@@ -285,8 +298,6 @@ export default function VendorContactsTab() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleting(null)}
       />
-
-      {toast && <Toast message={toast} onDone={() => setToast("")} />}
     </div>
   );
 }

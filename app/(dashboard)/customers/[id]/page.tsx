@@ -724,7 +724,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
       {/* Numbers / Extensions / Call Queues / Devices / Network */}
       <div className="bg-white border border-[#eaeaea] rounded-xl">
-        <div className="flex items-center gap-1 px-3 pt-2 border-b border-[#eaeaea] overflow-x-auto">
+        <div className="flex items-center gap-1 px-3 pt-2 border-b border-[#eaeaea] overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
           {TABS.map((tab) => {
             const count =
               tab.key === "numbers" ? (phoneNumbersRes.status === "ok" ? phoneNumbers.length : null) :

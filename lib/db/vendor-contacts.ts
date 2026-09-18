@@ -23,6 +23,36 @@ export const VENDOR_CATEGORIES: VendorCategory[] = [
   "Other",
 ];
 
+/**
+ * Somebody who works there. A vendor has more than one: the account manager
+ * who handles the contract, the engineer who actually answers at 2am, the
+ * billing clerk. The record used to hold exactly one, so the other two lived
+ * in the notes field where nothing can dial them.
+ */
+export interface VendorPerson {
+  id: string;
+  name: string;
+  title: string;
+  phone: string;
+  email: string;
+}
+
+export function newVendorPerson(overrides: Partial<VendorPerson> = {}): VendorPerson {
+  return {
+    id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: "",
+    title: "",
+    phone: "",
+    email: "",
+    ...overrides,
+  };
+}
+
+/** True once anything beyond the generated id has been typed in. */
+export function hasPersonDetail(p: VendorPerson): boolean {
+  return Boolean(p.name.trim() || p.title.trim() || p.phone.trim() || p.email.trim());
+}
+
 export interface VendorContact {
   id: string;
   company: string;
@@ -35,11 +65,17 @@ export interface VendorContact {
   supportEmail: string;
   /** Our account number with them, as printed on the invoice. */
   accountNumber: string;
-  /** Named point of contact: our rep at this vendor. */
-  pocName: string;
-  pocTitle: string;
-  pocPhone: string;
-  pocEmail: string;
+  /** Named points of contact: our people at this vendor. */
+  people: VendorPerson[];
+  /**
+   * The single point of contact this record used to hold. Still read, never
+   * written: a row saved before `people` existed keeps its rep here, and
+   * vendorPeople() below folds it in. Saving the vendor moves it across.
+   */
+  pocName?: string;
+  pocTitle?: string;
+  pocPhone?: string;
+  pocEmail?: string;
   notes: string;
   /** Filename of a bundled logo asset, when we ship one for this vendor. */
   logoFile: string;
@@ -76,7 +112,24 @@ export function vendorLogoDomain(c: VendorContact): string | undefined {
 }
 
 interface Row { id: string; data: VendorContact }
-const fromRow = (row: Row): VendorContact => ({ ...row.data, id: row.id });
+const fromRow = (row: Row): VendorContact => ({ ...row.data, id: row.id, people: row.data.people ?? [] });
+
+/**
+ * Everyone on file at this vendor, old records included. A row written
+ * before the list existed has its one rep in the poc* fields, and it reads
+ * here as the first person rather than disappearing.
+ */
+export function vendorPeople(c: VendorContact): VendorPerson[] {
+  if (c.people?.length) return c.people;
+  const legacy = newVendorPerson({
+    id: `${c.id}-poc`,
+    name: c.pocName ?? "",
+    title: c.pocTitle ?? "",
+    phone: c.pocPhone ?? "",
+    email: c.pocEmail ?? "",
+  });
+  return hasPersonDetail(legacy) ? [legacy] : [];
+}
 
 function withTimeout<T>(promise: PromiseLike<T>, ms = 12_000): Promise<T> {
   return Promise.race([
@@ -119,10 +172,7 @@ export function emptyVendorContact(): VendorContact {
     supportPhone: "",
     supportEmail: "",
     accountNumber: "",
-    pocName: "",
-    pocTitle: "",
-    pocPhone: "",
-    pocEmail: "",
+    people: [],
     notes: "",
     logoFile: "",
     // Superset of the logo assets we ship — the Quick Access links pull from
@@ -136,7 +186,18 @@ export function emptyVendorContact(): VendorContact {
 }
 
 export async function saveVendorContact(contact: VendorContact): Promise<void> {
-  const updated: VendorContact = { ...contact, updatedAt: new Date().toISOString() };
+  // Saving migrates the row: whatever the old single-contact fields held is
+  // already in `people` by the time it gets here (vendorPeople does that on
+  // read), so they're dropped rather than left to drift out of date.
+  const updated: VendorContact = {
+    ...contact,
+    people: (contact.people ?? []).filter(hasPersonDetail),
+    updatedAt: new Date().toISOString(),
+  };
+  delete updated.pocName;
+  delete updated.pocTitle;
+  delete updated.pocPhone;
+  delete updated.pocEmail;
   const { error } = await withTimeout(
     supabase.from(TABLE).upsert({ id: updated.id, updated_at: updated.updatedAt, data: updated })
   );
