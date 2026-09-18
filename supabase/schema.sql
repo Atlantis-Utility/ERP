@@ -106,6 +106,8 @@ create table customer_profiles ( -- editable ISP/contacts overlay for a RingLogi
   customer_id     text primary key,
   isp             text,
   backup_isp      text,
+  address         text, -- the customer's own street address; RingLogix's domain object holds one but 403s for our API user
+  website         text, -- bare domain, e.g. "agromin.com"; blank when they don't have one
   contacts        jsonb not null default '[]', -- extra contacts beyond the RingLogix-sourced default {name, email, phone}
   main_contact_id text not null default 'default', -- 'default' (RingLogix contact) or a contact's id
   updated_at      timestamptz not null default now(),

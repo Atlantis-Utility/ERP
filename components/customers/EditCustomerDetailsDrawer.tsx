@@ -44,6 +44,8 @@ export default function EditCustomerDetailsDrawer({
   const { authUser } = useAuth();
   const [isp, setIsp] = useState("");
   const [backupIsp, setBackupIsp] = useState("");
+  const [address, setAddress] = useState("");
+  const [website, setWebsite] = useState("");
   const [contacts, setContacts] = useState<CustomerContact[]>([]);
   const [mainContactId, setMainContactId] = useState(DEFAULT_CONTACT_ID);
   const [staticIps, setStaticIps] = useState<StaticIpConfig[]>([]);
@@ -53,6 +55,8 @@ export default function EditCustomerDetailsDrawer({
     if (!open) return;
     setIsp(overlay?.isp ?? "");
     setBackupIsp(overlay?.backupIsp ?? "");
+    setAddress(overlay?.address ?? "");
+    setWebsite(overlay?.website ?? "");
     setContacts(overlay?.contacts ?? []);
     setMainContactId(overlay?.mainContactId ?? DEFAULT_CONTACT_ID);
 
@@ -118,6 +122,8 @@ export default function EditCustomerDetailsDrawer({
       const next = {
         isp: isp.trim(),
         backupIsp: backupIsp.trim(),
+        address: address.trim(),
+        website: website.trim().replace(/^https?:\/\//i, "").replace(/\/$/, ""),
         contacts: filtered,
         mainContactId: validMainId,
         staticIps: filledIps,
@@ -142,7 +148,7 @@ export default function EditCustomerDetailsDrawer({
       open={open}
       onClose={onClose}
       title="Edit Customer Details"
-      subtitle="ISP information and points of contact"
+      subtitle="Address, ISP information and points of contact"
       width="lg"
       footer={
         <>
@@ -163,7 +169,30 @@ export default function EditCustomerDetailsDrawer({
       }
     >
       <div className="space-y-4">
-        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3">Internet Service</p>
+        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3">Business</p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField label="Address">
+            <input
+              className={inputClass}
+              placeholder="Street, city, state, zip"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Website">
+            <input
+              className={inputClass}
+              placeholder="example.com"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+            />
+          </FormField>
+        </div>
+
+        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3 pt-2 border-t border-[#f7f7f7]">
+          Internet Service
+        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Internet Service Provider">

@@ -36,6 +36,15 @@ export interface CustomerProfileOverlay {
   customerId: string;
   isp: string;
   backupIsp: string;
+  /**
+   * Where the customer actually is, and their own site. Neither comes from
+   * RingLogix: the API's `domain` object (which holds the service address) is
+   * 403 for our credentials, so both are kept here, seeded from a researched
+   * list in supabase/migration-customer-address-website.sql. Blank is a
+   * normal state, and reads as blank rather than as "not on file".
+   */
+  address: string;
+  website: string;
   contacts: CustomerContact[]; // custom contacts only — the RingLogix-sourced default contact isn't stored here
   mainContactId: string; // DEFAULT_CONTACT_ID or a contact's id
   staticIps: StaticIpConfig[];
@@ -67,6 +76,8 @@ function fromRow(row: Record<string, unknown>): CustomerProfileOverlay {
     customerId: row.customer_id as string,
     isp: (row.isp as string) ?? "",
     backupIsp: (row.backup_isp as string) ?? "",
+    address: (row.address as string) ?? "",
+    website: (row.website as string) ?? "",
     contacts: (row.contacts as CustomerContact[]) ?? [],
     mainContactId: (row.main_contact_id as string) ?? DEFAULT_CONTACT_ID,
     staticIps: (row.static_ips as StaticIpConfig[]) ?? [],
@@ -90,6 +101,8 @@ export async function setCustomerProfile(
   overlay: {
     isp: string;
     backupIsp: string;
+    address: string;
+    website: string;
     contacts: CustomerContact[];
     mainContactId: string;
     // Required, not optional: this is a full-row upsert, so a caller that
@@ -102,6 +115,8 @@ export async function setCustomerProfile(
     customer_id: customerId,
     isp: overlay.isp || null,
     backup_isp: overlay.backupIsp || null,
+    address: overlay.address || null,
+    website: overlay.website || null,
     contacts: overlay.contacts,
     main_contact_id: overlay.mainContactId,
     static_ips: overlay.staticIps,

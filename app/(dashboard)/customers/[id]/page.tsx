@@ -11,6 +11,7 @@ import { getUnifiLink } from "@/lib/db/unifi-links";
 import { subscribeProjects } from "@/lib/db/projects";
 import { statusConfig, type Project } from "@/lib/mock-projects";
 import { matchScore, LIKELY_MATCH_THRESHOLD } from "@/lib/name-match";
+import { withScheme } from "@/lib/utils";
 import IspLogo from "@/components/unifi/IspLogo";
 import {
   findBilledIsp, ISP_PROVIDERS, serviceMonthlyTotal, formatSpeed, type BilledIsp,
@@ -102,12 +103,42 @@ async function fetchResource<T>(url: string): Promise<ResourceState<T>> {
   }
 }
 
-function Field({ label, value, copy, hint }: { label: string; value: string; copy?: boolean; hint?: string }) {
+function Field({
+  label,
+  value,
+  copy,
+  hint,
+  href,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  copy?: boolean;
+  hint?: string;
+  /** Renders the value as a link. Ignored when there's no value. */
+  href?: string;
+  className?: string;
+}) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <p className="text-[10px] font-semibold text-[#999] uppercase tracking-wider mb-1">{label}</p>
       <div className="flex items-center gap-1.5">
-        <p className="text-sm font-medium text-[#0a0a0a] truncate">{value || "-"}</p>
+        {href && value ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-medium text-[#0070f3] hover:underline truncate"
+          >
+            {value}
+          </a>
+        ) : (
+          // A long address is truncated to keep the grid aligned, so the
+          // whole thing has to be readable on hover.
+          <p className="text-sm font-medium text-[#0a0a0a] truncate" title={value || undefined}>
+            {value || "-"}
+          </p>
+        )}
         {copy && value && <CopyButton value={value} label={label} />}
       </div>
       {hint && <p className="text-[10px] text-[#bbb] mt-0.5 truncate">{hint}</p>}
@@ -625,6 +656,21 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               label="Backup Internet Service Provider"
               value={overlay?.backupIsp || billedBackup?.name || ""}
               hint={!overlay?.backupIsp && billedBackup ? `From invoice #${billedBackup.invoice.number}` : undefined}
+            />
+            {/* Where they are and their own site. Blank when we don't know,
+                which is most of the point: the researched list said things
+                like "not confirmed", and a field that says that is worse
+                than one that says nothing. */}
+            <Field
+              label="Address"
+              value={overlay?.address ?? ""}
+              copy
+              className="sm:col-span-2"
+            />
+            <Field
+              label="Website"
+              value={overlay?.website ?? ""}
+              href={withScheme(overlay?.website)}
             />
             <Field label="Balance" value={customer.balance} />
             <Field label="Credit Limit" value={customer.creditLimit} />
