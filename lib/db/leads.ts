@@ -808,12 +808,20 @@ export interface LeadDedupeRecord {
   id: string;
   companyName: string;
   pocName?: string;
+  street?: string;
+  city?: string;
+  zip?: string;
 }
 
 /**
- * Company/contact names for every visible lead, enough to match an incoming
- * CSV against what's already on file, without pulling whole records. At
- * 10,000 leads this is a few hundred KB instead of several megabytes.
+ * Company, contact and address for every visible lead, enough to match an
+ * incoming CSV against what's already on file, without pulling whole
+ * records. At 10,000 leads this is a few hundred KB instead of several
+ * megabytes.
+ *
+ * The address is here because names alone aren't enough: a licence list
+ * repeats a company once per permit, and those rows are only recognisable as
+ * the same business by where it is.
  */
 export async function fetchDedupeIndex(): Promise<LeadDedupeRecord[]> {
   // Paged. PostgREST applies db-max-rows (1000) to a set-returning function
@@ -830,12 +838,22 @@ export async function fetchDedupeIndex(): Promise<LeadDedupeRecord[]> {
       60_000,
     );
     if (error) throw error;
-    const rows = (data ?? []) as { id: string; company_name: string | null; poc_name: string | null }[];
+    const rows = (data ?? []) as {
+      id: string;
+      company_name: string | null;
+      poc_name: string | null;
+      street?: string | null;
+      city?: string | null;
+      zip?: string | null;
+    }[];
     out.push(
       ...rows.map((r) => ({
         id: r.id,
         companyName: r.company_name ?? "",
         pocName: r.poc_name ?? undefined,
+        street: r.street ?? undefined,
+        city: r.city ?? undefined,
+        zip: r.zip ?? undefined,
       })),
     );
     // A short page is the last page. Guarded against a runaway loop if the

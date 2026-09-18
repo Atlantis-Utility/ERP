@@ -64,10 +64,30 @@ export interface DedupeCandidate {
   id: string;
   companyName: string;
   pocName?: string;
+  street?: string;
+  city?: string;
+  zip?: string;
 }
 
 function normalizeKey(s?: string): string {
-  return (s ?? "").trim().toLowerCase();
+  return (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * The same business in one string: company, street, city, zip.
+ *
+ * Used for the rows of a single file, where nothing is on file yet to match
+ * against. A city licence list names a company once per permit it holds, so
+ * one hotel arrives six times with the same address and a different licence
+ * type each time; without this every one of them is a new lead, which is how
+ * 917 duplicates got in. Empty where there's no address, so a file with no
+ * address column falls back to the company/contact rules below rather than
+ * collapsing every unrelated row that happens to be blank.
+ */
+export function addressKey(l: { companyName: string; street?: string; city?: string; zip?: string }): string {
+  const street = normalizeKey(l.street);
+  if (!street) return "";
+  return [normalizeKey(l.companyName), street, normalizeKey(l.city), normalizeKey(l.zip)].join("|");
 }
 
 // Groups existing leads by normalized company name so matching a CSV row
@@ -85,23 +105,33 @@ export function buildCompanyIndex<T extends DedupeCandidate>(existing: T[]): Map
 
 // Same company name is necessary but not sufficient, a company can have
 // several different real contacts on file. If the new row names a person,
-// prefer an exact name match at that company; otherwise fall back to a
-// same-company lead that has no point of contact recorded yet (a bare
+// prefer an exact name match at that company; then the same company at the
+// same street address, which is the same business whoever is named on it;
+// then a same-company lead that has no point of contact recorded yet (a bare
 // company record absorbing its first named contact), and only default to
 // "the one same-company lead" when there's no ambiguity.
 export function findExistingMatch<T extends DedupeCandidate>(
   index: Map<string, T[]>,
-  companyName: string,
-  pocName?: string,
+  incoming: { companyName: string; pocName?: string; street?: string; city?: string; zip?: string },
 ): T | undefined {
-  const candidates = index.get(normalizeKey(companyName));
+  const candidates = index.get(normalizeKey(incoming.companyName));
   if (!candidates || candidates.length === 0) return undefined;
 
-  const pocKey = normalizeKey(pocName);
+  const pocKey = normalizeKey(incoming.pocName);
   if (pocKey) {
     const exact = candidates.find((l) => normalizeKey(l.pocName) === pocKey);
     if (exact) return exact;
   }
+
+  // Address before the fallbacks: re-importing a licence list shouldn't add a
+  // second row for a company we already have at that address just because
+  // this row's permit lists a different owner name.
+  const address = addressKey(incoming);
+  if (address) {
+    const sameAddress = candidates.find((l) => addressKey(l) === address);
+    if (sameAddress) return sameAddress;
+  }
+
   return candidates.find((l) => !l.pocName?.trim()) ?? (candidates.length === 1 ? candidates[0] : undefined);
 }
 

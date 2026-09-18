@@ -15,6 +15,14 @@ import LeadsAccessModal from "@/components/leads/LeadsAccessModal";
 import DiscoverPanel from "@/components/leads/DiscoverPanel";
 import StatusPicker from "@/components/leads/StatusPicker";
 import LeadsTabs from "@/components/leads/LeadsTabs";
+import ReviewChangesModal from "@/components/campaigns/ReviewChangesModal";
+import Tooltip from "@/components/ui/Tooltip";
+import {
+  usePendingForLeads,
+  LEAD_FIELD_LABELS,
+  type EditableLeadField,
+  type LeadChangeRequest,
+} from "@/lib/db/lead-changes";
 import AddToCampaignModal from "@/components/campaigns/AddToCampaignModal";
 import {
   criteriaFromLeadFilters,
@@ -105,6 +113,65 @@ const SORT_LABELS: Record<LeadSortKey, string> = {
   company_name: "Company",
   follow_up_date: "Follow-up",
 };
+
+/**
+ * A lead fact, showing an unapproved correction in the amber the rest of the
+ * app uses for "waiting on someone" when one is pending.
+ *
+ * The proposed value is what's shown, not the stored one: a caller who has
+ * just been told the number changed needs the new number in front of them,
+ * and the colour plus the row's tag say it isn't final yet.
+ */
+function Fact({
+  value,
+  pending,
+  className = "",
+  empty = "-",
+}: {
+  value?: string;
+  pending?: string | null;
+  className?: string;
+  empty?: string;
+}) {
+  const text = ((pending ?? value) ?? "").trim();
+  return (
+    <span
+      className={`${className} ${pending ? "text-[#946c00]" : ""}`}
+      title={pending ? `Proposed from a campaign sheet, waiting for approval. On file: ${value?.trim() || "empty"}` : undefined}
+    >
+      {text || empty}
+    </span>
+  );
+}
+
+/** The row's "changed, not yet approved" tag, listing what would change. */
+function PendingTag({ changes, onReview }: { changes: LeadChangeRequest[]; onReview?: () => void }) {
+  if (changes.length === 0) return null;
+  const who = changes.find((c) => c.requestedByName)?.requestedByName;
+  const lines = [
+    ...changes.map(
+      (c) => `${LEAD_FIELD_LABELS[c.field]}: ${c.oldValue?.trim() || "empty"} -> ${c.newValue?.trim() || "empty"}`,
+    ),
+    who ? `Asked by ${who}` : "",
+    onReview ? "Click to review" : "Waiting for an administrator",
+  ];
+  const chip = (
+    <span className="text-[9px] font-semibold uppercase tracking-wide text-[#946c00] bg-[#fefce8] border border-[#f7e6a8] rounded px-1 py-0.5 shrink-0">
+      Updated
+    </span>
+  );
+  return (
+    <Tooltip label={lines}>
+      {onReview ? (
+        <button onClick={onReview} className="cursor-pointer">
+          {chip}
+        </button>
+      ) : (
+        chip
+      )}
+    </Tooltip>
+  );
+}
 
 export default function LeadsPage() {
   const employees = useEmployees();
@@ -223,6 +290,12 @@ export default function LeadsPage() {
   const rows = result?.rows ?? [];
   const stats = result?.stats ?? null;
   const total = stats?.total ?? 0;
+  // Corrections proposed on a campaign sheet, for the leads on this page. A
+  // campaign is a view onto these same leads, so an edit made while calling
+  // one shows here too, for anyone who can see the lead, whether or not they
+  // hold that campaign.
+  const pendingByLead = usePendingForLeads(rows.map((l) => l.id));
+  const [showReview, setShowReview] = useState(false);
   const queryError = result?.error ?? "";
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -796,6 +869,9 @@ export default function LeadsPage() {
                       const overdue = isFollowUpOverdue(l.followUpDate, l.status);
                       const editable = access.canEdit(l);
                       const level = access.levelFor(l);
+                      const changes = pendingByLead.get(l.id) ?? [];
+                      const proposed = (field: EditableLeadField) =>
+                        changes.find((c) => c.field === field)?.newValue ?? null;
                       return (
                         <tr
                           key={l.id}
@@ -826,8 +902,13 @@ export default function LeadsPage() {
                                 </div>
                                 <div className="min-w-0">
                                   <p className="text-sm font-medium text-[#0a0a0a] truncate hover:text-[#0070f3] transition-colors">
-                                    {l.companyName}
-                                    {l.dba && <span className="text-[#999] font-normal"> (DBA {l.dba})</span>}
+                                    <Fact value={l.companyName} pending={proposed("companyName")} empty="" />
+                                    {(proposed("dba") ?? l.dba) && (
+                                      <span className="text-[#999] font-normal">
+                                        {" ("}DBA <Fact value={l.dba} pending={proposed("dba")} empty="" />
+                                        {")"}
+                                      </span>
+                                    )}
                                   </p>
                                   <div className="flex items-center gap-1.5">
                                     <p className="text-[10px] text-[#bbb] truncate">
@@ -848,14 +929,24 @@ export default function LeadsPage() {
                                   </div>
                                 </div>
                               </button>
+                              <PendingTag
+                                changes={changes}
+                                onReview={access.isAdmin ? () => setShowReview(true) : undefined}
+                              />
                               <CopyButton value={l.companyName ?? ""} label="company name" revealOnHover />
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
                               <div className="min-w-0">
-                                <p className="text-sm text-[#0a0a0a] truncate">{l.pocName || "-"}</p>
-                                {l.pocTitle && <p className="text-xs text-[#999] truncate">{l.pocTitle}</p>}
+                                <p className="text-sm text-[#0a0a0a] truncate">
+                                  <Fact value={l.pocName} pending={proposed("pocName")} />
+                                </p>
+                                {(proposed("pocTitle") ?? l.pocTitle) && (
+                                  <p className="text-xs text-[#999] truncate">
+                                    <Fact value={l.pocTitle} pending={proposed("pocTitle")} empty="" />
+                                  </p>
+                                )}
                                 {withScheme(l.linkedinUrl) && (
                                   <a
                                     href={withScheme(l.linkedinUrl)}
@@ -875,32 +966,50 @@ export default function LeadsPage() {
                           column a caller actually looks at. */}
                           <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">
                             <div className="flex items-center gap-1">
-                              {l.phone ? (
+                              {(proposed("phone") ?? l.phone) ? (
                                 <>
                                   <a
-                                    href={telHref(l.phone)}
+                                    href={telHref(proposed("phone") ?? l.phone)}
                                     className="font-mono hover:text-[#0070f3] transition-colors"
                                   >
-                                    {formatPhone(l.phone)}
+                                    <Fact
+                                      value={formatPhone(l.phone)}
+                                      pending={proposed("phone") ? formatPhone(proposed("phone")) : null}
+                                    />
                                   </a>
-                                  <CopyButton value={formatPhone(l.phone)} label="phone number" revealOnHover />
+                                  <CopyButton
+                                    value={formatPhone(proposed("phone") ?? l.phone)}
+                                    label="phone number"
+                                    revealOnHover
+                                  />
                                 </>
                               ) : (
                                 <span className="text-[#ccc]">-</span>
                               )}
                             </div>
-                            {l.email && emailAddress(l.email) && (
+                            {emailAddress(proposed("email") ?? l.email) && (
                               <div className="flex items-center gap-1">
                                 <a
-                                  href={`mailto:${l.email}`}
-                                  className="text-xs text-[#0070f3] hover:underline truncate max-w-44"
+                                  href={`mailto:${proposed("email") ?? l.email}`}
+                                  className={`text-xs hover:underline truncate max-w-44 ${
+                                    proposed("email") ? "text-[#946c00]" : "text-[#0070f3]"
+                                  }`}
+                                  title={
+                                    proposed("email")
+                                      ? `Proposed from a campaign sheet, waiting for approval. On file: ${l.email?.trim() || "empty"}`
+                                      : undefined
+                                  }
                                 >
-                                  {l.email}
+                                  {proposed("email") ?? l.email}
                                 </a>
-                                <CopyButton value={l.email} label="email address" revealOnHover />
+                                <CopyButton
+                                  value={proposed("email") ?? l.email ?? ""}
+                                  label="email address"
+                                  revealOnHover
+                                />
                               </div>
                             )}
-                            {!emailAddress(l.email) && withScheme(l.website) && (
+                            {!emailAddress(proposed("email") ?? l.email) && withScheme(l.website) && (
                               <a
                                 href={withScheme(l.website)}
                                 target="_blank"
@@ -912,7 +1021,14 @@ export default function LeadsPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">
-                            {[l.city, l.state].filter(Boolean).join(", ") || "-"}
+                            <Fact
+                              value={[l.city, l.state].filter(Boolean).join(", ")}
+                              pending={
+                                proposed("city") || proposed("state")
+                                  ? [proposed("city") ?? l.city, proposed("state") ?? l.state].filter(Boolean).join(", ")
+                                  : null
+                              }
+                            />
                           </td>
                           <td className="px-4 py-3">
                             {l.assignedToName ? (
@@ -1017,6 +1133,16 @@ export default function LeadsPage() {
             </>
           )}
         </div>
+
+      {showReview && access.isAdmin && (
+        <ReviewChangesModal
+          onClose={() => setShowReview(false)}
+          // The tags are live on lead_change_requests and the leads refetch
+          // on their own realtime channel, so there is nothing to reload by
+          // hand once something is approved.
+          onReviewed={() => setShowReview(false)}
+        />
+      )}
 
       {showImport && access.isAdmin && (
         <ImportLeadsCsvModal

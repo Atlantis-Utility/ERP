@@ -10,6 +10,7 @@ import { addLeads, fetchDedupeIndex, fetchLeadsByIds, type Lead } from "@/lib/db
 import type { ActivityActor } from "@/lib/db/lead-activity";
 import { getErrorMessage } from "@/lib/utils";
 import {
+  addressKey,
   buildCompanyIndex,
   findExistingMatch,
   computeMerge,
@@ -273,24 +274,39 @@ export default function ImportLeadsCsvModal({
       const candidates = buildCandidateLeads();
       const index = buildCompanyIndex(await fetchDedupeIndex());
 
-      // First row to match a given lead claims it. Two rows matching the same
-      // lead can't both be imported: they'd share a target id, which makes the
-      // upsert hit the same row twice ("ON CONFLICT DO UPDATE command cannot
-      // affect row a second time") and collapses their resolutions into one.
-      // The later rows are duplicates within the file, and are reported
-      // rather than silently dropped.
+      // Duplicates are reported rather than silently dropped, either way:
+      // the count appears above the button before anything is written.
       const matchedIds = new Map<string, string>(); // candidate id → existing lead id
       const claimed = new Set<string>();
       const duplicateKeys = new Set<string>();
+      // Rows of this file that are the same business as an earlier row. This
+      // is the case the table can't catch: none of them exist yet, so none of
+      // them matches anything, and every one becomes a lead. A city licence
+      // list repeats a company once per permit, which is how one hotel turned
+      // into six leads at the same address, 917 across the file.
+      const seenInFile = new Set<string>();
       for (const c of candidates) {
-        const hit = findExistingMatch(index, c.companyName, c.pocName);
-        if (!hit) continue;
-        if (claimed.has(hit.id)) {
-          duplicateKeys.add(c.id);
+        const hit = findExistingMatch(index, c);
+        if (hit) {
+          // First row to match a given lead claims it. Two rows matching the
+          // same lead can't both be imported: they'd share a target id, which
+          // makes the upsert hit the same row twice ("ON CONFLICT DO UPDATE
+          // command cannot affect row a second time") and collapses their
+          // resolutions into one.
+          if (claimed.has(hit.id)) {
+            duplicateKeys.add(c.id);
+            continue;
+          }
+          claimed.add(hit.id);
+          matchedIds.set(c.id, hit.id);
           continue;
         }
-        claimed.add(hit.id);
-        matchedIds.set(c.id, hit.id);
+        // New to us, but maybe not new to this file. Keyed on the address
+        // where there is one, otherwise on company + contact name.
+        const key = addressKey(c) || `${c.companyName.trim().toLowerCase()}|${(c.pocName ?? "").trim().toLowerCase()}`;
+        if (!key.replace(/\|/g, "")) continue;
+        if (seenInFile.has(key)) duplicateKeys.add(c.id);
+        else seenInFile.add(key);
       }
       setSkippedDuplicates(duplicateKeys.size);
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../supabase/client";
+import { subscribeChanges } from "../supabase/realtime";
 import { getErrorMessage } from "../utils";
 
 /**
@@ -180,6 +181,93 @@ export async function rejectLeadChanges(ids: string[] | null, campaignId?: strin
   );
   if (error) throw error;
   return Number(data ?? 0);
+}
+
+/**
+ * The pending corrections on a given set of leads, for the Leads page.
+ *
+ * Read straight from the table rather than through lead_changes_pending,
+ * which is an administrator's queue. The read policy (see
+ * supabase/migration-changes-visible-on-leads.sql) is "you can see a
+ * correction if you can see the lead it's about", so a campaign's
+ * corrections show on the Leads tab for everyone who can see those leads,
+ * whether or not they hold that campaign.
+ */
+export async function fetchPendingForLeads(leadIds: string[]): Promise<LeadChangeRequest[]> {
+  if (leadIds.length === 0) return [];
+  const out: LeadChangeRequest[] = [];
+  // Chunked: a page of leads is a hundred ids, and a URL-encoded `in` list
+  // of thousands is how a request ends up too long to send.
+  for (let i = 0; i < leadIds.length; i += 150) {
+    const { data, error } = await withTimeout(
+      supabase
+        .from("lead_change_requests")
+        .select("id, lead_id, campaign_id, field, old_value, new_value, requested_by_name, requested_at")
+        .eq("status", "pending")
+        .in("lead_id", leadIds.slice(i, i + 150)),
+    );
+    if (error) throw error;
+    for (const r of (data ?? []) as Omit<RawRequest, "campaign_name" | "company_name">[]) {
+      out.push({
+        id: r.id,
+        leadId: r.lead_id,
+        campaignId: r.campaign_id,
+        campaignName: null,
+        companyName: null,
+        field: r.field as EditableLeadField,
+        oldValue: r.old_value,
+        newValue: r.new_value,
+        requestedByName: r.requested_by_name,
+        requestedAt: r.requested_at,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Pending corrections for the leads on screen, keyed by lead, kept current.
+ *
+ * Live rather than fetched once: a correction typed on a campaign sheet in
+ * another tab, or by someone else entirely, should appear here without a
+ * reload, which is the whole point of showing it on both pages.
+ */
+const NO_PENDING: Map<string, LeadChangeRequest[]> = new Map();
+
+export function usePendingForLeads(leadIds: string[]): Map<string, LeadChangeRequest[]> {
+  const [byLead, setByLead] = useState<Map<string, LeadChangeRequest[]>>(new Map());
+  // The ids as a string, so the effect re-runs when the page's leads change
+  // and not on every render that rebuilds the same array.
+  const key = leadIds.join(",");
+
+  useEffect(() => {
+    const ids = key ? key.split(",") : [];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    const load = () => {
+      fetchPendingForLeads(ids)
+        .then((rows) => {
+          if (cancelled) return;
+          const map = new Map<string, LeadChangeRequest[]>();
+          for (const r of rows) map.set(r.leadId, [...(map.get(r.leadId) ?? []), r]);
+          setByLead(map);
+        })
+        // A database without the migration, or a reader the policy doesn't
+        // admit, simply shows no tags. Not worth an error on a lead list.
+        .catch(() => {});
+    };
+    load();
+    const stop = subscribeChanges("leads-pending-changes", ["lead_change_requests"], load);
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [key]);
+
+  // Empty when there's nothing on screen rather than clearing the state in
+  // the effect: lookups are by lead id, so what's held for a page that has
+  // gone is never read, and clearing it would be a second render for nothing.
+  return leadIds.length === 0 ? NO_PENDING : byLead;
 }
 
 /**
