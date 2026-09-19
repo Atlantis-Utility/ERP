@@ -35,6 +35,7 @@ import { useAuth } from "@/lib/auth-context";
 import { hasPageAccess } from "@/lib/nav-pages";
 import { useLeadsAccess } from "@/lib/leads-access";
 import { useIsOwner } from "@/lib/db/ownership";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   queryLeadsPage,
   queryLeadsBoard,
@@ -207,7 +208,22 @@ export default function LeadsPage() {
   const [showAssign, setShowAssign] = useState(false);
   const [showAddToCampaign, setShowAddToCampaign] = useState(false);
   const [showAccess, setShowAccess] = useState(false);
-  const [openLeadId, setOpenLeadId] = useState<string | null>(null);
+  // Which lead's drawer is open. Two sources, no effect syncing them: a row
+  // click, and ?lead=<id> from the navbar's global search, which is how
+  // searching a phone number gets you to the lead that owns it. The drawer
+  // fetches the lead itself, so a deep-linked lead doesn't have to be on the
+  // page you happen to be looking at. Closing a deep-linked one cleans the
+  // URL, so the same search can open it again.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const linkedLeadId = searchParams.get("lead");
+  const [rowLeadId, setRowLeadId] = useState<string | null>(null);
+  const openLeadId = rowLeadId ?? linkedLeadId;
+
+  function closeLead() {
+    setRowLeadId(null);
+    if (linkedLeadId) router.replace("/leads");
+  }
   const [busy, setBusy] = useState(false);
   const { success, error: notifyError } = useToast();
 
@@ -816,7 +832,7 @@ export default function LeadsPage() {
                 columns={board?.columns ?? {}}
                 counts={board?.counts ?? {}}
                 canEditLead={access.canEdit}
-                onOpen={setOpenLeadId}
+                onOpen={setRowLeadId}
                 onMove={setStatus}
                 onFocusStage={(status) => {
                   setView("table");
@@ -894,7 +910,7 @@ export default function LeadsPage() {
                           <td className="px-4 py-3 min-w-64">
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => setOpenLeadId(l.id)}
+                                onClick={() => setRowLeadId(l.id)}
                                 className="flex items-center gap-2.5 text-left min-w-0"
                               >
                                 <div className="w-7 h-7 rounded-lg bg-[#eff6ff] flex items-center justify-center shrink-0">
@@ -1189,7 +1205,7 @@ export default function LeadsPage() {
         />
       )}
       {showAccess && access.canGrant && <LeadsAccessModal actor={actor} onClose={() => setShowAccess(false)} />}
-      {openLeadId && <LeadDetailDrawer leadId={openLeadId} onClose={() => setOpenLeadId(null)} />}
+      {openLeadId && <LeadDetailDrawer leadId={openLeadId} onClose={closeLead} />}
     </div>
   );
 }
