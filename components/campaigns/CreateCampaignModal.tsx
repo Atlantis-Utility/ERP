@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Overlay from "@/components/ui/Overlay";
 import { X, Loader2, Check, Filter, FileSpreadsheet, Circle } from "lucide-react";
 import LeadCriteriaFields from "@/components/campaigns/LeadCriteriaFields";
@@ -125,9 +125,22 @@ export default function CreateCampaignModal({
     }
   }
 
+  /**
+   * Whether the file step got as far as importing something.
+   *
+   * ImportLeadsCsvModal calls onImported and then onClose, so a finished
+   * import and an abandoned one arrive through the same door. Without this
+   * flag the cleanup below deleted the campaign it had just filled: the
+   * campaign appeared, the toast said it was created, and it was gone from
+   * the list a moment later. A ref, not state, because it has to be true by
+   * the time onClose runs in the same tick.
+   */
+  const importFinished = useRef(false);
+
   /** The CSV step finished: put exactly those leads on the new campaign. */
   async function attachImported(count: number, leadIds: string[]) {
     if (!csvCampaign) return;
+    importFinished.current = true;
     try {
       const added = await addLeadsToCampaign(csvCampaign.id, { kind: "ids", ids: leadIds });
       onCreated(
@@ -151,7 +164,9 @@ export default function CreateCampaignModal({
   async function cancelCsvStep() {
     const created = csvCampaign;
     setCsvCampaign(null);
-    if (!created) return;
+    // An import that ran is not an abandoned step, whatever order the
+    // modal's callbacks arrive in.
+    if (!created || importFinished.current) return;
     try {
       await deleteCampaign(created.id);
     } catch {
