@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Overlay from "@/components/ui/Overlay";
 import { X, Loader2, Check, Filter, FileSpreadsheet, Circle } from "lucide-react";
 import LeadCriteriaFields from "@/components/campaigns/LeadCriteriaFields";
@@ -9,7 +9,6 @@ import {
   createCampaign,
   addLeadsToCampaign,
   previewSelection,
-  deleteCampaign,
   EMPTY_CRITERIA,
   type CampaignCriteria,
 } from "@/lib/db/campaigns";
@@ -52,8 +51,9 @@ export default function CreateCampaignModal({
   const [preview, setPreview] = useState<{ key: string; matching: number; failed: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // Set once the campaign row exists and the CSV step is running against it.
-  const [csvCampaign, setCsvCampaign] = useState<{ id: string; name: string } | null>(null);
+  // Set while the file step is open. Holds what the campaign will be called,
+  // not a campaign: it doesn't exist until the import succeeds.
+  const [csvStep, setCsvStep] = useState<{ name: string; description: string } | null>(null);
 
   const criteriaKey = useMemo(() => JSON.stringify(criteria), [criteria]);
   const previewing = mode === "criteria" && preview?.key !== criteriaKey;
@@ -87,6 +87,19 @@ export default function CreateCampaignModal({
     setSaving(true);
     setError("");
     try {
+      if (mode === "csv") {
+        // Deliberately before anything is written: the campaign is created
+        // when the import finishes, not before it starts. An earlier version
+        // created the row here so the file step had something to attach to,
+        // and deleted it again if that step was abandoned, which is how a
+        // campaign that imported perfectly well could still disappear, and
+        // how closing the dialog mid-import could delete the row the import
+        // was about to fill.
+        setCsvStep({ name: name.trim(), description: description.trim() });
+        setSaving(false);
+        return;
+      }
+
       const id = await createCampaign({
         name,
         description,
@@ -96,15 +109,6 @@ export default function CreateCampaignModal({
 
       if (mode === "empty") {
         onCreated(id, `Campaign "${name.trim()}" created. Add leads from the Leads tab, or open it to fill it in.`);
-        return;
-      }
-
-      if (mode === "csv") {
-        // The campaign has to exist before the import can be attached to it,
-        // so the file step runs against a real row. If it's abandoned the
-        // empty campaign is cleaned up rather than left behind.
-        setCsvCampaign({ id, name: name.trim() });
-        setSaving(false);
         return;
       }
 
@@ -126,64 +130,51 @@ export default function CreateCampaignModal({
   }
 
   /**
-   * Whether the file step got as far as importing something.
+   * The file step finished: now the campaign gets made, and the leads that
+   * were just imported go on it.
    *
-   * ImportLeadsCsvModal calls onImported and then onClose, so a finished
-   * import and an abandoned one arrive through the same door. Without this
-   * flag the cleanup below deleted the campaign it had just filled: the
-   * campaign appeared, the toast said it was created, and it was gone from
-   * the list a moment later. A ref, not state, because it has to be true by
-   * the time onClose runs in the same tick.
+   * The campaign is only ever written on this path, so there is no window in
+   * which a half-finished flow leaves a row behind to be cleaned up, and no
+   * cleanup that can delete a campaign someone is still filling. If the
+   * import lands but this fails, the leads are still on the Leads tab and
+   * the message says so.
    */
-  const importFinished = useRef(false);
-
-  /** The CSV step finished: put exactly those leads on the new campaign. */
   async function attachImported(count: number, leadIds: string[]) {
-    if (!csvCampaign) return;
-    importFinished.current = true;
+    const step = csvStep;
+    if (!step) return;
     try {
-      const added = await addLeadsToCampaign(csvCampaign.id, { kind: "ids", ids: leadIds });
+      const id = await createCampaign({
+        name: step.name,
+        description: step.description,
+        createdBy: actor?.id ?? null,
+        createdByName: actor?.name ?? null,
+      });
+      const added = await addLeadsToCampaign(id, { kind: "ids", ids: leadIds });
       onCreated(
-        csvCampaign.id,
-        `Campaign "${csvCampaign.name}" created with ${added.toLocaleString()} of ${count.toLocaleString()} imported lead${count !== 1 ? "s" : ""}.`,
+        id,
+        `Campaign "${step.name}" created with ${added.toLocaleString()} of ${count.toLocaleString()} imported lead${count !== 1 ? "s" : ""}.`,
       );
     } catch (err) {
-      // The leads did import, they're on the Leads tab either way, so say
-      // what actually happened rather than implying the file was lost.
-      setCsvCampaign(null);
+      setCsvStep(null);
       setError(
         getErrorMessage(
           err,
-          "The leads imported, but adding them to the campaign failed. Add them from the Leads tab.",
+          "The leads imported, but the campaign wasn't created. They're on the Leads tab, and you can build a campaign from them there.",
         ),
       );
     }
   }
 
-  /** Abandoning the file step shouldn't leave an empty campaign behind. */
-  async function cancelCsvStep() {
-    const created = csvCampaign;
-    setCsvCampaign(null);
-    // An import that ran is not an abandoned step, whatever order the
-    // modal's callbacks arrive in.
-    if (!created || importFinished.current) return;
-    try {
-      await deleteCampaign(created.id);
-    } catch {
-      // Not worth interrupting anyone over: the campaign is simply empty,
-      // and deleting it is a click on the list.
-    }
-  }
-
   // While the CSV step is open it replaces this dialog, rather than stacking
-  // two modals on top of each other.
-  if (csvCampaign) {
+  // two modals on top of each other. Backing out of it leaves nothing
+  // behind, because nothing has been written yet.
+  if (csvStep) {
     return (
       <ImportLeadsCsvModal
         actor={actor}
-        submitLabel={`Import & add to ${csvCampaign.name}`}
+        submitLabel={`Import & add to ${csvStep.name}`}
         onImported={attachImported}
-        onClose={cancelCsvStep}
+        onClose={() => setCsvStep(null)}
       />
     );
   }
