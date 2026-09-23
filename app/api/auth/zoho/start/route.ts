@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { ZOHO_STATE_COOKIE, zohoAuthorizeUrl, zohoConfigured } from "@/lib/zoho-auth";
+import { ZOHO_STATE_COOKIE, zohoAuthorizeUrl, zohoConfigured, zohoRedirectUri } from "@/lib/zoho-auth";
 import { appOrigin } from "@/lib/app-origin";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   }
 
   const state = randomUUID();
-  const redirectUri = `${appOrigin(req)}/api/auth/zoho/callback`;
+  const redirectUri = zohoRedirectUri(appOrigin(req));
   const res = NextResponse.redirect(zohoAuthorizeUrl({ redirectUri, state }));
 
   // httpOnly so the page can't read it, and short lived: this only has to

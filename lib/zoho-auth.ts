@@ -15,6 +15,18 @@ export const ZOHO_STATE_COOKIE = "zoho_oauth_state";
 
 const ACCOUNTS = (process.env.ZOHO_ACCOUNTS_DOMAIN ?? "accounts.zoho.com").replace(/^https?:\/\//, "");
 
+/**
+ * Where Zoho sends people back to, which has to match what's registered in
+ * the API console character for character: scheme, host, port, path, no
+ * trailing slash. Overridable because a console that will only hold one
+ * URI, or a deployment on a domain we can't guess, both need the app to
+ * send something other than "this request's origin".
+ */
+export function zohoRedirectUri(origin: string): string {
+  const explicit = process.env.ZOHO_REDIRECT_URI?.trim();
+  return explicit || `${origin}/api/auth/zoho/callback`;
+}
+
 export function zohoConfigured(): boolean {
   return Boolean(process.env.ZOHO_CLIENT_ID && process.env.ZOHO_CLIENT_SECRET);
 }
