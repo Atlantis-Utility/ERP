@@ -12,6 +12,12 @@ import { zohoConfigured } from "@/lib/zoho-auth";
  * default: Zoho covers the people outside the Microsoft tenant without
  * anybody having to store a password.
  */
+// Rendered per request rather than baked at build time: which buttons
+// exist is read from the environment, and a page frozen into the build
+// would keep saying "no Zoho" until the next deploy, however many times
+// the variables were set in the meantime.
+export const dynamic = "force-dynamic";
+
 export default function LoginPage() {
   return (
     <Suspense
