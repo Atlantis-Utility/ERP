@@ -9,9 +9,10 @@ import Select from "@/components/ui/Select";
 import { updateEmployee, updateEmployeeAccess, removeEmployee } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { NAV_PAGES } from "@/lib/nav-pages";
-import { Check, Lock } from "lucide-react";
+import { Check, Lock, Mail } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getErrorMessage } from "@/lib/utils";
+import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
 import type { Employee, EmployeeStatus, AccessRole } from "@/lib/mock-data";
 
@@ -41,6 +42,8 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
   const [errors, setErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
   const [saving, setSaving]           = useState(false);
   const [saveError, setSaveError]     = useState("");
+  const [inviting, setInviting]       = useState(false);
+  const { success, error: notifyError } = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting]       = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -100,6 +103,33 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     if (!form.location.trim()) errs.location = "Location is required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
+  }
+
+  /**
+   * Creates the login if it doesn't exist yet and emails a link to set a
+   * password. Admin-only, and the route checks that too: the UI hiding a
+   * button has never been a permission.
+   */
+  async function sendInvite() {
+    setInviting(true);
+    try {
+      const res = await fetch("/api/auth/password-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.email.trim(), kind: "invite" }),
+      });
+      const body = (await res.json()) as { ok?: boolean; created?: boolean; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Couldn't send the link");
+      success(
+        body.created
+          ? `Login created. ${form.email.trim()} can set a password from the link.`
+          : `Sent ${form.email.trim()} a link to set a new password.`,
+      );
+    } catch (err) {
+      notifyError(getErrorMessage(err, "Couldn't send the sign-in link"));
+    } finally {
+      setInviting(false);
+    }
   }
 
   async function handleSave() {
@@ -212,6 +242,30 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
             <input className={inputClass} placeholder="+1 (415) 555-0100" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
           </FormField>
         </div>
+
+        {isAdmin && (
+          <div className="border-t border-[#f7f7f7] pt-4">
+            <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-2">Sign-in</p>
+            <div className="flex items-start gap-3 justify-between">
+              <p className="text-[11px] text-[#999] leading-relaxed max-w-xs">
+                {/* The Microsoft button needs a tenant account. Anyone
+                    outside it signs in with an email and a password, which
+                    they set themselves from this link. */}
+                Emails {form.email.trim() || "them"} a link to set a password. For anyone who can&apos;t use the
+                Microsoft button. Sending it again replaces the last link.
+              </p>
+              <button
+                type="button"
+                onClick={sendInvite}
+                disabled={inviting || !form.email.trim()}
+                className="shrink-0 flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#0a0a0a] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                {inviting ? "Sending…" : "Send sign-in link"}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="border-t border-[#f7f7f7] pt-4">
           <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3">Role</p>

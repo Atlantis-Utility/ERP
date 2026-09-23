@@ -33,6 +33,11 @@ export interface AuthUser {
 interface AuthContextValue {
   authUser:              AuthUser | null;
   loading:               boolean;
+  /**
+   * Why a session that authenticated fine was still turned away, for the
+   * sign-in page to show. Empty in the normal case.
+   */
+  authError:             string | null;
   login:                 (email: string, password: string) => Promise<void>;
   loginWithMicrosoft:    () => Promise<void>;
   reverifyMicrosoftForVault: () => Promise<void>;
@@ -46,6 +51,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [loading, setLoading]   = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   // Tracks whether we've completed at least one profile load for the current
   // session — see the silent-reload guard below.
   const initializedRef = useRef(false);
@@ -88,24 +94,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         supabase.from("employees").select("id, name, data").eq("email", user.email).maybeSingle(),
       ]);
 
+      const employeeByEmail =
+        employeeByEmailResult.status === "fulfilled" ? employeeByEmailResult.value.data : null;
+      const employeeRole = (employeeByEmail?.data as { accessRole?: string } | undefined)?.accessRole;
+
+      // Authenticating is not the same as being let in. Sign-up is open at
+      // the Supabase end and the anon key ships in the browser bundle, so
+      // anyone could create an account against this project; before this
+      // check, the first load then handed them a profile with is_admin true
+      // and, with no employee row to restrict them, every page in the
+      // sidebar. An account has to correspond to somebody we employ, or to
+      // a profile that was already admitted.
+      //
+      // Both queries have to have actually answered: a failed lookup is not
+      // evidence of absence, and locking a real administrator out because
+      // the table was briefly unreachable is the worse mistake.
+      if (
+        profileResult.status === "fulfilled" &&
+        !profileResult.value.data &&
+        employeeByEmailResult.status === "fulfilled" &&
+        !employeeByEmail
+      ) {
+        console.warn("[auth] no employee record for", user.email);
+        setAuthError(
+          "That account isn't set up for this workspace. Ask an administrator to add you on the Employees page.",
+        );
+        setAuthUser(null);
+        setLoading(false);
+        await supabase.auth.signOut();
+        return;
+      }
+
       if (profileResult.status === "fulfilled" && profileResult.value.data) {
         const profile = profileResult.value.data;
         employeeId = profile.employee_id ?? null;
         isAdmin    = profile.is_admin    ?? !employeeId;
       } else if (profileResult.status === "fulfilled") {
-        // First sign-in: create admin profile
+        // First sign-in for somebody on the employee list. is_admin here is
+        // what requireAdmin() trusts for the admin-only API routes, so it
+        // follows the access role on their employee record rather than
+        // being true for everyone who ever signs in.
+        isAdmin = employeeRole === "Administrator";
         try {
           await supabase.from("user_profiles").insert({
             uid:          user.id,
             email:        user.email,
             display_name: user.user_metadata?.display_name ?? "",
-            employee_id:  null,
-            is_admin:     true,
+            employee_id:  employeeByEmail?.id ?? null,
+            is_admin:     isAdmin,
           });
         } catch (err) {
           console.warn("[auth] profile insert failed:", err);
         }
-        isAdmin = true;
       } else {
         // Profile table unreachable — let the user in as admin with
         // whatever we can derive from the Supabase Auth session.
@@ -116,7 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // may not be linked (e.g. admin accounts created before an employee record existed),
       // so the email-matched row above covers the common case. Only re-fetch when the
       // profile explicitly links to a different employee record than the email match.
-      let employeeRow = employeeByEmailResult.status === "fulfilled" ? employeeByEmailResult.value.data : null;
+      let employeeRow = employeeByEmail;
       if (employeeId && employeeRow?.id !== employeeId) {
         try {
           const { data } = await supabase.from("employees").select("id, name, data").eq("id", employeeId).maybeSingle();
@@ -153,6 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? employeeExtra?.accessRole === "Administrator"
         : isAdmin;
 
+      setAuthError(null);
       setAuthUser({
         user,
         employeeId,
@@ -196,7 +237,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // on every page load / session restore, which fires "INITIAL_SESSION"
       // instead). First time, Microsoft may show a one-time consent screen;
       // after that it's silent since the user already granted access.
-      if (event === "SIGNED_IN") {
+      // Only for a Microsoft sign-in. Someone who signed in with a password
+      // or through Zoho has no Microsoft account to connect, and sending
+      // them to the consent screen on every sign-in put a Microsoft wall in
+      // front of the people this app added email sign-in for in the first
+      // place.
+      const signedInWith = session.user.app_metadata?.provider;
+      if (event === "SIGNED_IN" && signedInWith === "azure") {
         try {
           if (!document.cookie.includes("outlook_connected=1")) {
             setTimeout(() => { window.location.href = "/api/outlook-calendar/connect"; }, 800);
@@ -321,7 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ authUser, loading, login, loginWithMicrosoft, reverifyMicrosoftForVault, logout, resetPassword, updateDisplayName }}>
+    <AuthContext.Provider value={{ authUser, loading, authError, login, loginWithMicrosoft, reverifyMicrosoftForVault, logout, resetPassword, updateDisplayName }}>
       {children}
     </AuthContext.Provider>
   );
