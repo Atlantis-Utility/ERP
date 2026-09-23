@@ -14,7 +14,9 @@ export async function GET(req: Request) {
 
   const state = randomUUID();
   const redirectUri = zohoRedirectUri(appOrigin(req));
-  const res = NextResponse.redirect(zohoAuthorizeUrl({ redirectUri, state }));
+  // ?switch=1 comes from "use a different account" on the sign-in page.
+  const forcePrompt = new URL(req.url).searchParams.get("switch") === "1";
+  const res = NextResponse.redirect(zohoAuthorizeUrl({ redirectUri, state, forcePrompt }));
 
   // httpOnly so the page can't read it, and short lived: this only has to
   // survive the trip to Zoho and back. Without it, anyone could feed the

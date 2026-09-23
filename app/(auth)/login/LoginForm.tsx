@@ -34,13 +34,7 @@ const CALLBACK_ERRORS: Record<string, string> = {
   zoho_bad_response: "Zoho sent back something unexpected. Try again.",
 };
 
-export default function LoginForm({
-  zohoEnabled,
-  passwordEnabled,
-}: {
-  zohoEnabled: boolean;
-  passwordEnabled: boolean;
-}) {
+export default function LoginForm({ zohoEnabled }: { zohoEnabled: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
   const { login, loginWithMicrosoft, authUser, loading, authError } = useAuth();
@@ -245,9 +239,21 @@ export default function LoginForm({
                   <span className="flex-1 text-left">Continue with Zoho</span>
                 </a>
               )}
+
+              {zohoEnabled && (
+                // Zoho signs you straight back in as whoever it already has
+                // a session for, which is what you want every morning and
+                // exactly what you don't want on a shared machine.
+                <a
+                  href="/api/auth/zoho/start?switch=1"
+                  className="block text-center text-[11px] text-[#999] hover:text-[#666] transition-colors"
+                >
+                  Not you? Use a different Zoho account
+                </a>
+              )}
             </div>
 
-            {passwordEnabled && (
+            {(
               <>
                 <div className="flex items-center gap-3 my-5">
                   <span className="h-px flex-1 bg-[#eaeaea]" />

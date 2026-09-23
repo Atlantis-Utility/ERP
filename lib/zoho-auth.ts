@@ -31,7 +31,19 @@ export function zohoConfigured(): boolean {
   return Boolean(process.env.ZOHO_CLIENT_ID && process.env.ZOHO_CLIENT_SECRET);
 }
 
-export function zohoAuthorizeUrl(opts: { redirectUri: string; state: string }): string {
+export function zohoAuthorizeUrl(opts: {
+  redirectUri: string;
+  state: string;
+  /**
+   * Make Zoho ask, instead of waving through whoever is already signed in
+   * to it in this browser. Off for the ordinary click: somebody who signs
+   * in every morning shouldn't have to confirm every morning. On for "use
+   * a different account", which is the case that silent sign-in makes
+   * impossible: without it, a second person on a shared machine gets
+   * signed in as the first with nothing on screen to say so.
+   */
+  forcePrompt?: boolean;
+}): string {
   const url = new URL(`https://${ACCOUNTS}/oauth/v2/auth`);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", process.env.ZOHO_CLIENT_ID!);
@@ -42,6 +54,9 @@ export function zohoAuthorizeUrl(opts: { redirectUri: string; state: string }): 
   // consent screen in front of it for no gain.
   url.searchParams.set("scope", "AaaServer.profile.READ");
   url.searchParams.set("access_type", "online");
+  // Zoho owns its own session and we can't clear it from here, but we can
+  // decline to accept it silently when somebody says that isn't them.
+  if (opts.forcePrompt) url.searchParams.set("prompt", "consent");
   return url.toString();
 }
 
