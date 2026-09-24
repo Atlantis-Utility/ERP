@@ -48,6 +48,15 @@ export default function LoginForm({ zohoEnabled }: { zohoEnabled: boolean }) {
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
   const [sent, setSent] = useState(false);
+  /**
+   * The password form is out of the way until it's needed. Microsoft and
+   * Zoho cover everyone who has one of those accounts, and a page that
+   * offers a password box to people who never use one is a page inviting
+   * them to try. It opens on request, and by itself when a sign-in attempt
+   * came back without a session, which is the moment the other two have
+   * demonstrably failed for whoever is standing there.
+   */
+  const [showPassword, setShowPassword] = useState(Boolean(callbackError));
 
   useEffect(() => {
     if (!loading && authUser) router.replace("/");
@@ -253,7 +262,17 @@ export default function LoginForm({ zohoEnabled }: { zohoEnabled: boolean }) {
               )}
             </div>
 
-            {(
+            {!showPassword && (
+              <button
+                type="button"
+                onClick={() => setShowPassword(true)}
+                className="mt-5 w-full text-center text-[12px] text-[#666] py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+              >
+                Sign in with a password instead
+              </button>
+            )}
+
+            {showPassword && (
               <>
                 <div className="flex items-center gap-3 my-5">
                   <span className="h-px flex-1 bg-[#eaeaea]" />
