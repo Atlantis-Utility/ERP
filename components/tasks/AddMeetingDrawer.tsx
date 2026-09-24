@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import DateTimePicker from "@/components/ui/DateTimePicker";
+import TimePicker from "@/components/ui/TimePicker";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
@@ -218,12 +219,7 @@ export default function AddMeetingDrawer({ open, onClose, onAdd }: Props) {
             />
           </FormField>
           <FormField label="Time" required error={errors.meetingTime}>
-            <input
-              className={inputClass}
-              type="time"
-              value={form.meetingTime}
-              onChange={(e) => set("meetingTime", e.target.value)}
-            />
+            <TimePicker value={form.meetingTime} onChange={(v) => set("meetingTime", v)} />
           </FormField>
           <FormField label="Duration">
             <Select

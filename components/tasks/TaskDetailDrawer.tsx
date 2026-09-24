@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import DateTimePicker from "@/components/ui/DateTimePicker";
+import TimePicker from "@/components/ui/TimePicker";
 import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
@@ -324,12 +325,7 @@ export default function TaskDetailDrawer({ card, open, onClose, onUpdate, onDele
               </FormField>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Time">
-                  <input
-                    type="time"
-                    className={inputClass}
-                    value={form.meetingTime}
-                    onChange={(e) => setF("meetingTime", e.target.value)}
-                  />
+                  <TimePicker value={form.meetingTime} onChange={(v) => setF("meetingTime", v)} />
                 </FormField>
                 <FormField label="Duration (min)">
                   <input

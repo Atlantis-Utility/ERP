@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Calendar, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Calendar, Clock } from "lucide-react";
 import FloatingLayer from "./FloatingLayer";
+import { TimeColumns, formatTime12 } from "./TimePicker";
 
 interface Props {
   value: string; // "YYYY-MM-DDTHH:mm" or "YYYY-MM-DD" (when dateOnly)
@@ -99,6 +100,7 @@ export default function DateTimePicker({
   const [selectedDate, setSelectedDate] = useState<{ year: number; month: number; day: number } | null>(
     parsed ? { year: parsed.year, month: parsed.month, day: parsed.day } : null
   );
+  const [timeOpen, setTimeOpen] = useState(false);
   const [time, setTime] = useState(
     parsed
       ? `${String(parsed.hour).padStart(2, "0")}:${String(parsed.minute).padStart(2, "0")}`
@@ -304,18 +306,31 @@ export default function DateTimePicker({
       {!dateOnly && (
         <>
           <div className="mt-3 pt-3 border-t border-[#f4f4f4]">
-            <div className="flex items-center gap-2.5">
+            {/* The time reads as a value until you go to change it. The
+                columns are the same ones TimePicker uses, shown in place
+                rather than as a popover out of a popover. */}
+            <button
+              type="button"
+              onClick={() => setTimeOpen((o) => !o)}
+              className="w-full flex items-center gap-2.5 rounded-lg px-1 py-1 hover:bg-[#fafafa] transition-colors"
+            >
               <div className="flex items-center gap-1.5 flex-1">
                 <Clock className="w-3.5 h-3.5 text-[#999] shrink-0" />
                 <span className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">Time</span>
               </div>
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => handleTimeChange(e.target.value)}
-                className="text-sm font-medium text-[#0a0a0a] bg-[#f5f5f5] border border-transparent rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0a0a0a]/20 focus:bg-white focus:border-[#eaeaea] transition-colors"
+              <span className="text-sm font-medium text-[#0a0a0a] bg-[#f5f5f5] rounded-lg px-2.5 py-1">
+                {formatTime12(time) || "Set"}
+              </span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-[#999] transition-transform ${timeOpen ? "rotate-180" : ""}`}
               />
-            </div>
+            </button>
+
+            {timeOpen && (
+              <div className="mt-2">
+                <TimeColumns value={time} onChange={handleTimeChange} />
+              </div>
+            )}
           </div>
 
           {/* Confirm: only needed when time is selectable */}
