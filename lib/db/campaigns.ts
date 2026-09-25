@@ -787,3 +787,85 @@ export async function revokeCampaignGrant(grantId: string): Promise<void> {
   const { error } = await withTimeout(supabase.from("campaign_grants").delete().eq("id", grantId));
   if (error) throw error;
 }
+
+/* ─── Which campaigns a lead is on ──────────────────────────────────────── */
+
+/**
+ * A lead's place on a campaign sheet, as the Leads tab shows it.
+ *
+ * `doNotCall` belongs to the sheet row rather than to the lead: someone
+ * marks "don't call" while working a list, and that's where it's recorded.
+ * A lead is treated as do-not-call if any sheet says so, because the point
+ * of the flag is that nobody rings them.
+ */
+export interface LeadCampaignTag {
+  id: string;
+  name: string;
+  doNotCall: boolean;
+}
+
+export async function fetchCampaignsForLeads(leadIds: string[]): Promise<Map<string, LeadCampaignTag[]>> {
+  const out = new Map<string, LeadCampaignTag[]>();
+  if (leadIds.length === 0) return out;
+
+  // Chunked, like every other `in` list here: a page of leads is a hundred
+  // ids and a URL-encoded list of thousands is a request too long to send.
+  for (let i = 0; i < leadIds.length; i += 150) {
+    const { data, error } = await withTimeout(
+      supabase
+        .from("campaign_leads")
+        .select("lead_id, do_not_call, campaigns(id, name)")
+        .in("lead_id", leadIds.slice(i, i + 150)),
+    );
+    if (error) throw error;
+    for (const row of (data ?? []) as unknown as {
+      lead_id: string;
+      do_not_call: boolean | null;
+      campaigns: { id: string; name: string } | null;
+    }[]) {
+      if (!row.campaigns) continue;
+      out.set(row.lead_id, [
+        ...(out.get(row.lead_id) ?? []),
+        { id: row.campaigns.id, name: row.campaigns.name, doNotCall: Boolean(row.do_not_call) },
+      ]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Kept current: a lead added to a campaign, or marked do-not-call on one,
+ * shows up on the Leads tab without a reload. Reads only what the visible
+ * page needs, since the join table has ten thousand rows.
+ */
+export function useCampaignsForLeads(leadIds: string[]): Map<string, LeadCampaignTag[]> {
+  const [byLead, setByLead] = useState<Map<string, LeadCampaignTag[]>>(new Map());
+  // The ids as one string, so this re-runs when the page's leads change and
+  // not on every render that rebuilds an identical array.
+  const key = leadIds.join(",");
+
+  useEffect(() => {
+    const ids = key ? key.split(",") : [];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    const load = () => {
+      fetchCampaignsForLeads(ids)
+        .then((map) => {
+          if (!cancelled) setByLead(map);
+        })
+        // A reader who can't see campaign rows simply sees no tags. Not
+        // worth an error on a lead list.
+        .catch(() => {});
+    };
+    load();
+    const stop = subscribeChanges("leads-campaign-tags", ["campaign_leads"], load);
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [key]);
+
+  return leadIds.length === 0 ? NO_TAGS : byLead;
+}
+
+const NO_TAGS: Map<string, LeadCampaignTag[]> = new Map();

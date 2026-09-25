@@ -15,7 +15,9 @@ import LeadsAccessModal from "@/components/leads/LeadsAccessModal";
 import DiscoverPanel from "@/components/leads/DiscoverPanel";
 import StatusPicker from "@/components/leads/StatusPicker";
 import LeadsTabs from "@/components/leads/LeadsTabs";
+import Link from "next/link";
 import ReviewChangesModal from "@/components/campaigns/ReviewChangesModal";
+import { useCampaignsForLeads } from "@/lib/db/campaigns";
 import Tooltip from "@/components/ui/Tooltip";
 import {
   usePendingForLeads,
@@ -311,6 +313,9 @@ export default function LeadsPage() {
   // one shows here too, for anyone who can see the lead, whether or not they
   // hold that campaign.
   const pendingByLead = usePendingForLeads(rows.map((l) => l.id));
+  // Which campaigns each lead is on, and whether any of those sheets has
+  // them marked do-not-call.
+  const campaignsByLead = useCampaignsForLeads(rows.map((l) => l.id));
   const [showReview, setShowReview] = useState(false);
   const queryError = result?.error ?? "";
 
@@ -871,6 +876,9 @@ export default function LeadsPage() {
                         Location
                       </th>
                       <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
+                        Campaign
+                      </th>
+                      <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-4 py-3">
                         Owner
                       </th>
                       <th className="text-left px-4 py-3">{sortButton("follow_up_date", "Follow-up")}</th>
@@ -886,12 +894,19 @@ export default function LeadsPage() {
                       const editable = access.canEdit(l);
                       const level = access.levelFor(l);
                       const changes = pendingByLead.get(l.id) ?? [];
+                      const onCampaigns = campaignsByLead.get(l.id) ?? [];
+                      // Do-not-call is recorded on a campaign sheet, not on
+                      // the lead. One sheet saying it is enough: the point
+                      // of the flag is that nobody rings them.
+                      const doNotCall = onCampaigns.some((c) => c.doNotCall);
                       const proposed = (field: EditableLeadField) =>
                         changes.find((c) => c.field === field)?.newValue ?? null;
                       return (
                         <tr
                           key={l.id}
-                          className="group border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors"
+                          className={`group border-b border-[#f7f7f7] last:border-0 transition-colors ${
+                            doNotCall ? "bg-[#fef2f2] hover:bg-[#fde8e8]" : "hover:bg-[#fafafa]"
+                          }`}
                         >
                           {access.isAdmin && (
                             <td className="px-4 py-3">
@@ -917,7 +932,11 @@ export default function LeadsPage() {
                                   <Building2 className="w-3.5 h-3.5 text-[#0070f3]" />
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="text-sm font-medium text-[#0a0a0a] truncate hover:text-[#0070f3] transition-colors">
+                                  <p
+                                    className={`text-sm font-medium truncate transition-colors ${
+                                      doNotCall ? "text-[#f31260]" : "text-[#0a0a0a] hover:text-[#0070f3]"
+                                    }`}
+                                  >
                                     <Fact value={l.companyName} pending={proposed("companyName")} empty="" />
                                     {(proposed("dba") ?? l.dba) && (
                                       <span className="text-[#999] font-normal">
@@ -945,6 +964,13 @@ export default function LeadsPage() {
                                   </div>
                                 </div>
                               </button>
+                              {doNotCall && (
+                                <Tooltip label="Marked do not call on a campaign sheet">
+                                  <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#f31260] bg-[#fee] border border-[#fecdd3] rounded px-1 py-0.5">
+                                    DNC
+                                  </span>
+                                </Tooltip>
+                              )}
                               <PendingTag
                                 changes={changes}
                                 onReview={access.isAdmin ? () => setShowReview(true) : undefined}
@@ -1045,6 +1071,32 @@ export default function LeadsPage() {
                                   : null
                               }
                             />
+                          </td>
+                          <td className="px-4 py-3">
+                            {onCampaigns.length === 0 ? (
+                              <span className="text-xs text-[#ccc]">-</span>
+                            ) : (
+                              <div className="flex items-center gap-1 min-w-0">
+                                {/* The first by name and a count for the
+                                    rest: a lead on five lists would push
+                                    every other column off the screen. */}
+                                <Link
+                                  href={`/leads/campaigns/${onCampaigns[0].id}`}
+                                  className="text-xs text-[#0a0a0a] bg-[#f5f5f5] hover:bg-[#eaeaea] rounded px-1.5 py-0.5 truncate max-w-32 transition-colors"
+                                  title={onCampaigns.map((c) => c.name).join(", ")}
+                                >
+                                  {onCampaigns[0].name}
+                                </Link>
+                                {onCampaigns.length > 1 && (
+                                  <span
+                                    className="text-[10px] font-medium text-[#999] shrink-0"
+                                    title={onCampaigns.map((c) => c.name).join(", ")}
+                                  >
+                                    +{onCampaigns.length - 1}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             {l.assignedToName ? (
