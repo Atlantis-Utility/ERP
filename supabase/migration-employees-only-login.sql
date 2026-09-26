@@ -82,6 +82,25 @@ update user_profiles p
  where lower(e.email) = lower(p.email)
    and p.is_admin is distinct from ((e.data->>'accessRole') = 'Administrator');
 
+-- ── Nobody can make themselves an administrator ──────────────────────────
+-- user_profiles.is_admin decided who could call the admin-only API routes,
+-- and schema.sql's policy is "you may update your own row":
+--
+--   create policy "update own profile or admin" on user_profiles
+--     for update using (uid = auth.uid() or is_admin())
+--
+-- which means anyone signed in could set it on themselves with a single
+-- request. Hiding the Settings button was the only thing in the way.
+--
+-- Two changes. The API now decides "administrator" from the access role on
+-- the employee record (lib/api-auth.ts), the same rule erp_is_admin() uses
+-- in SQL, so this column is no longer what grants anything. And the column
+-- stops being writable from a browser session at all: Settings grants
+-- access through a route that checks first and writes with the service
+-- key, which these grants don't touch.
+revoke update (is_admin) on user_profiles from authenticated, anon;
+revoke insert (is_admin) on user_profiles from authenticated, anon;
+
 -- ── Turning the hook on ──────────────────────────────────────────────────
 -- Dashboard → Authentication → Hooks → "Before User Created":
 --   enable it, choose Postgres function, schema public,

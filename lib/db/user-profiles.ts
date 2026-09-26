@@ -43,15 +43,34 @@ export function subscribeUserProfiles(cb: (profiles: UserProfile[]) => void) {
 }
 
 /** Set or update admin status for a user. */
+/**
+ * Admin access is granted through an API route, not written from here: the
+ * table's policy lets anyone update their own row, so a client-side write
+ * meant anybody could grant it to themselves. The route checks the caller
+ * is an administrator and writes with the service key.
+ */
 export async function setUserAdmin(uid: string, isAdmin: boolean): Promise<void> {
-  const { error } = await supabase.from(TABLE).update({ is_admin: isAdmin }).eq("uid", uid);
-  if (error) throw error;
+  const res = await fetch("/api/admin/user-access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid, isAdmin }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? "Couldn't update access");
+  }
 }
 
-/** Ensure the current user's profile exists and has isAdmin: true. */
-export async function ensureAdminProfile(uid: string, email: string): Promise<void> {
+/**
+ * Makes sure the signed-in user has a profile row. It used to force
+ * is_admin true, which is how a Contributor's first visit to Settings made
+ * them an administrator to every route that trusts that column. Admin is
+ * decided by the access role on the employee record now, so this only
+ * fills the gap where no row exists at all.
+ */
+export async function ensureProfile(uid: string, email: string): Promise<void> {
   const { error } = await supabase
     .from(TABLE)
-    .upsert({ uid, email, employee_id: null, is_admin: true }, { onConflict: "uid", ignoreDuplicates: false });
+    .upsert({ uid, email }, { onConflict: "uid", ignoreDuplicates: true });
   if (error) throw error;
 }

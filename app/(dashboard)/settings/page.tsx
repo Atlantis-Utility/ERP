@@ -5,7 +5,7 @@ import { getAvatarColor, getInitials } from "@/lib/utils";
 import { Check, Shield, ShieldOff, Moon, Sun } from "lucide-react";
 import { logActivity } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
-import { subscribeUserProfiles, setUserAdmin, ensureAdminProfile, type UserProfile } from "@/lib/db/user-profiles";
+import { subscribeUserProfiles, setUserAdmin, type UserProfile } from "@/lib/db/user-profiles";
 import { useTheme } from "@/lib/theme-context";
 
 type Tab = "appearance" | "team";
@@ -131,13 +131,6 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [togglingUid, setTogglingUid] = useState<string | null>(null);
 
-  // Ensure current user has isAdmin: true in Supabase
-  useEffect(() => {
-    if (authUser?.user?.id && authUser.isAdmin) {
-      ensureAdminProfile(authUser.user.id, authUser.email).catch(console.error);
-    }
-  }, [authUser]);
-
   // Live listener for all user profiles
   useEffect(() => {
     const unsub = subscribeUserProfiles(setProfiles);
@@ -163,7 +156,10 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
     }
   }
 
-  if (!authUser?.isAdmin) {
+  // The access role on the employee record, not user_profiles.is_admin:
+  // that column was set true for everyone on their first sign-in, so
+  // gating on it showed this panel to the whole company.
+  if (authUser?.employeeAccessRole !== "Administrator") {
     return (
       <div className="bg-white border border-[#eaeaea] rounded-xl p-8 text-center">
         <p className="text-sm text-[#999]">Only admins can view and manage access.</p>
@@ -258,6 +254,8 @@ function TeamTab({ onSave }: { onSave: (msg: string) => void }) {
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const { authUser } = useAuth();
+  const isAdministrator = authUser?.employeeAccessRole === "Administrator";
   const [activeTab, setActiveTab] = useState<Tab>("appearance");
   const [toast, setToast] = useState<string | null>(null);
 
@@ -274,9 +272,11 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs. Team is an administrator's, so it isn't offered to anyone
+          else: a tab that only ever says "you can't see this" is worse
+          than no tab. */}
       <div className="border-b border-[#eaeaea] mb-6 flex gap-0 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => tab.key !== "team" || isAdministrator).map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -292,7 +292,7 @@ export default function SettingsPage() {
       </div>
 
       {activeTab === "appearance" && <AppearanceTab onSave={showToast} />}
-      {activeTab === "team"       && <TeamTab       onSave={showToast} />}
+      {activeTab === "team" && isAdministrator && <TeamTab onSave={showToast} />}
 
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </div>
