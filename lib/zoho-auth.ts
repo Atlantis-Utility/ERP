@@ -27,6 +27,45 @@ export function zohoRedirectUri(origin: string): string {
   return explicit || `${origin}/api/auth/zoho/callback`;
 }
 
+// Zoho's data centres, spelled out rather than pattern-matched: a lookalike
+// that slipped past a regex would be handed the client secret.
+const ZOHO_ACCOUNT_HOSTS = new Set([
+  "accounts.zoho.com",
+  "accounts.zoho.eu",
+  "accounts.zoho.in",
+  "accounts.zoho.com.au",
+  "accounts.zoho.jp",
+  "accounts.zoho.com.cn",
+  "accounts.zoho.sa",
+  "accounts.zoho.uk",
+  "accounts.zohocloud.ca",
+  ACCOUNTS,
+]);
+
+/**
+ * The accounts host to redeem a code at.
+ *
+ * A code is only good at the data centre that issued it, and that isn't
+ * necessarily ours: with multi-DC enabled, somebody whose account lives in
+ * .in or .eu is signed in there and Zoho says so in the callback's
+ * `accounts-server` parameter. Trading their code at accounts.zoho.com gets
+ * `invalid_code`. The parameter arrives on a URL anyone can type, though,
+ * and the client secret goes wherever this points, so only a genuine Zoho
+ * accounts host is taken; anything else falls back to the configured one.
+ */
+export function zohoAccountsHost(accountsServer: string | null): string {
+  if (!accountsServer) return ACCOUNTS;
+  try {
+    const u = new URL(accountsServer);
+    if (u.protocol === "https:" && ZOHO_ACCOUNT_HOSTS.has(u.hostname)) {
+      return u.hostname;
+    }
+  } catch {
+    // Not a URL; fall through.
+  }
+  return ACCOUNTS;
+}
+
 export function zohoConfigured(): boolean {
   return Boolean(process.env.ZOHO_CLIENT_ID && process.env.ZOHO_CLIENT_SECRET);
 }
@@ -69,7 +108,10 @@ export interface ZohoIdentity {
 export async function zohoIdentityFromCode(opts: {
   code: string;
   redirectUri: string;
+  /** From zohoAccountsHost: the data centre that issued the code. */
+  accountsHost?: string;
 }): Promise<ZohoIdentity> {
+  const host = opts.accountsHost ?? ACCOUNTS;
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     client_id: process.env.ZOHO_CLIENT_ID!,
@@ -78,7 +120,7 @@ export async function zohoIdentityFromCode(opts: {
     code: opts.code,
   });
 
-  const tokenRes = await fetch(`https://${ACCOUNTS}/oauth/v2/token`, {
+  const tokenRes = await fetch(`https://${host}/oauth/v2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
@@ -88,10 +130,10 @@ export async function zohoIdentityFromCode(opts: {
   // Zoho answers a rejected exchange with HTTP 200 and an `error` key, so
   // the status alone doesn't tell you whether this worked.
   if (!tokenRes.ok || !token.access_token) {
-    throw new Error(`zoho token exchange failed: ${token.error ?? tokenRes.status}`);
+    throw new Error(`zoho token exchange failed at ${host}: ${token.error ?? tokenRes.status}`);
   }
 
-  const infoRes = await fetch(`https://${ACCOUNTS}/oauth/user/info`, {
+  const infoRes = await fetch(`https://${host}/oauth/user/info`, {
     headers: { Authorization: `Zoho-oauthtoken ${token.access_token}` },
     cache: "no-store",
   });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { parse as parseCookies } from "cookie";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { ZOHO_STATE_COOKIE, zohoConfigured, zohoIdentityFromCode, zohoRedirectUri } from "@/lib/zoho-auth";
+import { ZOHO_STATE_COOKIE, zohoAccountsHost, zohoConfigured, zohoIdentityFromCode, zohoRedirectUri } from "@/lib/zoho-auth";
 import { appOrigin } from "@/lib/app-origin";
 
 export const runtime = "nodejs";
@@ -47,8 +47,13 @@ export async function GET(req: Request) {
 
   let identity;
   try {
-    // The same URI the code was issued for, or Zoho rejects the trade.
-    identity = await zohoIdentityFromCode({ code, redirectUri: zohoRedirectUri(origin) });
+    // The same URI the code was issued for, at the data centre that issued
+    // it, or Zoho rejects the trade.
+    identity = await zohoIdentityFromCode({
+      code,
+      redirectUri: zohoRedirectUri(origin),
+      accountsHost: zohoAccountsHost(url.searchParams.get("accounts-server")),
+    });
   } catch (err) {
     console.error("[auth:zoho]", err);
     return fail("zoho_exchange_failed");
