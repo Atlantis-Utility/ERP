@@ -37,6 +37,18 @@ export interface ExtraColumn {
   label: string;
 }
 
+/**
+ * A colour this campaign uses, and what it means. The name is the point:
+ * a sheet where three rows are amber and nobody remembers why is worse
+ * than no colour at all, so the legend above the sheet lists these.
+ */
+export interface PaletteColor {
+  id: string;
+  name: string;
+  /** One of the fixed swatches in lib/campaign-constants. */
+  swatch: string;
+}
+
 export interface SheetColumns {
   /** Built-in column key -> the heading this campaign wants instead. */
   labels?: Record<string, string>;
@@ -51,6 +63,7 @@ export interface SheetColumns {
    * sheet of unlabelled rows is no use to anyone.
    */
   hidden?: string[];
+  palette?: PaletteColor[];
 }
 
 export interface Campaign {
@@ -101,6 +114,11 @@ export interface CampaignRow {
   notes: string | null;
   /** Values for the columns this campaign added, keyed by column id. */
   extra: Record<string, string>;
+  /**
+   * Which palette colour paints what: a column key for one cell, "__row"
+   * for the whole row. Requires supabase/migration-campaign-colors.sql.
+   */
+  colors: Record<string, string>;
   updatedAt: string | null;
   updatedByName: string | null;
   /**
@@ -129,6 +147,7 @@ export type CampaignRowPatch = Partial<
     | "doNotCall"
     | "notes"
     | "extra"
+    | "colors"
   >
 >;
 
@@ -536,6 +555,7 @@ interface SheetRowRaw {
   do_not_call: boolean | null;
   notes: string | null;
   extra: Record<string, string> | null;
+  colors: Record<string, string> | null;
   updated_at: string | null;
   updated_by_name: string | null;
   pending: Record<string, string | null> | null;
@@ -568,6 +588,7 @@ const fromSheetRow = (r: SheetRowRaw): CampaignRow => ({
   doNotCall: Boolean(r.do_not_call),
   notes: r.notes,
   extra: r.extra ?? {},
+  colors: r.colors ?? {},
   updatedAt: r.updated_at,
   updatedByName: r.updated_by_name,
   pending: r.pending ?? {},
@@ -678,6 +699,7 @@ const PATCH_COLUMNS: Record<keyof CampaignRowPatch, string> = {
   doNotCall: "do_not_call",
   notes: "notes",
   extra: "extra",
+  colors: "colors",
 };
 
 /**
@@ -758,6 +780,23 @@ export async function fetchSheetRowIds(campaignId: string, filters: CampaignRowF
     if (batch.length < 500) break;
   }
   return ids;
+}
+
+/**
+ * Paints the whole of each row, or clears it with a null colour. One
+ * request for the selection rather than one per row, which for 250 rows is
+ * the difference between instant and a progress bar.
+ */
+export async function colorSheetRows(rowIds: string[], color: string | null): Promise<void> {
+  if (rowIds.length === 0) return;
+  const CHUNK = 500;
+  for (let i = 0; i < rowIds.length; i += CHUNK) {
+    const { error } = await withTimeout(
+      supabase.rpc("campaign_rows_set_color", { p_row_ids: rowIds.slice(i, i + CHUNK), p_color: color }),
+      30_000,
+    );
+    if (error) throw error;
+  }
 }
 
 export async function removeSheetRows(rowIds: string[]): Promise<void> {

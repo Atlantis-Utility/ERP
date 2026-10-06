@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Overlay from "@/components/ui/Overlay";
 import { X, Loader2, Plus, Trash2, RotateCcw, Eye, EyeOff } from "lucide-react";
-import { setCampaignMeta, type Campaign, type ExtraColumn } from "@/lib/db/campaigns";
-import { SHEET_COLUMNS, ALWAYS_SHOWN } from "@/lib/campaign-constants";
+import { setCampaignMeta, type Campaign, type ExtraColumn, type PaletteColor } from "@/lib/db/campaigns";
+import { SHEET_COLUMNS, ALWAYS_SHOWN, SWATCHES } from "@/lib/campaign-constants";
 import { getErrorMessage } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
 
@@ -38,6 +38,7 @@ export default function SheetColumnsModal({
   const [hidden, setHidden] = useState<Set<string>>(
     new Set((campaign.columns.hidden ?? []).filter((k) => !ALWAYS_SHOWN.has(k))),
   );
+  const [colors, setColors] = useState<PaletteColor[]>(campaign.columns.palette ?? []);
   const [saving, setSaving] = useState(false);
   const { success, error: toastError } = useToast();
 
@@ -50,6 +51,13 @@ export default function SheetColumnsModal({
       else next.add(key);
       return next;
     });
+  }
+
+  function addColor() {
+    // The next swatch nobody has taken, so two colours don't start the same.
+    const taken = new Set(colors.map((c) => c.swatch));
+    const swatch = (SWATCHES.find((s) => !taken.has(s.id)) ?? SWATCHES[0]).id;
+    setColors((prev) => [...prev, { id: `k${Date.now().toString(36)}`, name: "", swatch }]);
   }
 
   function addColumn() {
@@ -72,10 +80,12 @@ export default function SheetColumnsModal({
       // A column with no heading is one somebody added and thought better
       // of, so it is dropped rather than saved as a blank heading.
       const keptExtra = extra.filter((c) => c.label.trim()).map((c) => ({ id: c.id, label: c.label.trim() }));
+      // A colour nobody named means nothing on the sheet, so it isn't kept.
+      const keptColors = colors.filter((c) => c.name.trim()).map((c) => ({ ...c, name: c.name.trim() }));
       await setCampaignMeta(campaign.id, {
         name: name.trim(),
         description: description.trim(),
-        columns: { labels: keptLabels, extra: keptExtra, hidden: [...hidden] },
+        columns: { labels: keptLabels, extra: keptExtra, hidden: [...hidden], palette: keptColors },
       });
       success("Sheet updated.");
       onSaved();
@@ -125,6 +135,62 @@ export default function SheetColumnsModal({
             placeholder="What this list is, and who it's for"
             className="w-full border border-[#eaeaea] rounded-md px-3 py-2 text-sm text-[#0a0a0a] placeholder:text-[#bbb] outline-none focus:border-[#0070f3] transition-colors resize-none"
           />
+
+          <div className="flex items-center justify-between mt-6 mb-2">
+            <p className="text-[11px] font-semibold text-[#999] uppercase tracking-wider">Colours</p>
+            <button
+              onClick={addColor}
+              disabled={colors.length >= SWATCHES.length}
+              className="flex items-center gap-1 text-[12px] font-medium text-[#0070f3] hover:underline disabled:text-[#ccc] disabled:no-underline"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add colour
+            </button>
+          </div>
+          {colors.length === 0 ? (
+            <p className="text-[12px] text-[#bbb] border border-dashed border-[#eaeaea] rounded-md px-3 py-3">
+              None yet. Name a colour and it becomes something you can paint a row or a cell with —
+              right-click any cell on the sheet — and it appears in the legend above the sheet.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {colors.map((color, i) => (
+                <div key={color.id} className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 shrink-0">
+                    {SWATCHES.map((swatch) => (
+                      <button
+                        key={swatch.id}
+                        onClick={() =>
+                          setColors((prev) => prev.map((c) => (c.id === color.id ? { ...c, swatch: swatch.id } : c)))
+                        }
+                        aria-label={swatch.label}
+                        title={swatch.label}
+                        className={`w-4 h-4 rounded-full ${swatch.dot} transition-transform ${
+                          color.swatch === swatch.id ? "ring-2 ring-offset-1 ring-[#0a0a0a] scale-110" : "hover:scale-110"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <input
+                    value={color.name}
+                    autoFocus={i === colors.length - 1 && color.name === ""}
+                    onChange={(e) =>
+                      setColors((prev) => prev.map((c) => (c.id === color.id ? { ...c, name: e.target.value } : c)))
+                    }
+                    placeholder="What it means, e.g. Call back today"
+                    className="flex-1 min-w-0 border border-[#eaeaea] rounded-md px-3 py-1.5 text-sm text-[#0a0a0a] placeholder:text-[#bbb] outline-none focus:border-[#0070f3] transition-colors"
+                  />
+                  <button
+                    onClick={() => setColors((prev) => prev.filter((c) => c.id !== color.id))}
+                    className="p-1.5 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"
+                    aria-label={`Remove ${color.name || "this colour"}`}
+                    title="Remove this colour"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center justify-between mt-6 mb-2">
             <p className="text-[11px] font-semibold text-[#999] uppercase tracking-wider">Your own columns</p>

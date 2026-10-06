@@ -1,5 +1,5 @@
 // Shared across the campaign list, the create dialog, and the call sheet.
-import type { CampaignStatus, SheetColumns } from "./db/campaigns";
+import type { CampaignStatus, PaletteColor, SheetColumns } from "./db/campaigns";
 
 /**
  * Call outcomes, offered as a fixed list so the sheet can be filtered and
@@ -165,3 +165,34 @@ export function hiddenColumns(columns: SheetColumns | undefined): Set<string> {
 
 /** The columns a campaign is allowed to put away. */
 export const ALWAYS_SHOWN = new Set(["no", "company"]);
+
+/**
+ * The colours a campaign can paint with.
+ *
+ * A fixed set, not a colour picker: every one of these tints already has a
+ * dark-mode counterpart in app/globals.css, and an arbitrary hex would
+ * render as a bright block on a dark sheet. A campaign names them — the
+ * swatch is the ink, the name is the meaning.
+ */
+export const SWATCHES: { id: string; label: string; bg: string; dot: string }[] = [
+  { id: "amber", label: "Amber", bg: "bg-[#fefce8]", dot: "bg-[#f5a524]" },
+  { id: "green", label: "Green", bg: "bg-[#f0fdf4]", dot: "bg-[#17c964]" },
+  { id: "blue", label: "Blue", bg: "bg-[#eff6ff]", dot: "bg-[#0070f3]" },
+  { id: "red", label: "Red", bg: "bg-[#fef2f2]", dot: "bg-[#f31260]" },
+  { id: "violet", label: "Violet", bg: "bg-[#f3e8ff]", dot: "bg-[#7c3aed]" },
+  { id: "orange", label: "Orange", bg: "bg-[#fff7e6]", dot: "bg-[#d97706]" },
+  { id: "cyan", label: "Cyan", bg: "bg-[#ecfeff]", dot: "bg-[#0891b2]" },
+  { id: "grey", label: "Grey", bg: "bg-[#f1f1f1]", dot: "bg-[#999]" },
+];
+
+export const SWATCH_BY_ID = new Map(SWATCHES.map((s) => [s.id, s]));
+
+/** The key a whole-row colour is stored under. */
+export const ROW_COLOR_KEY = "__row";
+
+/** The tint for a colour this campaign defined, or nothing. */
+export function paletteBg(palette: PaletteColor[] | undefined, colorId: string | undefined): string {
+  if (!colorId) return "";
+  const color = palette?.find((p) => p.id === colorId);
+  return (color && SWATCH_BY_ID.get(color.swatch)?.bg) || "";
+}

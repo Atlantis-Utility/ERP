@@ -17,6 +17,7 @@ import {
   Download,
   ListOrdered,
   Columns3,
+  Lock,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -42,6 +43,7 @@ import {
   updateSheetRow,
   removeSheetRows,
   assignSheetRows,
+  colorSheetRows,
   fetchSheetRowIds,
   renumberCampaign,
   fetchSheetRows,
@@ -61,6 +63,9 @@ import {
   sheetColumnsFor,
   hiddenColumns,
   columnLabel,
+  paletteBg,
+  ROW_COLOR_KEY,
+  SWATCH_BY_ID,
   type SheetColumnDef,
 } from "@/lib/campaign-constants";
 import {
@@ -77,6 +82,8 @@ const PAGE_SIZE = 100;
 // The bulk rep menu's "nobody" entry. Not "", which the Select reads as
 // nothing picked.
 const UNASSIGN = "__unassign__";
+/** The colour menu's "take the colour off" entry. */
+const CLEAR_COLOR = "__clear";
 
 // Shared cell chrome. A spreadsheet reads as a grid, so every cell is the
 // same height with a hairline border and no rounded corners: the editable
@@ -148,6 +155,19 @@ const FACT_COLUMNS = {
 
 type FactColumn = keyof typeof FACT_COLUMNS;
 
+/** The sheet column each lead fact is shown in, for colouring and renaming. */
+const FACT_COLUMN_KEYS: Record<FactColumn, string> = {
+  companyName: "company",
+  contactName: "contact",
+  address1: "address1",
+  city: "city",
+  state: "state",
+  zip: "zip",
+  phone: "phone",
+  email: "email",
+  category: "category",
+};
+
 /** A correction typed into the sheet, before the page is refetched. */
 interface LocalFact {
   value: string;
@@ -191,6 +211,8 @@ export default function CampaignSheetPage() {
   const [showReview, setShowReview] = useState(false);
   const [showAddLeads, setShowAddLeads] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
+  /** Where the colour menu is open, and on what. */
+  const [paint, setPaint] = useState<{ x: number; y: number; row: CampaignRow; key: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const { success, error: notifyError } = useToast();
 
@@ -254,6 +276,17 @@ export default function CampaignSheetPage() {
   // untouched, and comes back if the column does.
   const hidden = useMemo(() => hiddenColumns(campaign?.columns), [campaign?.columns]);
   const shows = (key: string) => !hidden.has(key);
+  const palette = useMemo(() => campaign?.columns.palette ?? [], [campaign?.columns]);
+
+  /**
+   * A cell's tint: its own colour if it has one, otherwise the row's. The
+   * row colour is the broad stroke ("this lot are the parent company") and
+   * a cell colour is the exception on top of it.
+   */
+  function cellClass(row: CampaignRow, key: string, extra = "") {
+    const tint = paletteBg(palette, row.colors?.[key] ?? row.colors?.[ROW_COLOR_KEY]);
+    return `${CELL} ${extra} ${tint}`.trim();
+  }
   const columnWidths = sheetColumnWidths(canEdit, columnDefs);
   const pins = pinOffsets(canEdit, columnDefs);
 
@@ -365,14 +398,18 @@ export default function CampaignSheetPage() {
    */
   function factTd(row: CampaignRow, column: FactColumn, extra?: (value: string) => ReactNode) {
     const cell = factCell(row, column);
+    const key = FACT_COLUMN_KEYS[column];
     return (
-      <td className={`${CELL} ${cell.pending ? PENDING_CELL : ""}`}>
+      <td
+        className={cellClass(row, key, cell.pending ? PENDING_CELL : "")}
+        onContextMenu={(e) => openPaint(e, row, key)}
+      >
         <div className="flex items-center gap-1">
           <input
             type="text"
             defaultValue={cell.value}
             key={`${column}-${row.rowId}-${cell.value}`}
-            disabled={!canEdit}
+            disabled={!canEdit || row.doNotCall}
             onBlur={(e) => submitFact(row, column, e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
@@ -546,6 +583,57 @@ export default function CampaignSheetPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Right-clicking a cell offers this campaign's colours. Right-click
+   * rather than a control in every cell: the sheet is already a grid of
+   * inputs, and a swatch button in each of twenty columns would be louder
+   * than the data.
+   */
+  function openPaint(e: React.MouseEvent, row: CampaignRow, key: string) {
+    if (!canEdit || palette.length === 0 || row.doNotCall) return;
+    e.preventDefault();
+    setPaint({ x: e.clientX, y: e.clientY, row, key });
+  }
+
+  async function applyPaint(colorId: string | null) {
+    if (!paint) return;
+    const { row, key } = paint;
+    setPaint(null);
+    const colors = { ...row.colors };
+    if (colorId) colors[key] = colorId;
+    else delete colors[key];
+    await commit(row, { colors });
+  }
+
+  /** The same colour across every selected row. */
+  async function colorSelected(colorId: string) {
+    const ids = [...selected];
+    if (ids.length === 0 || !colorId) return;
+    setBusy(true);
+    try {
+      await colorSheetRows(ids, colorId === CLEAR_COLOR ? null : colorId);
+      setSelected(new Set());
+      setRevision((r) => r + 1);
+      const named = palette.find((c) => c.id === colorId)?.name;
+      success(named ? `Coloured ${ids.length} row${ids.length === 1 ? "" : "s"} ${named}.` : `Cleared the colour on ${ids.length}.`);
+    } catch (err) {
+      notifyError(getErrorMessage(err, "Failed to colour those rows"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Turning the flag off is the one edit a do-not-call row still takes. */
+  async function unlockRow(row: CampaignRow) {
+    const ok = await confirm({
+      title: `Turn off do not call for ${row.companyName ?? "this row"}?`,
+      description: "The row becomes editable again, and stops being counted as do-not-call.",
+      confirmLabel: "Turn off",
+    });
+    if (!ok) return;
+    await commit(row, { doNotCall: false });
   }
 
   /** Every row the filters match, not just the hundred on screen. */
@@ -739,6 +827,19 @@ export default function CampaignSheetPage() {
                   />
                 </div>
               )}
+              {palette.length > 0 && (
+                <div className="w-40">
+                  <Select
+                    value=""
+                    onChange={colorSelected}
+                    placeholder={`Colour ${selected.size}…`}
+                    options={[
+                      ...palette.map((c) => ({ value: c.id, label: c.name })),
+                      { value: CLEAR_COLOR, label: "No colour" },
+                    ]}
+                  />
+                </div>
+              )}
               {/* The page is fully ticked but the sheet is longer than the
                   page, which is the one moment "and the rest" is useful. */}
               {pageFullySelected && selected.size < total && (
@@ -807,6 +908,29 @@ export default function CampaignSheetPage() {
           </div>
           {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#999]" />}
         </div>
+
+        {/* What the colours on this sheet mean. Without it a highlighted row
+            is just a highlighted row, and whoever painted it is the only one
+            who knows why. */}
+        {palette.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap px-4 pb-3 -mt-1">
+            <span className="text-[11px] font-medium text-[#999] uppercase tracking-wider">Legend</span>
+            {palette.map((color) => (
+              <span
+                key={color.id}
+                className="inline-flex items-center gap-1.5 text-[11px] text-[#444] border border-[#eaeaea] rounded-full pl-1.5 pr-2.5 py-0.5"
+              >
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${SWATCH_BY_ID.get(color.swatch)?.dot ?? "bg-[#999]"}`} />
+                {color.name}
+              </span>
+            ))}
+            {canEdit && (
+              <button onClick={() => setShowColumns(true)} className="text-[11px] text-[#0070f3] hover:underline">
+                Edit
+              </button>
+            )}
+          </div>
+        )}
 
         {loading && !result && (
           <div className="p-12 text-center">
@@ -948,6 +1072,19 @@ export default function CampaignSheetPage() {
                               <AlertTriangle className="w-3 h-3 text-[#f31260]" />
                             </span>
                           )}
+                          {/* A do-not-call row is read-only, and this is the
+                              way back: the DNC column itself can be hidden,
+                              and a row nobody can unlock is a dead row. */}
+                          {row.doNotCall && canEdit && (
+                            <button
+                              onClick={() => unlockRow(row)}
+                              title="Do not call. Click to turn that off and edit this row."
+                              aria-label={`Turn off do not call for row ${row.position}`}
+                              className="shrink-0 p-0.5 rounded text-[#f31260] hover:bg-[#fde8e8] transition-colors"
+                            >
+                              <Lock className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                       </td>
                       <td
@@ -961,7 +1098,7 @@ export default function CampaignSheetPage() {
                             type="text"
                             defaultValue={company.value}
                             key={`co-${row.rowId}-${company.value}`}
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             onBlur={(e) => submitFact(row, "companyName", e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
@@ -1042,7 +1179,7 @@ export default function CampaignSheetPage() {
                           sheet's scroll container so they open over it
                           instead of being clipped by it. */}
                       {shows("callDate") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "callDate")} className={cellClass(row, "callDate")}>
                           <DateTimePicker
                             value={row.callDate ?? ""}
                             onChange={(v) => commit(row, { callDate: v || null })}
@@ -1050,19 +1187,19 @@ export default function CampaignSheetPage() {
                             clearable
                             floating
                             variant="cell"
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             placeholder="Not called"
                           />
                         </td>
                       )}
                       {shows("attempts") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "attempts")} className={cellClass(row, "attempts")}>
                           <input
                             type="text"
                             inputMode="numeric"
                             defaultValue={row.attempts ? String(row.attempts) : ""}
                             key={`at-${row.rowId}-${row.attempts}`}
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             onBlur={(e) => commit(row, { attempts: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
@@ -1072,7 +1209,7 @@ export default function CampaignSheetPage() {
                         </td>
                       )}
                       {shows("outcome") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "outcome")} className={cellClass(row, "outcome")}>
                           {/* showUnlistedValue: an outcome saved before this
                               list changed still has to display, or the row
                               would look blank and saving it would clear it. */}
@@ -1085,18 +1222,18 @@ export default function CampaignSheetPage() {
                             floating
                             clearable
                             showUnlistedValue
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             className={`rounded ${row.callOutcome ? (CALL_OUTCOME_STYLES[row.callOutcome] ?? "") : ""}`}
                           />
                         </td>
                       )}
                       {shows("feedback") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "feedback")} className={cellClass(row, "feedback")}>
                           <input
                             type="text"
                             defaultValue={row.callerFeedback ?? ""}
                             key={`fb-${row.rowId}-${row.callerFeedback ?? ""}`}
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             placeholder={canEdit ? "What they said…" : ""}
                             onBlur={(e) => commit(row, { callerFeedback: e.target.value })}
                             onKeyDown={(e) => {
@@ -1107,7 +1244,7 @@ export default function CampaignSheetPage() {
                         </td>
                       )}
                       {shows("interested") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "interested")} className={cellClass(row, "interested")}>
                           {/* allowCustom, because callers hear things that
                               aren't on any list, and rounding that to the
                               nearest option loses the useful part. */}
@@ -1121,12 +1258,12 @@ export default function CampaignSheetPage() {
                             clearable
                             allowCustom
                             customPlaceholder="What they asked about"
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                           />
                         </td>
                       )}
                       {shows("bestTime") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "bestTime")} className={cellClass(row, "bestTime")}>
                           <Select
                             value={row.bestTime ?? ""}
                             onChange={(v) => commit(row, { bestTime: v })}
@@ -1137,12 +1274,12 @@ export default function CampaignSheetPage() {
                             clearable
                             allowCustom
                             customPlaceholder="When to call back"
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                           />
                         </td>
                       )}
                       {shows("followUp") && (
-                        <td className={`${CELL} ${dueSoon ? "bg-[#fef2f2]" : ""}`}>
+                        <td onContextMenu={(e) => openPaint(e, row, "followUp")} className={cellClass(row, "followUp", dueSoon ? "bg-[#fef2f2]" : "")}>
                           {/* quickDates: on a call sheet the answer is almost
                               always today, tomorrow or next week. */}
                           <DateTimePicker
@@ -1153,18 +1290,18 @@ export default function CampaignSheetPage() {
                             quickDates
                             floating
                             variant="cell"
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             placeholder="None"
                           />
                         </td>
                       )}
                       {shows("nextAction") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "nextAction")} className={cellClass(row, "nextAction")}>
                           <input
                             type="text"
                             defaultValue={row.nextAction ?? ""}
                             key={`na-${row.rowId}-${row.nextAction ?? ""}`}
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             placeholder={canEdit ? "Next step…" : ""}
                             onBlur={(e) => commit(row, { nextAction: e.target.value })}
                             onKeyDown={(e) => {
@@ -1175,7 +1312,7 @@ export default function CampaignSheetPage() {
                         </td>
                       )}
                       {shows("rep") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "rep")} className={cellClass(row, "rep")}>
                           <Select
                             value={row.assignedRep ?? ""}
                             onChange={(id) =>
@@ -1196,12 +1333,12 @@ export default function CampaignSheetPage() {
                             // of filling the sheet in. Enforced by
                             // campaign_leads_guard_rep, this only stops the
                             // control being offered to someone it would refuse.
-                            disabled={!isAdmin}
+                            disabled={!isAdmin || row.doNotCall}
                           />
                         </td>
                       )}
                       {shows("dnc") && (
-                        <td className={`${CELL} text-center`}>
+                        <td onContextMenu={(e) => openPaint(e, row, "dnc")} className={cellClass(row, "dnc", "text-center")}>
                           <input
                             type="checkbox"
                             checked={row.doNotCall}
@@ -1213,7 +1350,7 @@ export default function CampaignSheetPage() {
                         </td>
                       )}
                       {shows("notes") && (
-                        <td className={CELL}>
+                        <td onContextMenu={(e) => openPaint(e, row, "notes")} className={cellClass(row, "notes")}>
                           <input
                             type="text"
                             defaultValue={row.notes ?? ""}
@@ -1222,7 +1359,7 @@ export default function CampaignSheetPage() {
                             // the box, the same way the other free-text cells
                             // behave.
                             key={`notes-${row.rowId}-${row.notes ?? ""}`}
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             // Follows the heading: a campaign that calls this column
                           // "Notes/Call Summary" shouldn't prompt for
                           // something else.
@@ -1241,12 +1378,16 @@ export default function CampaignSheetPage() {
                           stored on the row against the column's id, so
                           renaming the column later keeps what people typed. */}
                       {extraColumns.map((col) => (
-                        <td key={col.id} className={CELL}>
+                        <td
+                          key={col.id}
+                          className={cellClass(row, `x:${col.id}`)}
+                          onContextMenu={(e) => openPaint(e, row, `x:${col.id}`)}
+                        >
                           <input
                             type="text"
                             defaultValue={row.extra[col.id] ?? ""}
                             key={`x-${row.rowId}-${col.id}-${row.extra[col.id] ?? ""}`}
-                            disabled={!canEdit}
+                            disabled={!canEdit || row.doNotCall}
                             placeholder={canEdit ? col.label : ""}
                             title={row.extra[col.id] ?? ""}
                             onBlur={(e) =>
@@ -1307,6 +1448,46 @@ export default function CampaignSheetPage() {
       {showAccess && campaign && isAdmin && (
         <CampaignAccessModal campaign={campaign} actor={actor} onClose={() => setShowAccess(false)} />
       )}
+      {/* The colour menu. A full-screen catcher behind it closes it on the
+          next click anywhere, including the next right-click. */}
+      {paint && (
+        <div
+          className="fixed inset-0 z-[90]"
+          onClick={() => setPaint(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setPaint(null);
+          }}
+        >
+          <div
+            style={{ left: Math.min(paint.x, window.innerWidth - 200), top: Math.min(paint.y, window.innerHeight - 40 - palette.length * 32) }}
+            className="absolute w-48 bg-white border border-[#eaeaea] rounded-lg shadow-xl py-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="px-3 py-1 text-[10px] font-semibold text-[#bbb] uppercase tracking-wider truncate">
+              {paint.key === ROW_COLOR_KEY ? "Whole row" : (columnDefs.find((c) => c.key === paint.key)?.label ?? "Cell")}
+            </p>
+            {palette.map((color) => (
+              <button
+                key={color.id}
+                onClick={() => applyPaint(color.id)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-[#444] hover:bg-[#fafafa] transition-colors"
+              >
+                <span className={`w-3 h-3 rounded-full shrink-0 ${SWATCH_BY_ID.get(color.swatch)?.dot ?? "bg-[#999]"}`} />
+                <span className="truncate">{color.name}</span>
+              </button>
+            ))}
+            <button
+              onClick={() => applyPaint(null)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-[#666] hover:bg-[#fafafa] transition-colors border-t border-[#f5f5f5] mt-1 pt-2"
+            >
+              <span className="w-3 h-3 rounded-full border border-[#ddd] shrink-0" />
+              No colour
+            </button>
+          </div>
+        </div>
+      )}
+
       {showColumns && campaign && canEdit && (
         <SheetColumnsModal
           campaign={campaign}
