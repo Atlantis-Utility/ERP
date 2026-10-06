@@ -90,3 +90,18 @@ export function hasPageAccess(href: string, access: string[] | undefined): boole
   if (!page) return true;
   return access.includes(page.href);
 }
+
+/**
+ * The first page this person can actually open, in sidebar order.
+ *
+ * Signing in lands on "/", and "/" is a grantable page like any other: an
+ * employee given only Leads and Settings was dropped on a dashboard they
+ * aren't allowed to see, which rendered as a 404. Authenticating and then
+ * being told the page doesn't exist reads as "I can't log in", which is
+ * exactly how it was reported.
+ */
+export function firstAllowedPage(access: string[] | undefined): string | null {
+  if (!access) return "/";
+  const page = NAV_PAGES.find((p) => access.includes(p.href));
+  return page?.href ?? null;
+}
