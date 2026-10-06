@@ -121,14 +121,14 @@ function sheetColumnWidths(canEdit: boolean): number[] {
     ...(canEdit ? [COL.check] : []),
     COL.no,
     COL.company,
-    COL.contact,
     COL.address1,
     COL.city,
     COL.state,
     COL.zip,
+    COL.category,
     COL.phone,
     COL.email,
-    COL.category,
+    COL.contact,
     COL.callDate,
     COL.attempts,
     COL.outcome,
@@ -471,14 +471,14 @@ export default function CampaignSheetPage() {
         [
           "No.",
           "Company Name",
-          "Contact",
           "Address1",
           "City",
           "State",
           "Zip",
+          "Category",
           "Phone",
           "Email",
-          "Category",
+          "Contact Name",
           "Source",
           "Call Date",
           "Attempts",
@@ -495,14 +495,14 @@ export default function CampaignSheetPage() {
         all.map((r) => [
           r.position,
           r.companyName ?? "",
-          r.contactName ?? "",
           r.address1 ?? "",
           r.city ?? "",
           r.state ?? "",
           r.zip ?? "",
+          r.category ?? "",
           r.phone ?? "",
           r.email ?? "",
-          r.category ?? "",
+          r.contactName ?? "",
           r.source ?? "",
           r.callDate ?? "",
           r.attempts,
@@ -915,14 +915,17 @@ export default function CampaignSheetPage() {
                     Company Name
                   </th>
                   {[
-                    "Contact",
+                    // Where the business is, then what it is, then how to
+                    // reach it: the contact's name sits with the phone and
+                    // the email rather than away from them.
                     "Address1",
                     "City",
                     "State",
                     "Zip",
+                    "Category",
                     "Phone",
                     "Email",
-                    "Category",
+                    "Contact Name",
                     "Call Date",
                     "Attempts",
                     "Call Outcome",
@@ -1043,13 +1046,11 @@ export default function CampaignSheetPage() {
                           permission to rewrite the lead database, so an
                           editor's change is queued for an administrator,
                           whose own edits go straight through. */}
-                      {factTd(row, "contactName", (v) => (
-                        <CopyButton value={v} label="contact name" revealOnHover />
-                      ))}
                       {factTd(row, "address1")}
                       {factTd(row, "city")}
                       {factTd(row, "state")}
                       {factTd(row, "zip")}
+                      {factTd(row, "category")}
                       {factTd(row, "phone", (v) =>
                         v ? (
                           <a
@@ -1072,7 +1073,9 @@ export default function CampaignSheetPage() {
                           </a>
                         ) : null,
                       )}
-                      {factTd(row, "category")}
+                      {factTd(row, "contactName", (v) => (
+                        <CopyButton value={v} label="contact name" revealOnHover />
+                      ))}
 
                       {/* Call results: the editable half of the sheet. The
                           pickers are the app's own, floating out of the
