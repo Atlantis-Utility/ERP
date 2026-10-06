@@ -638,6 +638,61 @@ export async function updateSheetRow(
   if (error) throw error;
 }
 
+/**
+ * Assigns many rows at once, or clears them with a null rep.
+ *
+ * Handing a campaign to somebody fills in the rows nobody holds
+ * (campaign_fill_assigned_rep), so a campaign shared with a second editor
+ * can end up with every row in the first one's name. Correcting that a row
+ * at a time is the only thing the sheet offered, which for a 250-row
+ * campaign isn't an option a person would take.
+ *
+ * Chunked like removeSheetRows, and it carries the same name
+ * denormalisation the per-row control does so the sheet and its export can
+ * show a rep without joining employees per row. Only an administrator gets
+ * through: campaign_leads_guard_rep refuses the write otherwise.
+ */
+export async function assignSheetRows(
+  rowIds: string[],
+  rep: { id: string; name: string } | null,
+  actor?: { id: string; name: string } | null,
+): Promise<void> {
+  if (rowIds.length === 0) return;
+  const update = {
+    assigned_rep: rep?.id ?? null,
+    assigned_rep_name: rep?.name ?? null,
+    updated_at: new Date().toISOString(),
+    updated_by: actor?.id ?? null,
+    updated_by_name: actor?.name ?? null,
+  };
+  const CHUNK = 200;
+  for (let i = 0; i < rowIds.length; i += CHUNK) {
+    const { error } = await withTimeout(
+      supabase
+        .from("campaign_leads")
+        .update(update)
+        .in("id", rowIds.slice(i, i + CHUNK)),
+      30_000,
+    );
+    if (error) throw error;
+  }
+}
+
+/**
+ * Every row id matching these filters, for "select all" over a sheet longer
+ * than the page on screen. Paged at the 500 campaign_rows allows, the same
+ * way the CSV export walks the sheet.
+ */
+export async function fetchSheetRowIds(campaignId: string, filters: CampaignRowFilters): Promise<string[]> {
+  const ids: string[] = [];
+  for (let page = 0; ; page++) {
+    const batch = await fetchSheetRows({ campaignId, filters, page, pageSize: 500 });
+    ids.push(...batch.map((r) => r.rowId));
+    if (batch.length < 500) break;
+  }
+  return ids;
+}
+
 export async function removeSheetRows(rowIds: string[]): Promise<void> {
   if (rowIds.length === 0) return;
   const CHUNK = 200;

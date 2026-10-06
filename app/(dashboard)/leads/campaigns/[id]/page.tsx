@@ -39,6 +39,8 @@ import {
   sheetQueryKey,
   updateSheetRow,
   removeSheetRows,
+  assignSheetRows,
+  fetchSheetRowIds,
   renumberCampaign,
   fetchSheetRows,
   EMPTY_ROW_FILTERS,
@@ -64,6 +66,10 @@ import { exportToCsv } from "@/lib/export";
 import { getErrorMessage, formatPhone, telHref, emailAddress } from "@/lib/utils";
 
 const PAGE_SIZE = 100;
+
+// The bulk rep menu's "nobody" entry. Not "", which the Select reads as
+// nothing picked.
+const UNASSIGN = "__unassign__";
 
 // Shared cell chrome. A spreadsheet reads as a grid, so every cell is the
 // same height with a hairline border and no rounded corners: the editable
@@ -272,6 +278,8 @@ export default function CampaignSheetPage() {
     () => (result?.rows ?? []).map((r) => ({ ...r, ...edits[r.rowId] })),
     [result, edits],
   );
+
+  const pageFullySelected = rows.length > 0 && rows.every((r) => selected.has(r.rowId));
 
   /* ─── Saving ───────────────────────────────────────────────────────── */
 
@@ -547,6 +555,52 @@ export default function CampaignSheetPage() {
     return options.sort((a, b) => a.label.localeCompare(b.label));
   }, [grants, employees, rows]);
 
+  /**
+   * Bulk assign. Handing a campaign to a second editor leaves every row in
+   * the first editor's name (campaign_fill_assigned_rep fills the blanks),
+   * and the only fix the sheet offered was the dropdown on each of 250
+   * rows. The rep filter above narrows to whoever is wrongly named, select
+   * all takes the lot, and this moves them in one go.
+   */
+  async function assignSelected(repId: string) {
+    const ids = [...selected];
+    if (ids.length === 0 || !repId) return;
+    const rep =
+      repId === UNASSIGN
+        ? null
+        : { id: repId, name: repOptions.find((r) => r.value === repId)?.label ?? repId };
+    const many = `${ids.length} row${ids.length !== 1 ? "s" : ""}`;
+    const ok = await confirm({
+      title: rep ? `Assign ${many} to ${rep.name}?` : `Clear the rep on ${many}?`,
+      description: "Whoever is named on those rows now is replaced.",
+      confirmLabel: rep ? "Assign" : "Clear",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await assignSheetRows(ids, rep, actor);
+      setSelected(new Set());
+      setRevision((r) => r + 1);
+      success(rep ? `Assigned ${many} to ${rep.name}.` : `Cleared the rep on ${many}.`);
+    } catch (err) {
+      notifyError(getErrorMessage(err, "Failed to reassign those rows"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Every row the filters match, not just the hundred on screen. */
+  async function selectAllMatching() {
+    setBusy(true);
+    try {
+      setSelected(new Set(await fetchSheetRowIds(campaignId, filters)));
+    } catch (err) {
+      notifyError(getErrorMessage(err, "Failed to select the whole sheet"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /* ─── Empty / missing states ───────────────────────────────────────── */
 
   if (!campaignsLoading && !campaign) {
@@ -703,13 +757,40 @@ export default function CampaignSheetPage() {
           {/* Acting on a selection, so it belongs with the search rather than
               in among the filters, which stay put. */}
           {canEdit && selected.size > 0 && (
-            <button
-              onClick={deleteSelected}
-              disabled={busy}
-              className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#f31260] px-3 py-1.5 rounded-md hover:bg-[#fff0f3] transition-colors disabled:opacity-50"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Remove {selected.size}
-            </button>
+            <>
+              {/* Only an administrator can move work between people, which is
+                  what campaign_leads_guard_rep enforces; the control is only
+                  offered to someone it wouldn't refuse. */}
+              {isAdmin && (
+                <div className="w-44">
+                  <Select
+                    value=""
+                    onChange={assignSelected}
+                    placeholder={`Assign ${selected.size}…`}
+                    options={[{ value: UNASSIGN, label: "Unassigned" }, ...repOptions]}
+                    searchable
+                  />
+                </div>
+              )}
+              {/* The page is fully ticked but the sheet is longer than the
+                  page, which is the one moment "and the rest" is useful. */}
+              {pageFullySelected && selected.size < total && (
+                <button
+                  onClick={selectAllMatching}
+                  disabled={busy}
+                  className="text-xs font-medium border border-[#eaeaea] bg-white text-[#0070f3] px-3 py-1.5 rounded-md hover:bg-[#f5faff] transition-colors disabled:opacity-50"
+                >
+                  Select all {total.toLocaleString()}
+                </button>
+              )}
+              <button
+                onClick={deleteSelected}
+                disabled={busy}
+                className="flex items-center gap-1.5 text-xs font-medium border border-[#eaeaea] bg-white text-[#f31260] px-3 py-1.5 rounded-md hover:bg-[#fff0f3] transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Remove {selected.size}
+              </button>
+            </>
           )}
 
           {/* The spacer is what pins the filters right, but in a wrapping row
@@ -801,7 +882,25 @@ export default function CampaignSheetPage() {
                     <th
                       style={{ left: pins.check }}
                       className="sticky z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9"
-                    />
+                    >
+                      <input
+                        type="checkbox"
+                        checked={pageFullySelected}
+                        onChange={(e) => {
+                          const all = e.target.checked;
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            for (const r of rows) {
+                              if (all) next.add(r.rowId);
+                              else next.delete(r.rowId);
+                            }
+                            return next;
+                          });
+                        }}
+                        aria-label="Select every row on this page"
+                        className="w-3 h-3 accent-[#0a0a0a] cursor-pointer"
+                      />
+                    </th>
                   )}
                   <th
                     style={{ left: pins.no }}
