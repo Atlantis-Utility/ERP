@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Overlay from "@/components/ui/Overlay";
-import { X, Loader2, Plus, Trash2, RotateCcw } from "lucide-react";
+import { X, Loader2, Plus, Trash2, RotateCcw, Eye, EyeOff } from "lucide-react";
 import { setCampaignMeta, type Campaign, type ExtraColumn } from "@/lib/db/campaigns";
-import { SHEET_COLUMNS } from "@/lib/campaign-constants";
+import { SHEET_COLUMNS, ALWAYS_SHOWN } from "@/lib/campaign-constants";
 import { getErrorMessage } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
 
@@ -35,10 +35,22 @@ export default function SheetColumnsModal({
   const [description, setDescription] = useState(campaign.description ?? "");
   const [labels, setLabels] = useState<Record<string, string>>(campaign.columns.labels ?? {});
   const [extra, setExtra] = useState<ExtraColumn[]>(campaign.columns.extra ?? []);
+  const [hidden, setHidden] = useState<Set<string>>(
+    new Set((campaign.columns.hidden ?? []).filter((k) => !ALWAYS_SHOWN.has(k))),
+  );
   const [saving, setSaving] = useState(false);
   const { success, error: toastError } = useToast();
 
   const renamedCount = SHEET_COLUMNS.filter((c) => (labels[c.key] ?? "").trim()).length;
+
+  function toggle(key: string) {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   function addColumn() {
     // Keyed by when it was made, because row values are stored against this
@@ -63,7 +75,7 @@ export default function SheetColumnsModal({
       await setCampaignMeta(campaign.id, {
         name: name.trim(),
         description: description.trim(),
-        columns: { labels: keptLabels, extra: keptExtra },
+        columns: { labels: keptLabels, extra: keptExtra, hidden: [...hidden] },
       });
       success("Sheet updated.");
       onSaved();
@@ -154,31 +166,51 @@ export default function SheetColumnsModal({
             </div>
           )}
 
-          <p className="text-[11px] font-semibold text-[#999] uppercase tracking-wider mt-6 mb-2">
-            Headings {renamedCount > 0 && <span className="text-[#0070f3] normal-case">· {renamedCount} renamed</span>}
+          <p className="text-[11px] font-semibold text-[#999] uppercase tracking-wider mt-6 mb-1">
+            Headings{" "}
+            {renamedCount > 0 && <span className="text-[#0070f3] normal-case">· {renamedCount} renamed</span>}
+            {hidden.size > 0 && <span className="text-[#999] normal-case">· {hidden.size} hidden</span>}
+          </p>
+          <p className="text-[11px] text-[#bbb] mb-2">
+            Type a heading to rename it, or hide a column this campaign doesn&apos;t use. Hiding keeps
+            whatever is stored in it.
           </p>
           <div className="space-y-1.5">
             {SHEET_COLUMNS.map((col) => {
               const renamed = (labels[col.key] ?? "").trim();
+              const off = hidden.has(col.key);
+              const pinned = ALWAYS_SHOWN.has(col.key);
               return (
-                <div key={col.key} className="flex items-center gap-2">
-                  <span className="w-36 shrink-0 text-[12px] text-[#666] truncate" title={col.label}>
+                <div key={col.key} className={`flex items-center gap-2 ${off ? "opacity-45" : ""}`}>
+                  <span className="w-32 shrink-0 text-[12px] text-[#666] truncate" title={col.label}>
                     {col.label}
                   </span>
                   <input
                     value={labels[col.key] ?? ""}
                     onChange={(e) => setLabels((prev) => ({ ...prev, [col.key]: e.target.value }))}
                     placeholder={col.label}
-                    className="flex-1 min-w-0 border border-[#eaeaea] rounded-md px-3 py-1.5 text-sm text-[#0a0a0a] placeholder:text-[#ccc] outline-none focus:border-[#0070f3] transition-colors"
+                    disabled={off}
+                    className="flex-1 min-w-0 border border-[#eaeaea] rounded-md px-3 py-1.5 text-sm text-[#0a0a0a] placeholder:text-[#ccc] outline-none focus:border-[#0070f3] transition-colors disabled:bg-[#fafafa]"
                   />
                   <button
                     onClick={() => setLabels((prev) => ({ ...prev, [col.key]: "" }))}
-                    disabled={!renamed}
+                    disabled={!renamed || off}
                     className="p-1.5 rounded-md text-[#bbb] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] transition-colors disabled:opacity-30"
                     aria-label={`Reset ${col.label}`}
                     title="Back to the original heading"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                  {/* The frozen pane stays: a sheet of unlabelled rows is no
+                      use to anyone. */}
+                  <button
+                    onClick={() => toggle(col.key)}
+                    disabled={pinned}
+                    className="p-1.5 rounded-md text-[#bbb] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] transition-colors disabled:opacity-20"
+                    aria-label={off ? `Show ${col.label}` : `Hide ${col.label}`}
+                    title={pinned ? "This one always shows" : off ? "Show this column" : "Hide this column"}
+                  >
+                    {off ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               );

@@ -145,8 +145,23 @@ export function columnLabel(columns: SheetColumns | undefined, key: string, fall
  * collide with a built-in one.
  */
 export function sheetColumnsFor(columns: SheetColumns | undefined): SheetColumnDef[] {
+  const hidden = hiddenColumns(columns);
   return [
-    ...SHEET_COLUMNS.map((c) => ({ ...c, label: columnLabel(columns, c.key, c.label) })),
+    ...SHEET_COLUMNS.filter((c) => !hidden.has(c.key)).map((c) => ({
+      ...c,
+      label: columnLabel(columns, c.key, c.label),
+    })),
     ...(columns?.extra ?? []).map((c) => ({ key: `x:${c.id}`, label: c.label, width: EXTRA_COL_WIDTH })),
   ];
 }
+
+/** Columns this campaign doesn't use. The frozen pane can't be one of them. */
+export function hiddenColumns(columns: SheetColumns | undefined): Set<string> {
+  const hidden = new Set(columns?.hidden ?? []);
+  hidden.delete("no");
+  hidden.delete("company");
+  return hidden;
+}
+
+/** The columns a campaign is allowed to put away. */
+export const ALWAYS_SHOWN = new Set(["no", "company"]);

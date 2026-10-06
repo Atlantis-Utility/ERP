@@ -41,6 +41,16 @@ export interface SheetColumns {
   /** Built-in column key -> the heading this campaign wants instead. */
   labels?: Record<string, string>;
   extra?: ExtraColumn[];
+  /**
+   * Built-in columns this campaign doesn't use. A campaign imported from a
+   * spreadsheet with fifteen columns shouldn't show twenty-one, most of
+   * them blank. Hiding one keeps whatever is stored in it, so showing it
+   * again brings the values back.
+   *
+   * "no" and "company" are never hidden: they are the frozen pane, and a
+   * sheet of unlabelled rows is no use to anyone.
+   */
+  hidden?: string[];
 }
 
 export interface Campaign {

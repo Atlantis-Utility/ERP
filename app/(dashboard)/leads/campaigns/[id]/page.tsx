@@ -59,6 +59,8 @@ import {
   BEST_TIME_OPTIONS,
   CHECK_COL_WIDTH,
   sheetColumnsFor,
+  hiddenColumns,
+  columnLabel,
   type SheetColumnDef,
 } from "@/lib/campaign-constants";
 import {
@@ -247,6 +249,11 @@ export default function CampaignSheetPage() {
   // them, plus any it has added itself.
   const columnDefs = useMemo(() => sheetColumnsFor(campaign?.columns), [campaign?.columns]);
   const extraColumns = campaign?.columns.extra ?? [];
+  // Columns this campaign has put away. Their cells aren't rendered at all,
+  // so a row stays in step with the headings; what is stored in them is
+  // untouched, and comes back if the column does.
+  const hidden = useMemo(() => hiddenColumns(campaign?.columns), [campaign?.columns]);
+  const shows = (key: string) => !hidden.has(key);
   const columnWidths = sheetColumnWidths(canEdit, columnDefs);
   const pins = pinOffsets(canEdit, columnDefs);
 
@@ -435,58 +442,39 @@ export default function CampaignSheetPage() {
         all.push(...batch);
         if (batch.length < 500 || all.length >= total) break;
       }
+      // The same columns the sheet shows, under the same headings: an
+      // export that doesn't match what you were looking at is a puzzle.
+      const value: Record<string, (r: CampaignRow) => string | number> = {
+        no: (r) => r.position,
+        company: (r) => r.companyName ?? "",
+        address1: (r) => r.address1 ?? "",
+        city: (r) => r.city ?? "",
+        state: (r) => r.state ?? "",
+        zip: (r) => r.zip ?? "",
+        category: (r) => r.category ?? "",
+        phone: (r) => r.phone ?? "",
+        email: (r) => r.email ?? "",
+        contact: (r) => r.contactName ?? "",
+        callDate: (r) => r.callDate ?? "",
+        attempts: (r) => r.attempts,
+        outcome: (r) => r.callOutcome ?? "",
+        feedback: (r) => r.callerFeedback ?? "",
+        interested: (r) => r.interestedIn ?? "",
+        bestTime: (r) => r.bestTime ?? "",
+        followUp: (r) => r.followUpDate ?? "",
+        nextAction: (r) => r.nextAction ?? "",
+        rep: (r) => r.assignedRepName ?? "",
+        dnc: (r) => (r.doNotCall ? "Yes" : ""),
+        notes: (r) => r.notes ?? "",
+      };
       exportToCsv(
         `${(campaign?.name ?? "campaign").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`,
-        [
-          "No.",
-          "Company Name",
-          "Address1",
-          "City",
-          "State",
-          "Zip",
-          "Category",
-          "Phone",
-          "Email",
-          "Contact Name",
-          "Source",
-          "Call Date",
-          "Attempts",
-          "Call Outcome",
-          "Caller Feedback / Prospect's Stated Problem",
-          "Interested In (Service)",
-          "Best Time",
-          "Follow-Up Date",
-          "Next Action",
-          "Assigned Rep",
-          "Do Not Call",
-          "Notes",
-          ...extraColumns.map((c) => c.label),
-        ],
-        all.map((r) => [
-          r.position,
-          r.companyName ?? "",
-          r.address1 ?? "",
-          r.city ?? "",
-          r.state ?? "",
-          r.zip ?? "",
-          r.category ?? "",
-          r.phone ?? "",
-          r.email ?? "",
-          r.contactName ?? "",
-          r.source ?? "",
-          r.callDate ?? "",
-          r.attempts,
-          r.callOutcome ?? "",
-          r.callerFeedback ?? "",
-          r.interestedIn ?? "",
-          r.bestTime ?? "",
-          r.followUpDate ?? "",
-          r.nextAction ?? "",
-          r.assignedRepName ?? "",
-          r.doNotCall ? "Yes" : "",
-          r.notes ?? "",
-          ...extraColumns.map((c) => r.extra[c.id] ?? ""),
-        ]),
+        columnDefs.map((c) => c.label),
+        all.map((r) =>
+          columnDefs.map((c) =>
+            c.key.startsWith("x:") ? (r.extra[c.key.slice(2)] ?? "") : (value[c.key]?.(r) ?? ""),
+          ),
+        ),
       );
       success(`Exported ${all.length.toLocaleString()} rows.`);
     } catch (err) {
@@ -1002,211 +990,252 @@ export default function CampaignSheetPage() {
                           permission to rewrite the lead database, so an
                           editor's change is queued for an administrator,
                           whose own edits go straight through. */}
-                      {factTd(row, "address1")}
-                      {factTd(row, "city")}
-                      {factTd(row, "state")}
-                      {factTd(row, "zip")}
-                      {factTd(row, "category")}
-                      {factTd(row, "phone", (v) =>
-                        v ? (
-                          <a
-                            href={telHref(v)}
-                            title={`Call ${formatPhone(v)}`}
-                            className="shrink-0 p-0.5 rounded text-[#0070f3] hover:bg-[#eff6ff] transition-colors"
-                          >
-                            <Phone className="w-3 h-3" />
-                          </a>
-                        ) : null,
+                      {shows("address1") && (
+                        factTd(row, "address1")
                       )}
-                      {factTd(row, "email", (v) =>
-                        emailAddress(v) ? (
-                          <a
-                            href={`mailto:${v}`}
-                            title={`Email ${v}`}
-                            className="shrink-0 p-0.5 rounded text-[#0070f3] hover:bg-[#eff6ff] transition-colors"
-                          >
-                            <Mail className="w-3 h-3" />
-                          </a>
-                        ) : null,
+                      {shows("city") && (
+                        factTd(row, "city")
                       )}
-                      {factTd(row, "contactName", (v) => (
-                        <CopyButton value={v} label="contact name" revealOnHover />
-                      ))}
+                      {shows("state") && (
+                        factTd(row, "state")
+                      )}
+                      {shows("zip") && (
+                        factTd(row, "zip")
+                      )}
+                      {shows("category") && (
+                        factTd(row, "category")
+                      )}
+                      {shows("phone") && (
+                        factTd(row, "phone", (v) =>
+                          v ? (
+                            <a
+                              href={telHref(v)}
+                              title={`Call ${formatPhone(v)}`}
+                              className="shrink-0 p-0.5 rounded text-[#0070f3] hover:bg-[#eff6ff] transition-colors"
+                            >
+                              <Phone className="w-3 h-3" />
+                            </a>
+                          ) : null,
+                        )
+                      )}
+                      {shows("email") && (
+                        factTd(row, "email", (v) =>
+                          emailAddress(v) ? (
+                            <a
+                              href={`mailto:${v}`}
+                              title={`Email ${v}`}
+                              className="shrink-0 p-0.5 rounded text-[#0070f3] hover:bg-[#eff6ff] transition-colors"
+                            >
+                              <Mail className="w-3 h-3" />
+                            </a>
+                          ) : null,
+                        )
+                      )}
+                      {shows("contact") && (
+                        factTd(row, "contactName", (v) => (
+                          <CopyButton value={v} label="contact name" revealOnHover />
+                        ))
+                      )}
 
                       {/* Call results: the editable half of the sheet. The
                           pickers are the app's own, floating out of the
                           sheet's scroll container so they open over it
                           instead of being clipped by it. */}
-                      <td className={CELL}>
-                        <DateTimePicker
-                          value={row.callDate ?? ""}
-                          onChange={(v) => commit(row, { callDate: v || null })}
-                          dateOnly
-                          clearable
-                          floating
-                          variant="cell"
-                          disabled={!canEdit}
-                          placeholder="Not called"
-                        />
-                      </td>
-                      <td className={CELL}>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          defaultValue={row.attempts ? String(row.attempts) : ""}
-                          key={`at-${row.rowId}-${row.attempts}`}
-                          disabled={!canEdit}
-                          onBlur={(e) => commit(row, { attempts: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className={`${INPUT} tabular-nums`}
-                        />
-                      </td>
-                      <td className={CELL}>
-                        {/* showUnlistedValue: an outcome saved before this
-                            list changed still has to display, or the row
-                            would look blank and saving it would clear it. */}
-                        <Select
-                          value={row.callOutcome ?? ""}
-                          onChange={(v) => commit(row, { callOutcome: v || null })}
-                          options={CALL_OUTCOME_OPTIONS}
-                          placeholder="-"
-                          variant="cell"
-                          floating
-                          clearable
-                          showUnlistedValue
-                          disabled={!canEdit}
-                          className={`rounded ${row.callOutcome ? (CALL_OUTCOME_STYLES[row.callOutcome] ?? "") : ""}`}
-                        />
-                      </td>
-                      <td className={CELL}>
-                        <input
-                          type="text"
-                          defaultValue={row.callerFeedback ?? ""}
-                          key={`fb-${row.rowId}-${row.callerFeedback ?? ""}`}
-                          disabled={!canEdit}
-                          placeholder={canEdit ? "What they said…" : ""}
-                          onBlur={(e) => commit(row, { callerFeedback: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className={INPUT}
-                        />
-                      </td>
-                      <td className={CELL}>
-                        {/* allowCustom, because callers hear things that
-                            aren't on any list, and rounding that to the
-                            nearest option loses the useful part. */}
-                        <Select
-                          value={row.interestedIn ?? ""}
-                          onChange={(v) => commit(row, { interestedIn: v })}
-                          options={SERVICE_OPTIONS}
-                          placeholder="-"
-                          variant="cell"
-                          floating
-                          clearable
-                          allowCustom
-                          customPlaceholder="What they asked about"
-                          disabled={!canEdit}
-                        />
-                      </td>
-                      <td className={CELL}>
-                        <Select
-                          value={row.bestTime ?? ""}
-                          onChange={(v) => commit(row, { bestTime: v })}
-                          options={BEST_TIME_OPTIONS}
-                          placeholder="-"
-                          variant="cell"
-                          floating
-                          clearable
-                          allowCustom
-                          customPlaceholder="When to call back"
-                          disabled={!canEdit}
-                        />
-                      </td>
-                      <td className={`${CELL} ${dueSoon ? "bg-[#fef2f2]" : ""}`}>
-                        {/* quickDates: on a call sheet the answer is almost
-                            always today, tomorrow or next week. */}
-                        <DateTimePicker
-                          value={row.followUpDate ?? ""}
-                          onChange={(v) => commit(row, { followUpDate: v || null })}
-                          dateOnly
-                          clearable
-                          quickDates
-                          floating
-                          variant="cell"
-                          disabled={!canEdit}
-                          placeholder="None"
-                        />
-                      </td>
-                      <td className={CELL}>
-                        <input
-                          type="text"
-                          defaultValue={row.nextAction ?? ""}
-                          key={`na-${row.rowId}-${row.nextAction ?? ""}`}
-                          disabled={!canEdit}
-                          placeholder={canEdit ? "Next step…" : ""}
-                          onBlur={(e) => commit(row, { nextAction: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className={INPUT}
-                        />
-                      </td>
-                      <td className={CELL}>
-                        <Select
-                          value={row.assignedRep ?? ""}
-                          onChange={(id) =>
-                            commit(row, {
-                              assignedRep: id || null,
-                              // Denormalised so the sheet and its export read
-                              // a name without joining employees per row.
-                              assignedRepName: repOptions.find((r) => r.value === id)?.label ?? null,
-                            })
-                          }
-                          options={repOptions}
-                          placeholder="Unassigned"
-                          variant="cell"
-                          floating
-                          searchable
-                          clearable
-                          // Who works a row is a management decision, not part
-                          // of filling the sheet in. Enforced by
-                          // campaign_leads_guard_rep, this only stops the
-                          // control being offered to someone it would refuse.
-                          disabled={!isAdmin}
-                        />
-                      </td>
-                      <td className={`${CELL} text-center`}>
-                        <input
-                          type="checkbox"
-                          checked={row.doNotCall}
-                          disabled={!canEdit}
-                          onChange={(e) => commit(row, { doNotCall: e.target.checked })}
-                          aria-label="Do not call"
-                          className="w-3 h-3 accent-[#f31260] cursor-pointer"
-                        />
-                      </td>
-                      <td className={CELL}>
-                        <input
-                          type="text"
-                          defaultValue={row.notes ?? ""}
-                          // Keyed on the stored value so a refetch (somebody
-                          // else's edit, a filter change) replaces what's in
-                          // the box, the same way the other free-text cells
-                          // behave.
-                          key={`notes-${row.rowId}-${row.notes ?? ""}`}
-                          disabled={!canEdit}
-                          placeholder={canEdit ? "Anything worth knowing…" : ""}
-                          title={row.notes ?? ""}
-                          onBlur={(e) => commit(row, { notes: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className={INPUT}
-                        />
-                      </td>
+                      {shows("callDate") && (
+                        <td className={CELL}>
+                          <DateTimePicker
+                            value={row.callDate ?? ""}
+                            onChange={(v) => commit(row, { callDate: v || null })}
+                            dateOnly
+                            clearable
+                            floating
+                            variant="cell"
+                            disabled={!canEdit}
+                            placeholder="Not called"
+                          />
+                        </td>
+                      )}
+                      {shows("attempts") && (
+                        <td className={CELL}>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            defaultValue={row.attempts ? String(row.attempts) : ""}
+                            key={`at-${row.rowId}-${row.attempts}`}
+                            disabled={!canEdit}
+                            onBlur={(e) => commit(row, { attempts: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                            }}
+                            className={`${INPUT} tabular-nums`}
+                          />
+                        </td>
+                      )}
+                      {shows("outcome") && (
+                        <td className={CELL}>
+                          {/* showUnlistedValue: an outcome saved before this
+                              list changed still has to display, or the row
+                              would look blank and saving it would clear it. */}
+                          <Select
+                            value={row.callOutcome ?? ""}
+                            onChange={(v) => commit(row, { callOutcome: v || null })}
+                            options={CALL_OUTCOME_OPTIONS}
+                            placeholder="-"
+                            variant="cell"
+                            floating
+                            clearable
+                            showUnlistedValue
+                            disabled={!canEdit}
+                            className={`rounded ${row.callOutcome ? (CALL_OUTCOME_STYLES[row.callOutcome] ?? "") : ""}`}
+                          />
+                        </td>
+                      )}
+                      {shows("feedback") && (
+                        <td className={CELL}>
+                          <input
+                            type="text"
+                            defaultValue={row.callerFeedback ?? ""}
+                            key={`fb-${row.rowId}-${row.callerFeedback ?? ""}`}
+                            disabled={!canEdit}
+                            placeholder={canEdit ? "What they said…" : ""}
+                            onBlur={(e) => commit(row, { callerFeedback: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                            }}
+                            className={INPUT}
+                          />
+                        </td>
+                      )}
+                      {shows("interested") && (
+                        <td className={CELL}>
+                          {/* allowCustom, because callers hear things that
+                              aren't on any list, and rounding that to the
+                              nearest option loses the useful part. */}
+                          <Select
+                            value={row.interestedIn ?? ""}
+                            onChange={(v) => commit(row, { interestedIn: v })}
+                            options={SERVICE_OPTIONS}
+                            placeholder="-"
+                            variant="cell"
+                            floating
+                            clearable
+                            allowCustom
+                            customPlaceholder="What they asked about"
+                            disabled={!canEdit}
+                          />
+                        </td>
+                      )}
+                      {shows("bestTime") && (
+                        <td className={CELL}>
+                          <Select
+                            value={row.bestTime ?? ""}
+                            onChange={(v) => commit(row, { bestTime: v })}
+                            options={BEST_TIME_OPTIONS}
+                            placeholder="-"
+                            variant="cell"
+                            floating
+                            clearable
+                            allowCustom
+                            customPlaceholder="When to call back"
+                            disabled={!canEdit}
+                          />
+                        </td>
+                      )}
+                      {shows("followUp") && (
+                        <td className={`${CELL} ${dueSoon ? "bg-[#fef2f2]" : ""}`}>
+                          {/* quickDates: on a call sheet the answer is almost
+                              always today, tomorrow or next week. */}
+                          <DateTimePicker
+                            value={row.followUpDate ?? ""}
+                            onChange={(v) => commit(row, { followUpDate: v || null })}
+                            dateOnly
+                            clearable
+                            quickDates
+                            floating
+                            variant="cell"
+                            disabled={!canEdit}
+                            placeholder="None"
+                          />
+                        </td>
+                      )}
+                      {shows("nextAction") && (
+                        <td className={CELL}>
+                          <input
+                            type="text"
+                            defaultValue={row.nextAction ?? ""}
+                            key={`na-${row.rowId}-${row.nextAction ?? ""}`}
+                            disabled={!canEdit}
+                            placeholder={canEdit ? "Next step…" : ""}
+                            onBlur={(e) => commit(row, { nextAction: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                            }}
+                            className={INPUT}
+                          />
+                        </td>
+                      )}
+                      {shows("rep") && (
+                        <td className={CELL}>
+                          <Select
+                            value={row.assignedRep ?? ""}
+                            onChange={(id) =>
+                              commit(row, {
+                                assignedRep: id || null,
+                                // Denormalised so the sheet and its export read
+                                // a name without joining employees per row.
+                                assignedRepName: repOptions.find((r) => r.value === id)?.label ?? null,
+                              })
+                            }
+                            options={repOptions}
+                            placeholder="Unassigned"
+                            variant="cell"
+                            floating
+                            searchable
+                            clearable
+                            // Who works a row is a management decision, not part
+                            // of filling the sheet in. Enforced by
+                            // campaign_leads_guard_rep, this only stops the
+                            // control being offered to someone it would refuse.
+                            disabled={!isAdmin}
+                          />
+                        </td>
+                      )}
+                      {shows("dnc") && (
+                        <td className={`${CELL} text-center`}>
+                          <input
+                            type="checkbox"
+                            checked={row.doNotCall}
+                            disabled={!canEdit}
+                            onChange={(e) => commit(row, { doNotCall: e.target.checked })}
+                            aria-label="Do not call"
+                            className="w-3 h-3 accent-[#f31260] cursor-pointer"
+                          />
+                        </td>
+                      )}
+                      {shows("notes") && (
+                        <td className={CELL}>
+                          <input
+                            type="text"
+                            defaultValue={row.notes ?? ""}
+                            // Keyed on the stored value so a refetch (somebody
+                            // else's edit, a filter change) replaces what's in
+                            // the box, the same way the other free-text cells
+                            // behave.
+                            key={`notes-${row.rowId}-${row.notes ?? ""}`}
+                            disabled={!canEdit}
+                            // Follows the heading: a campaign that calls this column
+                          // "Notes/Call Summary" shouldn't prompt for
+                          // something else.
+                          placeholder={canEdit ? columnLabel(campaign?.columns, "notes", "Anything worth knowing…") : ""}
+                            title={row.notes ?? ""}
+                            onBlur={(e) => commit(row, { notes: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                            }}
+                            className={INPUT}
+                          />
+                        </td>
+                      )}
 
                       {/* Whatever this campaign added for itself. Free text,
                           stored on the row against the column's id, so
