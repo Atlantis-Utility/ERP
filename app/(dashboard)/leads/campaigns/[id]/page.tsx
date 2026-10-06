@@ -315,7 +315,15 @@ export default function CampaignSheetPage() {
         // than silently reverting: losing what someone typed mid-call is
         // worse than showing it as unsaved.
         setSaveState((prev) => ({ ...prev, [row.rowId]: "error" }));
-        notifyError(getErrorMessage(err, "Couldn't save that change"));
+        const message = getErrorMessage(err, "Couldn't save that change");
+        // The colours column arrives with migration-campaign-colors.sql.
+        // Without it the database says "column does not exist", which is
+        // not a useful thing to read halfway through a call.
+        notifyError(
+          "colors" in patch && /colors/i.test(message)
+            ? "Colours need supabase/migration-campaign-colors.sql run on the database."
+            : message,
+        );
       }
     },
     [actor, notifyError],
@@ -592,7 +600,12 @@ export default function CampaignSheetPage() {
    * than the data.
    */
   function openPaint(e: React.MouseEvent, row: CampaignRow, key: string) {
-    if (!canEdit || palette.length === 0 || row.doNotCall) return;
+    // Opens even when this campaign has no colours yet: a right-click that
+    // silently does nothing is indistinguishable from a broken one, so the
+    // menu opens and offers to go and make some. Colouring is allowed on a
+    // do-not-call row too — a colour is a note to yourself about the row,
+    // not an edit to the contact.
+    if (!canEdit) return;
     e.preventDefault();
     setPaint({ x: e.clientX, y: e.clientY, row, key });
   }
@@ -1467,6 +1480,22 @@ export default function CampaignSheetPage() {
             <p className="px-3 py-1 text-[10px] font-semibold text-[#bbb] uppercase tracking-wider truncate">
               {paint.key === ROW_COLOR_KEY ? "Whole row" : (columnDefs.find((c) => c.key === paint.key)?.label ?? "Cell")}
             </p>
+            {palette.length === 0 && (
+              <div className="px-3 py-2">
+                <p className="text-[12px] text-[#999] leading-snug">
+                  No colours on this campaign yet.
+                </p>
+                <button
+                  onClick={() => {
+                    setPaint(null);
+                    setShowColumns(true);
+                  }}
+                  className="mt-1.5 text-[12px] font-medium text-[#0070f3] hover:underline"
+                >
+                  Add some →
+                </button>
+              </div>
+            )}
             {palette.map((color) => (
               <button
                 key={color.id}
@@ -1477,13 +1506,15 @@ export default function CampaignSheetPage() {
                 <span className="truncate">{color.name}</span>
               </button>
             ))}
-            <button
-              onClick={() => applyPaint(null)}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-[#666] hover:bg-[#fafafa] transition-colors border-t border-[#f5f5f5] mt-1 pt-2"
-            >
-              <span className="w-3 h-3 rounded-full border border-[#ddd] shrink-0" />
-              No colour
-            </button>
+            {palette.length > 0 && (
+              <button
+                onClick={() => applyPaint(null)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-[#666] hover:bg-[#fafafa] transition-colors border-t border-[#f5f5f5] mt-1 pt-2"
+              >
+                <span className="w-3 h-3 rounded-full border border-[#ddd] shrink-0" />
+                No colour
+              </button>
+            )}
           </div>
         </div>
       )}
