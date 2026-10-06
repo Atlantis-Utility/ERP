@@ -44,6 +44,7 @@ import {
   removeSheetRows,
   assignSheetRows,
   colorSheetRows,
+  setCampaignMeta,
   fetchSheetRowIds,
   renumberCampaign,
   fetchSheetRows,
@@ -66,6 +67,7 @@ import {
   paletteBg,
   ROW_COLOR_KEY,
   SWATCH_BY_ID,
+  SWATCHES,
   type SheetColumnDef,
 } from "@/lib/campaign-constants";
 import {
@@ -213,6 +215,8 @@ export default function CampaignSheetPage() {
   const [showColumns, setShowColumns] = useState(false);
   /** Where the colour menu is open, and on what. */
   const [paint, setPaint] = useState<{ x: number; y: number; row: CampaignRow; key: string } | null>(null);
+  /** A colour being made from the paint menu, before it exists. */
+  const [newColor, setNewColor] = useState<{ name: string; swatch: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const { success, error: notifyError } = useToast();
 
@@ -618,6 +622,35 @@ export default function CampaignSheetPage() {
     if (colorId) colors[key] = colorId;
     else delete colors[key];
     await commit(row, { colors });
+  }
+
+  /**
+   * A colour made where it's wanted. Naming a colour is part of using one —
+   * the legend is the whole point — so the menu that paints a cell is also
+   * the place to make the colour, rather than sending somebody to a dialog
+   * and back. Editing and removing them stays in Columns.
+   */
+  function startNewColor() {
+    const taken = new Set(palette.map((c) => c.swatch));
+    setNewColor({ name: "", swatch: (SWATCHES.find((sw) => !taken.has(sw.id)) ?? SWATCHES[0]).id });
+  }
+
+  async function addColorAndApply() {
+    const name = newColor?.name.trim();
+    if (!paint || !newColor || !name) return;
+    const color = { id: `k${Date.now().toString(36)}`, name, swatch: newColor.swatch };
+    const { row, key } = paint;
+    setPaint(null);
+    setNewColor(null);
+    try {
+      await setCampaignMeta(campaignId, {
+        columns: { ...(campaign?.columns ?? {}), palette: [...palette, color] },
+      });
+    } catch (err) {
+      notifyError(getErrorMessage(err, "Couldn't add that colour"));
+      return;
+    }
+    await commit(row, { colors: { ...row.colors, [key]: color.id } });
   }
 
   /** The same colour across every selected row. */
@@ -1466,10 +1499,14 @@ export default function CampaignSheetPage() {
       {paint && (
         <div
           className="fixed inset-0 z-[90]"
-          onClick={() => setPaint(null)}
+          onClick={() => {
+            setPaint(null);
+            setNewColor(null);
+          }}
           onContextMenu={(e) => {
             e.preventDefault();
             setPaint(null);
+            setNewColor(null);
           }}
         >
           <div
@@ -1480,21 +1517,10 @@ export default function CampaignSheetPage() {
             <p className="px-3 py-1 text-[10px] font-semibold text-[#bbb] uppercase tracking-wider truncate">
               {paint.key === ROW_COLOR_KEY ? "Whole row" : (columnDefs.find((c) => c.key === paint.key)?.label ?? "Cell")}
             </p>
-            {palette.length === 0 && (
-              <div className="px-3 py-2">
-                <p className="text-[12px] text-[#999] leading-snug">
-                  No colours on this campaign yet.
-                </p>
-                <button
-                  onClick={() => {
-                    setPaint(null);
-                    setShowColumns(true);
-                  }}
-                  className="mt-1.5 text-[12px] font-medium text-[#0070f3] hover:underline"
-                >
-                  Add some →
-                </button>
-              </div>
+            {palette.length === 0 && !newColor && (
+              <p className="px-3 py-1.5 text-[12px] text-[#999] leading-snug">
+                No colours yet. Make one and it joins the legend above the sheet.
+              </p>
             )}
             {palette.map((color) => (
               <button
@@ -1506,13 +1532,65 @@ export default function CampaignSheetPage() {
                 <span className="truncate">{color.name}</span>
               </button>
             ))}
-            {palette.length > 0 && (
+            {palette.length > 0 && !newColor && (
               <button
                 onClick={() => applyPaint(null)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-[#666] hover:bg-[#fafafa] transition-colors border-t border-[#f5f5f5] mt-1 pt-2"
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-[#666] hover:bg-[#fafafa] transition-colors"
               >
                 <span className="w-3 h-3 rounded-full border border-[#ddd] shrink-0" />
                 No colour
+              </button>
+            )}
+
+            {newColor ? (
+              <div className="px-3 pt-2 pb-2.5 border-t border-[#f5f5f5] mt-1">
+                <div className="flex items-center gap-1 mb-2">
+                  {SWATCHES.map((swatch) => (
+                    <button
+                      key={swatch.id}
+                      onClick={() => setNewColor({ ...newColor, swatch: swatch.id })}
+                      aria-label={swatch.label}
+                      title={swatch.label}
+                      className={`w-4 h-4 rounded-full ${swatch.dot} transition-transform ${
+                        newColor.swatch === swatch.id ? "ring-2 ring-offset-1 ring-[#0a0a0a] scale-110" : "hover:scale-110"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <input
+                  autoFocus
+                  value={newColor.name}
+                  onChange={(e) => setNewColor({ ...newColor, name: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addColorAndApply();
+                    if (e.key === "Escape") setNewColor(null);
+                  }}
+                  placeholder="What it means"
+                  className="w-full border border-[#eaeaea] rounded-md px-2 py-1.5 text-[12px] text-[#0a0a0a] placeholder:text-[#bbb] outline-none focus:border-[#0070f3] transition-colors"
+                />
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <button
+                    onClick={addColorAndApply}
+                    disabled={!newColor.name.trim()}
+                    className="flex-1 text-[11px] font-semibold bg-[#0a0a0a] text-white py-1.5 rounded-md hover:bg-[#333] transition-colors disabled:opacity-40"
+                  >
+                    Add and use
+                  </button>
+                  <button
+                    onClick={() => setNewColor(null)}
+                    className="text-[11px] font-medium text-[#666] px-2 py-1.5 rounded-md hover:bg-[#f5f5f5] transition-colors"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={startNewColor}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-[#0070f3] hover:bg-[#f5faff] transition-colors border-t border-[#f5f5f5] mt-1 pt-2"
+              >
+                <Plus className="w-3 h-3 shrink-0" />
+                New colour
               </button>
             )}
           </div>
