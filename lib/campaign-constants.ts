@@ -1,5 +1,5 @@
 // Shared across the campaign list, the create dialog, and the call sheet.
-import type { CampaignStatus } from "./db/campaigns";
+import type { CampaignStatus, SheetColumns } from "./db/campaigns";
 
 /**
  * Call outcomes, offered as a fixed list so the sheet can be filtered and
@@ -83,4 +83,70 @@ export const CAMPAIGN_STATUS_STYLES: Record<CampaignStatus, string> = {
 export function calledPercent(called: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((called / total) * 100);
+}
+
+/**
+ * The call sheet's columns, in render order: the widths the <colgroup>
+ * applies, the headings, and the keys a campaign renames them by.
+ *
+ * One list rather than three, because the header, the column widths and the
+ * rename dialog all have to agree about what the columns are and what order
+ * they come in. The cells themselves are still written out one by one — each
+ * is a different control — so a column added here needs its cell adding to
+ * the sheet too.
+ *
+ * Width notes: wide enough that the values that matter aren't clipped. The
+ * sheet scrolls sideways; that is what the scrollbar is for.
+ */
+export interface SheetColumnDef {
+  key: string;
+  label: string;
+  width: number;
+}
+
+export const SHEET_COLUMNS: SheetColumnDef[] = [
+  { key: "no", label: "No.", width: 68 },
+  { key: "company", label: "Company Name", width: 232 },
+  { key: "address1", label: "Address1", width: 184 },
+  { key: "city", label: "City", width: 128 },
+  { key: "state", label: "State", width: 64 },
+  { key: "zip", label: "Zip", width: 88 },
+  { key: "category", label: "Category", width: 168 },
+  { key: "phone", label: "Phone", width: 140 },
+  { key: "email", label: "Email", width: 184 },
+  { key: "contact", label: "Contact Name", width: 176 },
+  { key: "callDate", label: "Call Date", width: 148 },
+  { key: "attempts", label: "Attempts", width: 76 },
+  { key: "outcome", label: "Call Outcome", width: 180 },
+  { key: "feedback", label: "Caller Feedback / Prospect's Stated Problem", width: 264 },
+  { key: "interested", label: "Interested In (Service)", width: 184 },
+  { key: "bestTime", label: "Best Time", width: 148 },
+  { key: "followUp", label: "Follow-Up Date", width: 148 },
+  { key: "nextAction", label: "Next Action", width: 184 },
+  { key: "rep", label: "Assigned Rep", width: 168 },
+  { key: "dnc", label: "DNC", width: 52 },
+  { key: "notes", label: "Notes", width: 264 },
+];
+
+/** The selection column, which only an editor sees. */
+export const CHECK_COL_WIDTH = 36;
+/** Anything the campaign adds itself. */
+export const EXTRA_COL_WIDTH = 184;
+
+/** The heading this campaign wants, or the one the sheet ships with. */
+export function columnLabel(columns: SheetColumns | undefined, key: string, fallback: string): string {
+  const named = columns?.labels?.[key]?.trim();
+  return named || fallback;
+}
+
+/**
+ * Every column of this campaign's sheet, renames applied and its own
+ * columns on the end. Extra columns are keyed "x:<id>" so a key can never
+ * collide with a built-in one.
+ */
+export function sheetColumnsFor(columns: SheetColumns | undefined): SheetColumnDef[] {
+  return [
+    ...SHEET_COLUMNS.map((c) => ({ ...c, label: columnLabel(columns, c.key, c.label) })),
+    ...(columns?.extra ?? []).map((c) => ({ key: `x:${c.id}`, label: c.label, width: EXTRA_COL_WIDTH })),
+  ];
 }

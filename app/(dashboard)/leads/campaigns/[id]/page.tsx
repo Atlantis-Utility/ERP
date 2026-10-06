@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Download,
   ListOrdered,
+  Columns3,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -29,6 +30,7 @@ import Select from "@/components/ui/Select";
 import DateTimePicker from "@/components/ui/DateTimePicker";
 import CampaignAccessModal from "@/components/campaigns/CampaignAccessModal";
 import AddLeadsToSheetModal from "@/components/campaigns/AddLeadsToSheetModal";
+import SheetColumnsModal from "@/components/campaigns/SheetColumnsModal";
 import ReviewChangesModal from "@/components/campaigns/ReviewChangesModal";
 import { useEmployees } from "@/lib/db/employees";
 import { useLeadsAccess } from "@/lib/leads-access";
@@ -55,6 +57,9 @@ import {
   CALL_OUTCOME_STYLES,
   SERVICE_OPTIONS,
   BEST_TIME_OPTIONS,
+  CHECK_COL_WIDTH,
+  sheetColumnsFor,
+  type SheetColumnDef,
 } from "@/lib/campaign-constants";
 import {
   requestLeadChange,
@@ -90,66 +95,22 @@ const CELL = "border-r border-b border-[#f0f0f0] px-2 h-9 align-middle";
  *
  * A call sheet is wide. That's what the horizontal scrollbar is for.
  */
-const COL = {
-  check: 36,
-  no: 68,
-  company: 232,
-  contact: 176,
-  address1: 184,
-  city: 128,
-  state: 64,
-  zip: 88,
-  phone: 140,
-  email: 184,
-  category: 168,
-  callDate: 148,
-  attempts: 76,
-  outcome: 180,
-  feedback: 264,
-  interested: 184,
-  bestTime: 148,
-  followUp: 148,
-  nextAction: 184,
-  rep: 168,
-  dnc: 52,
-  notes: 264,
-} as const;
-
-/** In render order, so <colgroup> and the offsets below can't disagree. */
-function sheetColumnWidths(canEdit: boolean): number[] {
-  return [
-    ...(canEdit ? [COL.check] : []),
-    COL.no,
-    COL.company,
-    COL.address1,
-    COL.city,
-    COL.state,
-    COL.zip,
-    COL.category,
-    COL.phone,
-    COL.email,
-    COL.contact,
-    COL.callDate,
-    COL.attempts,
-    COL.outcome,
-    COL.feedback,
-    COL.interested,
-    COL.bestTime,
-    COL.followUp,
-    COL.nextAction,
-    COL.rep,
-    COL.dnc,
-    COL.notes,
-  ];
+/**
+ * In render order, and the same list the headings and the rename dialog
+ * read, so the <colgroup>, the header and what a campaign calls its columns
+ * can't disagree (lib/campaign-constants).
+ */
+function sheetColumnWidths(canEdit: boolean, columns: SheetColumnDef[]): number[] {
+  return [...(canEdit ? [CHECK_COL_WIDTH] : []), ...columns.map((c) => c.width)];
 }
 
 /**
  * Where each pinned column sits: the sum of the widths before it. Applied as
  * a style rather than a Tailwind class so it is always the real number.
  */
-function pinOffsets(canEdit: boolean) {
-  const check = canEdit ? COL.check : 0;
-  return { check: 0, no: check, company: check + COL.no };
+function pinOffsets(canEdit: boolean, columns: SheetColumnDef[]) {
+  const check = canEdit ? CHECK_COL_WIDTH : 0;
+  return { check: 0, no: check, company: check + (columns[0]?.width ?? 0) };
 }
 
 // An opaque background stops the scrolling columns showing through the pane,
@@ -227,6 +188,7 @@ export default function CampaignSheetPage() {
   const [showAccess, setShowAccess] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showAddLeads, setShowAddLeads] = useState(false);
+  const [showColumns, setShowColumns] = useState(false);
   const [busy, setBusy] = useState(false);
   const { success, error: notifyError } = useToast();
 
@@ -280,6 +242,13 @@ export default function CampaignSheetPage() {
   );
 
   const pageFullySelected = rows.length > 0 && rows.every((r) => selected.has(r.rowId));
+
+  // This campaign's columns: the built-in ones under whatever it calls
+  // them, plus any it has added itself.
+  const columnDefs = useMemo(() => sheetColumnsFor(campaign?.columns), [campaign?.columns]);
+  const extraColumns = campaign?.columns.extra ?? [];
+  const columnWidths = sheetColumnWidths(canEdit, columnDefs);
+  const pins = pinOffsets(canEdit, columnDefs);
 
   /* ─── Saving ───────────────────────────────────────────────────────── */
 
@@ -491,6 +460,7 @@ export default function CampaignSheetPage() {
           "Assigned Rep",
           "Do Not Call",
           "Notes",
+          ...extraColumns.map((c) => c.label),
         ],
         all.map((r) => [
           r.position,
@@ -515,6 +485,7 @@ export default function CampaignSheetPage() {
           r.assignedRepName ?? "",
           r.doNotCall ? "Yes" : "",
           r.notes ?? "",
+          ...extraColumns.map((c) => r.extra[c.id] ?? ""),
         ]),
       );
       success(`Exported ${all.length.toLocaleString()} rows.`);
@@ -621,8 +592,6 @@ export default function CampaignSheetPage() {
   // The column model, and where the frozen pane's cells sit within it. Both
   // come from the same numbers, so the pane can't drift out of alignment
   // with the columns it's pinned over.
-  const columnWidths = sheetColumnWidths(canEdit);
-  const pins = pinOffsets(canEdit);
 
   return (
     <div>
@@ -688,6 +657,16 @@ export default function CampaignSheetPage() {
                   <span className="hidden sm:inline">Access</span>
                 </button>
               </>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => setShowColumns(true)}
+                className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#444] px-3 py-2 rounded-md hover:bg-[#fafafa] transition-colors"
+                title="Rename this campaign, rename a heading, or add a column"
+              >
+                <Columns3 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Columns</span>
+              </button>
             )}
             {canEdit && (
               <button
@@ -906,49 +885,26 @@ export default function CampaignSheetPage() {
                     style={{ left: pins.no }}
                     className="sticky z-30 bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider"
                   >
-                    No.
+                    {columnDefs[0].label}
                   </th>
                   <th
                     style={{ left: pins.company }}
                     className={`sticky z-30 ${PIN_EDGE} bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider`}
                   >
-                    Company Name
+                    {columnDefs[1].label}
                   </th>
-                  {[
-                    // Where the business is, then what it is, then how to
-                    // reach it: the contact's name sits with the phone and
-                    // the email rather than away from them.
-                    "Address1",
-                    "City",
-                    "State",
-                    "Zip",
-                    "Category",
-                    "Phone",
-                    "Email",
-                    "Contact Name",
-                    "Call Date",
-                    "Attempts",
-                    "Call Outcome",
-                    "Caller Feedback / Prospect's Stated Problem",
-                    "Interested In (Service)",
-                    "Best Time",
-                    "Follow-Up Date",
-                    "Next Action",
-                    "Assigned Rep",
-                    "DNC",
-                    "Notes",
-                  ].map((h) => (
+                  {columnDefs.slice(2).map((col) => (
                     <th
-                      key={h}
+                      key={col.key}
                       // Clipped, not wrapped: under table-fixed a label wider
                       // than its column overflows into the next one instead of
                       // widening it, and "Caller Feedback / Prospect's Stated
                       // Problem" is wider than any sane column. The full text
                       // is on hover.
-                      title={h}
+                      title={col.label}
                       className="bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider truncate"
                     >
-                      {h}
+                      {col.label}
                     </th>
                   ))}
                 </tr>
@@ -1251,6 +1207,29 @@ export default function CampaignSheetPage() {
                           className={INPUT}
                         />
                       </td>
+
+                      {/* Whatever this campaign added for itself. Free text,
+                          stored on the row against the column's id, so
+                          renaming the column later keeps what people typed. */}
+                      {extraColumns.map((col) => (
+                        <td key={col.id} className={CELL}>
+                          <input
+                            type="text"
+                            defaultValue={row.extra[col.id] ?? ""}
+                            key={`x-${row.rowId}-${col.id}-${row.extra[col.id] ?? ""}`}
+                            disabled={!canEdit}
+                            placeholder={canEdit ? col.label : ""}
+                            title={row.extra[col.id] ?? ""}
+                            onBlur={(e) =>
+                              commit(row, { extra: { ...row.extra, [col.id]: e.target.value.trim() } })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                            }}
+                            className={INPUT}
+                          />
+                        </td>
+                      ))}
                     </tr>
                   );
                 })}
@@ -1298,6 +1277,16 @@ export default function CampaignSheetPage() {
 
       {showAccess && campaign && isAdmin && (
         <CampaignAccessModal campaign={campaign} actor={actor} onClose={() => setShowAccess(false)} />
+      )}
+      {showColumns && campaign && canEdit && (
+        <SheetColumnsModal
+          campaign={campaign}
+          onClose={() => setShowColumns(false)}
+          // The campaign list is realtime, so the new headings arrive on
+          // their own; the rows are refetched because a column removed and
+          // re-added is a different column.
+          onSaved={() => setRevision((r) => r + 1)}
+        />
       )}
       {showAddLeads && campaign && canEdit && (
         <AddLeadsToSheetModal

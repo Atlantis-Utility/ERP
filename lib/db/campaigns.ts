@@ -19,6 +19,30 @@ import { STALE_DAYS, type LeadFilters } from "./leads";
 export type CampaignLevel = "admin" | "editor" | "viewer";
 export type CampaignStatus = "active" | "paused" | "done";
 
+/**
+ * A campaign's own column setup: headings it renames, and columns it adds.
+ *
+ * A campaign imported from somebody's spreadsheet has columns that sheet
+ * had and the call sheet doesn't ("Connection", "Accepted", "Source"), and
+ * a team that says "decision maker" shouldn't have to read "Contact Name".
+ * The values for an added column live on the row (CampaignRow.extra), not
+ * on the lead: whether somebody accepted a connection request is about this
+ * campaign's outreach, not a fact about the business.
+ *
+ * Requires supabase/migration-campaign-columns.sql.
+ */
+export interface ExtraColumn {
+  /** Stable key. Row values are keyed by it, so it never changes. */
+  id: string;
+  label: string;
+}
+
+export interface SheetColumns {
+  /** Built-in column key -> the heading this campaign wants instead. */
+  labels?: Record<string, string>;
+  extra?: ExtraColumn[];
+}
+
 export interface Campaign {
   id: string;
   name: string;
@@ -30,6 +54,7 @@ export interface Campaign {
   calledCount: number;
   /** null means the caller can't see it. RLS won't return those anyway. */
   myLevel: CampaignLevel | null;
+  columns: SheetColumns;
 }
 
 /** One row of the sheet: lead facts (read-only) + call results (editable). */
@@ -64,6 +89,8 @@ export interface CampaignRow {
    * callerFeedback, which is one call's answer.
    */
   notes: string | null;
+  /** Values for the columns this campaign added, keyed by column id. */
+  extra: Record<string, string>;
   updatedAt: string | null;
   updatedByName: string | null;
   /**
@@ -91,6 +118,7 @@ export type CampaignRowPatch = Partial<
     | "nextAction"
     | "doNotCall"
     | "notes"
+    | "extra"
   >
 >;
 
@@ -228,6 +256,7 @@ interface CampaignRowRaw {
   lead_count: number;
   called_count: number;
   my_level: CampaignLevel | null;
+  columns: SheetColumns | null;
 }
 
 const fromCampaignRow = (r: CampaignRowRaw): Campaign => ({
@@ -240,6 +269,7 @@ const fromCampaignRow = (r: CampaignRowRaw): Campaign => ({
   leadCount: Number(r.lead_count ?? 0),
   calledCount: Number(r.called_count ?? 0),
   myLevel: r.my_level,
+  columns: r.columns ?? {},
 });
 
 export async function fetchCampaigns(): Promise<Campaign[]> {
@@ -331,6 +361,30 @@ export async function createCampaign(input: NewCampaign): Promise<string> {
   );
   if (error) throw error;
   return (data as { id: string }).id;
+}
+
+/**
+ * Renaming a campaign and changing its columns, done by anyone it was
+ * shared with as an editor rather than administrators only.
+ *
+ * Goes through campaign_set_meta because the table's own update policy is
+ * administrator-only and stays that way: the function checks the campaign
+ * grant instead, so an editor can rename their sheet without being able to
+ * touch anybody else's. Omitted fields are left as they are.
+ */
+export async function setCampaignMeta(
+  campaignId: string,
+  patch: { name?: string; description?: string | null; columns?: SheetColumns },
+): Promise<void> {
+  const { error } = await withTimeout(
+    supabase.rpc("campaign_set_meta", {
+      p_campaign_id: campaignId,
+      p_name: patch.name ?? null,
+      p_description: patch.description === undefined ? null : (patch.description ?? ""),
+      p_columns: patch.columns ?? null,
+    }),
+  );
+  if (error) throw error;
 }
 
 export async function updateCampaign(
@@ -471,6 +525,7 @@ interface SheetRowRaw {
   next_action: string | null;
   do_not_call: boolean | null;
   notes: string | null;
+  extra: Record<string, string> | null;
   updated_at: string | null;
   updated_by_name: string | null;
   pending: Record<string, string | null> | null;
@@ -502,6 +557,7 @@ const fromSheetRow = (r: SheetRowRaw): CampaignRow => ({
   nextAction: r.next_action,
   doNotCall: Boolean(r.do_not_call),
   notes: r.notes,
+  extra: r.extra ?? {},
   updatedAt: r.updated_at,
   updatedByName: r.updated_by_name,
   pending: r.pending ?? {},
@@ -611,6 +667,7 @@ const PATCH_COLUMNS: Record<keyof CampaignRowPatch, string> = {
   nextAction: "next_action",
   doNotCall: "do_not_call",
   notes: "notes",
+  extra: "extra",
 };
 
 /**
