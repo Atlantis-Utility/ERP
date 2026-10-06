@@ -183,6 +183,26 @@ export async function getSubscribers(domain?: string) {
 }
 
 // SIP devices / registered phones
+/**
+ * The provisioned device inventory: actual hardware, one row per MAC.
+ *
+ * Not the same thing as device/read, which lists SIP endpoints. Those
+ * include every soft registration and every extension that answers calls
+ * without being a phone at all (auto attendants, paging, "Internet
+ * Service"), which is why the Devices tab used to show 193 "devices" for a
+ * customer that owns 58. It also misses hardware that happens not to be
+ * registered right now: two customers show 0 endpoints against 24 and 29
+ * real phones.
+ *
+ * The object is called "mac" because that's its key. Each row carries the
+ * model and device1..deviceN, the lines programmed onto that phone.
+ */
+export async function getDeviceInventory(domain?: string) {
+  const params: Record<string, string> = {};
+  if (domain) params.domain = domain;
+  return pbxApi("mac", "read", params);
+}
+
 export async function getDevices(domain?: string) {
   const params: Record<string, string> = {};
   if (domain) params.domain = domain;

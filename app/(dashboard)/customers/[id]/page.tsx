@@ -44,6 +44,37 @@ interface Device {
   expires?: string;
   registration_time?: string;
   nat_wan?: string;
+  mode?: string;
+  user_agent?: string;
+}
+
+/**
+ * A provisioned phone, from RingLogix's device inventory (the `mac`
+ * object). One row per piece of hardware, with the lines programmed onto
+ * it in device1..deviceN.
+ *
+ * This is what the Devices tab lists now. It used to list SIP endpoints
+ * instead, which counts every soft registration and every extension that
+ * answers calls without being a phone — one customer's six real phones
+ * read as six, but another's 58 read as 193 — and missed hardware that
+ * wasn't registered at that moment, which showed two customers as having
+ * no devices when they own 24 and 29.
+ */
+interface InventoryDevice {
+  mac?: string;
+  model?: string;
+  notes?: string;
+  domain?: string;
+  [line: string]: string | undefined;
+}
+
+/** "sip:106@292332" -> "106". Empty slots and "n/a" are not lines. */
+function devicesLines(row: InventoryDevice): string[] {
+  return Object.entries(row)
+    .filter(([k]) => /^device\d+$/.test(k))
+    .map(([, v]) => (v ?? "").trim())
+    .map((v) => v.match(/^sip:([^@]+)@/)?.[1] ?? "")
+    .filter((ext) => ext && ext.toLowerCase() !== "n/a");
 }
 
 interface Subscriber {
@@ -431,6 +462,9 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const [projects, setProjects] = useState<Project[]>([]);
   const [wanIps, setWanIps] = useState<string[]>([]);
   const [devicesRes, setDevicesRes] = useState<ResourceState<Device>>(emptyResource);
+  // The hardware. devicesRes is the registration side, kept because it's
+  // what says whether a given phone is online right now.
+  const [inventoryRes, setInventoryRes] = useState<ResourceState<InventoryDevice>>(emptyResource);
   const [subscribersRes, setSubscribersRes] = useState<ResourceState<Subscriber>>(emptyResource);
   const [phoneNumbersRes, setPhoneNumbersRes] = useState<ResourceState<DIDNumber>>(emptyResource);
   const [queuesRes, setQueuesRes] = useState<ResourceState<GenericRow>>(emptyResource);
@@ -455,10 +489,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   // slow one (e.g. call queues) no longer blocks the others from rendering.
   function loadSections() {
     setDevicesRes({ status: "loading", items: [] });
+    setInventoryRes({ status: "loading", items: [] });
     setSubscribersRes({ status: "loading", items: [] });
     setPhoneNumbersRes({ status: "loading", items: [] });
     setQueuesRes({ status: "loading", items: [] });
     fetchResource<Device>(`/api/ringlogix/devices?domain=${id}`).then(setDevicesRes);
+    fetchResource<InventoryDevice>(`/api/ringlogix/device-inventory?domain=${id}`).then(setInventoryRes);
     fetchResource<Subscriber>(`/api/ringlogix/subscribers?domain=${id}`).then(setSubscribersRes);
     fetchResource<DIDNumber>(`/api/ringlogix/dids?domain=${id}`).then(setPhoneNumbersRes);
     fetchResource<GenericRow>(`/api/ringlogix/queues?domain=${id}`).then(setQueuesRes);
@@ -557,6 +593,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   const open = isOpenStatus(customer.status);
   const devices = devicesRes.items;
+  const inventory = inventoryRes.items;
+  // Registrations by MAC, so a row of hardware can say whether it's online.
+  const registrationByMac = new Map(
+    devices.filter((d) => d.mac).map((d) => [d.mac!.toLowerCase(), d] as const),
+  );
+  // Registrations with no hardware behind them: softphones, apps, and the
+  // extensions that answer calls without being a phone. Worth a line
+  // rather than padding the device list with them, which is what the tab
+  // used to do.
+  const unprovisioned = devices.filter((d) => !d.mac || !inventory.some((i) => i.mac?.toLowerCase() === d.mac?.toLowerCase()));
   const subscribers = subscribersRes.items;
   const queues = queuesRes.items;
 
@@ -699,7 +745,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           </div>
           <div className="flex items-center gap-2">
             <Smartphone className="w-4 h-4 text-[#0070f3]" />
-            <span className="text-sm font-semibold text-[#0a0a0a]">{devicesRes.status === "ok" ? devices.length : "…"}</span>
+            <span className="text-sm font-semibold text-[#0a0a0a]">{inventoryRes.status === "ok" ? inventory.length : "…"}</span>
             <span className="text-sm text-[#666]">Devices</span>
           </div>
         </div>
@@ -730,7 +776,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               tab.key === "numbers" ? (phoneNumbersRes.status === "ok" ? phoneNumbers.length : null) :
               tab.key === "extensions" ? (subscribersRes.status === "ok" ? subscribers.length : null) :
               tab.key === "queues" ? (queuesRes.status === "ok" ? queues.length : null) :
-              tab.key === "devices" ? (devicesRes.status === "ok" ? devices.length : null) :
+              tab.key === "devices" ? (inventoryRes.status === "ok" ? inventory.length : null) :
               null;
             const isActive = activeTab === tab.key;
             return (
@@ -828,39 +874,92 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         )}
 
         {activeTab === "devices" && (
-          devicesRes.status !== "ok" ? (
-            <SectionPending status={devicesRes.status === "error" ? "error" : "loading"} onRetry={loadSections} />
-          ) : devices.length === 0 ? (
-            <p className="text-sm text-[#999] px-5 py-6 text-center">No devices registered.</p>
+          inventoryRes.status !== "ok" ? (
+            <SectionPending status={inventoryRes.status === "error" ? "error" : "loading"} onRetry={loadSections} />
+          ) : inventory.length === 0 ? (
+            <p className="text-sm text-[#999] px-5 py-6 text-center">No devices in this customer&apos;s inventory.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-140">
-                <thead>
-                  <tr className="border-b border-[#eaeaea]">
-                    <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Owner</th>
-                    <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Name</th>
-                    <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Model</th>
-                    <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">MAC Address</th>
-                    <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3">Registered</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {devices.map((d, i) => (
-                    <tr key={i} className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors">
-                      <td className="px-5 py-3 text-sm font-medium text-[#0a0a0a]">{d.aor_user || "-"}</td>
-                      <td className="px-5 py-3 text-sm text-[#666]">{d.sub_fullname || "-"}</td>
-                      <td className="px-5 py-3 text-sm text-[#666]">{d.model || "-"}</td>
-                      <td className="px-5 py-3 text-sm text-[#666] font-mono">{d.mac ? d.mac.toUpperCase() : "-"}</td>
-                      <td className="px-5 py-3">
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${d.expires ? "bg-[#e8fdf0] text-[#17c964]" : "bg-[#f1f1f1] text-[#999]"}`}>
-                          {d.expires ? "Registered" : "Offline"}
-                        </span>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-140">
+                  <thead>
+                    <tr className="border-b border-[#eaeaea]">
+                      {["MAC Address", "Model", "Extensions", "Status", "Notes"].map((h) => (
+                        <th
+                          key={h}
+                          className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3"
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {inventory.map((d, i) => {
+                      const mac = (d.mac ?? "").toLowerCase();
+                      const reg = mac ? registrationByMac.get(mac) : undefined;
+                      // "registered_endpoint" is the one mode that means a
+                      // phone is actually talking to the platform.
+                      const online = reg?.mode === "registered_endpoint";
+                      const lines = devicesLines(d);
+                      return (
+                        <tr
+                          key={d.mac ?? `row-${i}`}
+                          className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors"
+                        >
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-mono font-medium text-[#0a0a0a]">
+                                {d.mac ? d.mac.toUpperCase() : "-"}
+                              </span>
+                              {d.mac && <CopyButton value={d.mac.toUpperCase()} label="MAC address" />}
+                            </div>
+                            {reg?.user_agent && <p className="text-[10px] text-[#bbb] mt-0.5">{reg.user_agent}</p>}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap">{d.model || "-"}</td>
+                          <td className="px-5 py-3">
+                            {lines.length === 0 ? (
+                              <span className="text-sm text-[#ccc]">Not assigned</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {lines.map((ext) => (
+                                  <span
+                                    key={ext}
+                                    className="text-[11px] font-medium text-[#666] bg-[#f5f5f5] rounded px-1.5 py-0.5"
+                                  >
+                                    {ext}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {reg?.sub_fullname && <p className="text-[10px] text-[#bbb] mt-1">{reg.sub_fullname}</p>}
+                          </td>
+                          <td className="px-5 py-3 whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                online ? "bg-[#e8fdf0] text-[#17c964]" : "bg-[#f1f1f1] text-[#999]"
+                              }`}
+                            >
+                              {online ? "Registered" : reg ? "Known, not registered" : "Not registered"}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-sm text-[#666]">{d.notes || "-"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Said rather than hidden: these are real registrations, they
+                  just aren't hardware this customer owns. */}
+              {devicesRes.status === "ok" && unprovisioned.length > 0 && (
+                <p className="text-[11px] text-[#999] px-5 py-3 border-t border-[#f4f4f4]">
+                  {unprovisioned.length} other registration{unprovisioned.length === 1 ? "" : "s"} on this account with
+                  no device in inventory: softphones, apps, and extensions that answer calls without a phone.
+                </p>
+              )}
+            </>
           )
         )}
 
