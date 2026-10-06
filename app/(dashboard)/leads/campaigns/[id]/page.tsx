@@ -106,6 +106,7 @@ const COL = {
   nextAction: 184,
   rep: 168,
   dnc: 52,
+  notes: 264,
 } as const;
 
 /** In render order, so <colgroup> and the offsets below can't disagree. */
@@ -132,6 +133,7 @@ function sheetColumnWidths(canEdit: boolean): number[] {
     COL.nextAction,
     COL.rep,
     COL.dnc,
+    COL.notes,
   ];
 }
 
@@ -480,6 +482,7 @@ export default function CampaignSheetPage() {
           "Next Action",
           "Assigned Rep",
           "Do Not Call",
+          "Notes",
         ],
         all.map((r) => [
           r.position,
@@ -503,6 +506,7 @@ export default function CampaignSheetPage() {
           r.nextAction ?? "",
           r.assignedRepName ?? "",
           r.doNotCall ? "Yes" : "",
+          r.notes ?? "",
         ]),
       );
       success(`Exported ${all.length.toLocaleString()} rows.`);
@@ -830,6 +834,7 @@ export default function CampaignSheetPage() {
                     "Next Action",
                     "Assigned Rep",
                     "DNC",
+                    "Notes",
                   ].map((h) => (
                     <th
                       key={h}
@@ -1123,6 +1128,25 @@ export default function CampaignSheetPage() {
                           onChange={(e) => commit(row, { doNotCall: e.target.checked })}
                           aria-label="Do not call"
                           className="w-3 h-3 accent-[#f31260] cursor-pointer"
+                        />
+                      </td>
+                      <td className={CELL}>
+                        <input
+                          type="text"
+                          defaultValue={row.notes ?? ""}
+                          // Keyed on the stored value so a refetch (somebody
+                          // else's edit, a filter change) replaces what's in
+                          // the box, the same way the other free-text cells
+                          // behave.
+                          key={`notes-${row.rowId}-${row.notes ?? ""}`}
+                          disabled={!canEdit}
+                          placeholder={canEdit ? "Anything worth knowing…" : ""}
+                          title={row.notes ?? ""}
+                          onBlur={(e) => commit(row, { notes: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                          }}
+                          className={INPUT}
                         />
                       </td>
                     </tr>

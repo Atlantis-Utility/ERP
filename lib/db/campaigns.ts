@@ -58,6 +58,12 @@ export interface CampaignRow {
   bestTime: string | null;
   nextAction: string | null;
   doNotCall: boolean;
+  /**
+   * What's true about the row rather than about a call: the gatekeeper, the
+   * second location, the reason this one is slow going. Distinct from
+   * callerFeedback, which is one call's answer.
+   */
+  notes: string | null;
   updatedAt: string | null;
   updatedByName: string | null;
   /**
@@ -84,6 +90,7 @@ export type CampaignRowPatch = Partial<
     | "bestTime"
     | "nextAction"
     | "doNotCall"
+    | "notes"
   >
 >;
 
@@ -463,6 +470,7 @@ interface SheetRowRaw {
   best_time: string | null;
   next_action: string | null;
   do_not_call: boolean | null;
+  notes: string | null;
   updated_at: string | null;
   updated_by_name: string | null;
   pending: Record<string, string | null> | null;
@@ -493,6 +501,7 @@ const fromSheetRow = (r: SheetRowRaw): CampaignRow => ({
   bestTime: r.best_time,
   nextAction: r.next_action,
   doNotCall: Boolean(r.do_not_call),
+  notes: r.notes,
   updatedAt: r.updated_at,
   updatedByName: r.updated_by_name,
   pending: r.pending ?? {},
@@ -601,6 +610,7 @@ const PATCH_COLUMNS: Record<keyof CampaignRowPatch, string> = {
   bestTime: "best_time",
   nextAction: "next_action",
   doNotCall: "do_not_call",
+  notes: "notes",
 };
 
 /**
