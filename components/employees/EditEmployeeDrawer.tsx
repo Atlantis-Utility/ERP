@@ -9,7 +9,7 @@ import Select from "@/components/ui/Select";
 import { updateEmployee, updateEmployeeAccess, removeEmployee } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { NAV_PAGES } from "@/lib/nav-pages";
-import { DASHBOARD_WIDGETS, DEFAULT_DASHBOARD_WIDGETS } from "@/lib/dashboard-widgets";
+import { availableWidgets, defaultDashboardWidgets } from "@/lib/dashboard-widgets";
 import { Check, Lock, Mail } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getErrorMessage } from "@/lib/utils";
@@ -81,7 +81,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     });
     setErrors({});
     setAccess(employee.access ?? []);
-    setDashboard(employee.dashboard ?? DEFAULT_DASHBOARD_WIDGETS);
+    setDashboard(employee.dashboard ?? defaultDashboardWidgets(employee.access));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employee.id]);
 
@@ -113,6 +113,11 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
    * password. Admin-only, and the route checks that too: the UI hiding a
    * button has never been a permission.
    */
+  // Which panels are even offerable, from the page grants as they stand in
+  // this form rather than as they were saved: ticking Leads should make the
+  // leads panels appear without saving first.
+  const offerable = availableWidgets(access);
+
   async function sendInvite() {
     setInviting(true);
     try {
@@ -336,11 +341,17 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
           <p className="text-xs text-[#999] mb-3">
             {/* The dashboard itself isn't grantable: it's where sign-in
                 lands. What's on it is. */}
-            Everyone has the dashboard. These are the panels on it.
+            Everyone has the dashboard. These are the panels on it, and only the ones their pages support:
+            tick Leads below and the leads panels appear here.
             {form.accessRole === "Administrator" && " An administrator sees all of them."}
           </p>
           <div className="space-y-1.5 mb-4">
-            {DASHBOARD_WIDGETS.map((w) => {
+            {offerable.length === 0 && (
+              <p className="text-xs text-[#bbb] px-3 py-2 border border-dashed border-[#eaeaea] rounded-lg">
+                Grant a page below and its panels show up here. Today&apos;s schedule is always on.
+              </p>
+            )}
+            {offerable.map((w) => {
               const on = form.accessRole === "Administrator" || dashboard.includes(w.key);
               return (
                 <label

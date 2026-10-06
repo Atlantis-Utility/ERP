@@ -5,13 +5,25 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { canSeeWidget } from "@/lib/dashboard-widgets";
 import LeadsProgress from "@/components/dashboard/LeadsProgress";
+import MyCampaigns from "@/components/dashboard/MyCampaigns";
+import CallsToday from "@/components/dashboard/CallsToday";
+import MyWork from "@/components/dashboard/MyWork";
 
-/** The panels that share the big left-hand card, in the order they appear. */
-const TOP_PANELS = ["timeline", "leads", "schedule"] as const;
+/**
+ * The panels that share the big left-hand card, in the order they appear.
+ *
+ * One card with tabs rather than a panel each: which of these somebody
+ * holds varies from one person to the next, and a column of half-empty
+ * cards reads worse than one card they can switch. The order is the order
+ * of a day: what I'm working, then what's booked.
+ */
+const TOP_PANELS = ["timeline", "leads", "campaigns", "work", "schedule"] as const;
 type TopPanel = (typeof TOP_PANELS)[number];
 const TOP_PANEL_LABELS: Record<TopPanel, string> = {
   timeline: "Project Timeline",
   leads: "Leads Progress",
+  campaigns: "My Campaigns",
+  work: "Tickets & Tasks",
   schedule: "Today's Schedule",
 };
 import IspLogo from "@/components/unifi/IspLogo";
@@ -238,11 +250,18 @@ export default function DashboardPage() {
   // administrator gets all of them; everybody else gets their own day until
   // somebody widens it on the Employees page.
   const shows = (key: string) => canSeeWidget(key, authUser?.dashboardWidgets);
+  const holdsPage = (href: string) => !authUser?.access || authUser.access.includes(href);
   const [topPanelTab, setTopPanelTab] = useState<TopPanel>("timeline");
   // The tabs are whatever they hold, in a fixed order, and the open one has
   // to be among them: defaulting to the timeline and then hiding it would
   // leave the panel blank, which is what a caller with no projects saw.
   const panelTabs = TOP_PANELS.filter((t) => shows(t));
+  // The layout follows what's actually shown, so no combination leaves a
+  // hole: the tabbed card takes the full width when nothing sits beside
+  // it, and the row of cards below is as many columns as it has cards.
+  const bottomCards = ["calls", "network", "billing"].filter((k) => shows(k));
+  const bottomGrid =
+    bottomCards.length >= 3 ? "lg:grid-cols-3" : bottomCards.length === 2 ? "lg:grid-cols-2" : "lg:grid-cols-1";
   const panelTab: TopPanel = panelTabs.includes(topPanelTab) ? topPanelTab : (panelTabs[0] ?? "schedule");
 
   const load = useCallback(async (silent = false) => {
@@ -613,7 +632,7 @@ export default function DashboardPage() {
       {(panelTabs.length > 0 || shows("activity")) && (
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 mb-4 lg:h-105">
         {panelTabs.length > 0 && (
-        <div className="lg:col-span-7 flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
+        <div className={`${shows("activity") ? "lg:col-span-7" : "lg:col-span-10"} flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden`}>
           <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-4 border-b border-[#f4f4f4] shrink-0">
             <div className="flex items-center gap-1 bg-[#f4f4f5] rounded-lg p-1">
               {panelTabs.map((t) => (
@@ -663,6 +682,10 @@ export default function DashboardPage() {
               </div>
             ) : panelTab === "leads" ? (
               <LeadsProgress />
+            ) : panelTab === "campaigns" ? (
+              <MyCampaigns />
+            ) : panelTab === "work" ? (
+              <MyWork tickets={holdsPage("/tickets")} tasks={holdsPage("/tasks")} />
             ) : (
               <TodaySchedule cards={visibleCards} />
             )}
@@ -671,7 +694,7 @@ export default function DashboardPage() {
         )}
 
         {shows("activity") && (
-        <div className="lg:col-span-3 min-h-0">
+        <div className={`${panelTabs.length > 0 ? "lg:col-span-3" : "lg:col-span-10"} min-h-0`}>
           <NotificationPanel
             notifs={appNotifs}
             onMarkAllRead={() => {
@@ -685,8 +708,14 @@ export default function DashboardPage() {
       )}
 
       {/* ── Network · Customers needing attention ────────────────────────────── */}
-      {(shows("network") || shows("billing")) && (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 lg:h-105">
+      {/* Two or three cards share a row and want the same height; one card
+          on its own sizes to its content rather than standing as a tall,
+          mostly-empty box. */}
+      {bottomCards.length > 0 && (
+      <div className={`grid grid-cols-1 ${bottomGrid} gap-4 mb-4 ${bottomCards.length > 1 ? "lg:h-105" : ""}`}>
+        {/* A caller's own scoreboard, from the sheet rows they touched. */}
+        {shows("calls") && <CallsToday />}
+
         {/* Network */}
         {shows("network") && (
         <div className="flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
