@@ -696,7 +696,10 @@ export default function TicketsPage() {
           ))}
         </div>
 
-        <div className="w-40">
+        {/* Pushed to the right end of the row, away from the status pills,
+            so the two kinds of filter don't read as one strip. It only
+            right-aligns once the row fits on one line. */}
+        <div className="w-40 sm:ml-auto">
           <Select
             value={priorityFilter}
             onChange={(v) => setPriorityFilter(v as TicketPriority | "all")}
