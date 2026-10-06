@@ -9,6 +9,7 @@ import Select from "@/components/ui/Select";
 import { updateEmployee, updateEmployeeAccess, removeEmployee } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { NAV_PAGES } from "@/lib/nav-pages";
+import { DASHBOARD_WIDGETS, DEFAULT_DASHBOARD_WIDGETS } from "@/lib/dashboard-widgets";
 import { Check, Lock, Mail } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getErrorMessage } from "@/lib/utils";
@@ -39,6 +40,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     startDate:  employee.startDate,
   });
   const [access, setAccess] = useState<string[]>([]);
+  const [dashboard, setDashboard] = useState<string[]>([]);
   const [errors, setErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
   const [saving, setSaving]           = useState(false);
   const [saveError, setSaveError]     = useState("");
@@ -79,6 +81,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     });
     setErrors({});
     setAccess(employee.access ?? []);
+    setDashboard(employee.dashboard ?? DEFAULT_DASHBOARD_WIDGETS);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employee.id]);
 
@@ -150,7 +153,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
       // Access role and page access are permission grants: only admins can
       // change them, enforced server-side too (see updateEmployeeAccess).
       if (isAdmin) {
-        await updateEmployeeAccess(employee.id, { access, accessRole: form.accessRole });
+        await updateEmployeeAccess(employee.id, { access, accessRole: form.accessRole, dashboard });
       }
     } catch (err) {
       console.error("[EditEmployeeDrawer] Failed to update:", JSON.stringify(err, Object.getOwnPropertyNames(err ?? {})), err);
@@ -329,6 +332,47 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
         </FormField>
 
         <div className="border-t border-[#f7f7f7] pt-4">
+          <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-1">Dashboard</p>
+          <p className="text-xs text-[#999] mb-3">
+            {/* The dashboard itself isn't grantable: it's where sign-in
+                lands. What's on it is. */}
+            Everyone has the dashboard. These are the panels on it.
+            {form.accessRole === "Administrator" && " An administrator sees all of them."}
+          </p>
+          <div className="space-y-1.5 mb-4">
+            {DASHBOARD_WIDGETS.map((w) => {
+              const on = form.accessRole === "Administrator" || dashboard.includes(w.key);
+              return (
+                <label
+                  key={w.key}
+                  className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border transition-colors ${
+                    isAdmin && form.accessRole !== "Administrator"
+                      ? "cursor-pointer hover:bg-[#fafafa]"
+                      : "cursor-not-allowed opacity-70"
+                  } ${on ? "border-[#0a0a0a] bg-[#fafafa]" : "border-[#eaeaea]"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={!isAdmin || form.accessRole === "Administrator"}
+                    onChange={() =>
+                      setDashboard((prev) =>
+                        prev.includes(w.key) ? prev.filter((k) => k !== w.key) : [...prev, w.key],
+                      )
+                    }
+                    className="mt-0.5 w-3.5 h-3.5 accent-[#0a0a0a] cursor-pointer"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium text-[#0a0a0a]">{w.label}</span>
+                    <span className="block text-[11px] text-[#999]">{w.hint}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-[#f7f7f7] pt-4">
           <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-1">Page Access</p>
           <p className="text-xs text-[#999] mb-3 flex items-center gap-1.5">
             {access.length} of {NAV_PAGES.length} pages granted
@@ -369,6 +413,23 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {pages.map((page) => {
+                    // The dashboard is everyone's now, so its checkbox
+                    // would be a control that does nothing: shown as
+                    // always on instead, with the panels above deciding
+                    // what it actually contains.
+                    if (page.href === "/") {
+                      return (
+                        <span
+                          key={page.href}
+                          title="Everyone has the dashboard. The panels on it are granted above."
+                          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border bg-[#f5f5f5] text-[#666] border-[#eaeaea]"
+                        >
+                          <Check className="w-3 h-3 shrink-0" />
+                          {page.label}
+                          <span className="text-[10px] text-[#bbb]">always</span>
+                        </span>
+                      );
+                    }
                     const granted = access.includes(page.href);
                     if (!isAdmin) {
                       return (

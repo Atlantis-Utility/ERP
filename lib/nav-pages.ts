@@ -84,6 +84,10 @@ export const ALL_HREFS = NAV_PAGES.map((p) => p.href);
  */
 export function hasPageAccess(href: string, access: string[] | undefined): boolean {
   if (!access) return true;
+  // The dashboard is everyone's. It's where every sign-in lands, and what
+  // it shows is granted panel by panel instead (lib/dashboard-widgets.ts),
+  // so withholding the page itself only ever produced a 404 on arrival.
+  if (href === "/") return true;
   const page = NAV_PAGES.filter((p) =>
     p.href === "/" ? href === "/" : href === p.href || href.startsWith(`${p.href}/`)
   ).sort((a, b) => b.href.length - a.href.length)[0];

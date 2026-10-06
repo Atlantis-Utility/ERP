@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { canSeeWidget } from "@/lib/dashboard-widgets";
 import IspLogo from "@/components/unifi/IspLogo";
 import {
   Wifi,
@@ -223,7 +224,18 @@ export default function DashboardPage() {
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [customers, setCustomers] = useState<PortalCustomer[]>([]);
   const [timelineRange, setTimelineRange] = useState<"today" | "week" | "month" | "3" | "6">("6");
+  // Which panels this person is allowed (lib/dashboard-widgets.ts). An
+  // administrator gets all of them; everybody else gets their own day until
+  // somebody widens it on the Employees page.
+  const shows = (key: string) => canSeeWidget(key, authUser?.dashboardWidgets);
   const [topPanelTab, setTopPanelTab] = useState<"timeline" | "schedule">("timeline");
+  // The tab has to be one they hold: defaulting to the timeline and then
+  // hiding it would leave the panel blank.
+  const panelTab: "timeline" | "schedule" = shows(topPanelTab)
+    ? topPanelTab
+    : shows("timeline")
+      ? "timeline"
+      : "schedule";
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -570,6 +582,7 @@ export default function DashboardPage() {
       {/* ── KPI strip ─────────────────────────────────────────────────────────── */}
       {/* gap-px over the container's border colour draws the dividers, so they
           stay correct however the cells reflow across breakpoints. */}
+      {shows("kpis") && (
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:items-stretch gap-px bg-[#f4f4f4] border border-[#eaeaea] rounded-xl mb-4 overflow-hidden">
         {kpiCards.map((k) => (
           <Link
@@ -586,31 +599,38 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
+      )}
 
       {/* ── Project Timeline / Today's Schedule · Recent Activity ────────────── */}
+      {(shows("timeline") || shows("schedule") || shows("activity")) && (
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 mb-4 lg:h-105">
+        {(shows("timeline") || shows("schedule")) && (
         <div className="lg:col-span-7 flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
           <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-4 border-b border-[#f4f4f4] shrink-0">
             <div className="flex items-center gap-1 bg-[#f4f4f5] rounded-lg p-1">
+              {shows("timeline") && (
               <button
                 onClick={() => setTopPanelTab("timeline")}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  topPanelTab === "timeline" ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
+                  panelTab === "timeline" ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
                 }`}
               >
                 Project Timeline
               </button>
+              )}
+              {shows("schedule") && (
               <button
                 onClick={() => setTopPanelTab("schedule")}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  topPanelTab === "schedule" ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
+                  panelTab === "schedule" ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
                 }`}
               >
                 Today&apos;s Schedule
               </button>
+              )}
             </div>
 
-            {topPanelTab === "timeline" ? (
+            {panelTab === "timeline" ? (
               <div className="flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-3">
                   {TIMELINE_SERIES.map((s) => (
@@ -638,7 +658,7 @@ export default function DashboardPage() {
             )}
           </div>
           <div className="flex-1 min-h-0">
-            {topPanelTab === "timeline" ? (
+            {panelTab === "timeline" ? (
               <div className="h-full p-5">
                 <ProjectTimelineChart data={timelineMonths} />
               </div>
@@ -647,7 +667,9 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+        )}
 
+        {shows("activity") && (
         <div className="lg:col-span-3 min-h-0">
           <NotificationPanel
             notifs={appNotifs}
@@ -657,11 +679,15 @@ export default function DashboardPage() {
             }}
           />
         </div>
+        )}
       </div>
+      )}
 
       {/* ── Network · Customers needing attention ────────────────────────────── */}
+      {(shows("network") || shows("billing")) && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 lg:h-105">
         {/* Network */}
+        {shows("network") && (
         <div className="flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#f4f4f4] shrink-0">
             <div className="flex items-center gap-2.5">
@@ -774,7 +800,10 @@ export default function DashboardPage() {
           )}
         </div>
 
+        )}
+
         {/* Customers needing attention */}
+        {shows("billing") && (
         <div className="flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#f4f4f4] shrink-0">
             <div className="flex items-center gap-2.5">
@@ -865,7 +894,9 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+        )}
       </div>
+      )}
     </div>
   );
 }

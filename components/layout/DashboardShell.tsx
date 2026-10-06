@@ -21,7 +21,10 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   // Page-access permissions come live from auth-context (backed by a Supabase
   // realtime subscription on the employee row) — not a localStorage snapshot,
   // so changes an admin makes elsewhere take effect immediately.
-  const allowedHrefs = authUser?.access;
+  // The dashboard is everyone's (lib/nav-pages.ts), so it belongs in the
+  // sidebar whatever the grant list says: without this, somebody granted
+  // only Leads stood on the dashboard with no link to it in the nav.
+  const allowedHrefs = authUser?.access ? [...new Set(["/", ...authUser.access])] : undefined;
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");

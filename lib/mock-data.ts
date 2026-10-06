@@ -16,6 +16,11 @@ export interface Employee {
   startDate: string;
   location: string;
   access?: string[];
+  /**
+   * Which dashboard panels they see (lib/dashboard-widgets.ts). Absent
+   * means the default: their own day, and nothing about the business.
+   */
+  dashboard?: string[];
   salary: number;
   department?: string;
   manager?: string;

@@ -14,7 +14,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     await requireAdmin();
     const { id } = await params;
-    const body = (await req.json()) as { access?: string[]; accessRole?: string };
+    const body = (await req.json()) as { access?: string[]; accessRole?: string; dashboard?: string[] };
 
     const supabase = createServiceRoleClient();
     const { data: existing, error: fetchErr } = await supabase
@@ -28,6 +28,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ...(existing.data as Record<string, unknown>),
       ...(body.access !== undefined ? { access: body.access } : {}),
       ...(body.accessRole !== undefined ? { accessRole: body.accessRole } : {}),
+      // Which dashboard panels they see; the same kind of grant as a page,
+      // so it goes through the same admin-only route.
+      ...(body.dashboard !== undefined ? { dashboard: body.dashboard } : {}),
     };
 
     const { error } = await supabase.from("employees").update({ data: merged }).eq("id", id);

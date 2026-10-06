@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase/client";
+import { DEFAULT_DASHBOARD_WIDGETS } from "./dashboard-widgets";
 
 export interface AuthUser {
   user: User;
@@ -28,6 +29,13 @@ export interface AuthUser {
   isUnrestricted: boolean;
   /** Allowed page hrefs — undefined means unrestricted (Administrator, or no employee record). */
   access: string[] | undefined;
+  /**
+   * Which dashboard panels this person sees. undefined means all of them
+   * (an administrator, or a login with no employee record); otherwise the
+   * granted list, which defaults to their own day until somebody widens it.
+   * See lib/dashboard-widgets.ts.
+   */
+  dashboardWidgets: string[] | undefined;
 }
 
 interface AuthContextValue {
@@ -167,7 +175,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const employeeName = employeeRow?.name ?? null;
-      const employeeExtra = employeeRow?.data as { role?: string; accessRole?: string; access?: string[] } | undefined;
+      const employeeExtra = employeeRow?.data as
+        | { role?: string; accessRole?: string; access?: string[]; dashboard?: string[] }
+        | undefined;
 
       const displayName = user.user_metadata?.display_name || employeeName || user.email?.split("@")[0] || "User";
       if (employeeId) {
@@ -215,6 +225,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Employees page they'd need to grant themselves anything. Anyone
         // non-admin still defaults to [], i.e. nothing until granted.
         access:             employeeExtra?.access ?? (unrestricted ? undefined : []),
+        // Same shape as `access`: a list means those panels, undefined
+        // means all of them. Someone with an employee record and no list
+        // yet gets the default rather than everything, since the panels
+        // this is here to cover are the ones not everybody should see.
+        dashboardWidgets:   unrestricted ? undefined : (employeeExtra?.dashboard ?? DEFAULT_DASHBOARD_WIDGETS),
       });
       setLoading(false);
     }
@@ -284,7 +299,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "employees", filter: `id=eq.${accessEmployeeId}` },
         (payload) => {
-          const row = payload.new as { data?: { access?: string[]; role?: string; accessRole?: string } } | undefined;
+          const row = payload.new as
+            | { data?: { access?: string[]; role?: string; accessRole?: string; dashboard?: string[] } }
+            | undefined;
           if (!row) return;
           setAuthUser((prev) =>
             prev ? {
@@ -296,6 +313,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // everyone, and only its absence means unrestricted.
               access:
                 row.data?.access ?? (row.data?.accessRole === "Administrator" ? undefined : []),
+              dashboardWidgets:
+                row.data?.accessRole === "Administrator"
+                  ? undefined
+                  : (row.data?.dashboard ?? DEFAULT_DASHBOARD_WIDGETS),
               employeeRole:       row.data?.role ?? prev.employeeRole,
               employeeAccessRole: row.data?.accessRole ?? prev.employeeAccessRole,
             } : prev

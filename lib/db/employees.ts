@@ -83,7 +83,10 @@ export async function updateEmployee(id: string, patch: Partial<Employee>): Prom
 
 // Routed through an admin-gated API route rather than a direct client write —
 // see app/api/employees/[id]/access/route.ts for why.
-export async function updateEmployeeAccess(id: string, patch: { access?: string[]; accessRole?: AccessRole }): Promise<void> {
+export async function updateEmployeeAccess(
+  id: string,
+  patch: { access?: string[]; accessRole?: AccessRole; dashboard?: string[] },
+): Promise<void> {
   const res = await fetch(`/api/employees/${id}/access`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
