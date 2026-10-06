@@ -6,7 +6,8 @@ import {
   Shield, Wifi, Layers, LogIn, Filter, Bell, BellRing,
 } from "lucide-react";
 import Select from "@/components/ui/Select";
-import { getLogs, clearLogs, type ActivityLogEntry, type LogCategory } from "@/lib/activity-log";
+import { getLogs, clearLogs, visibleLogs, type ActivityLogEntry, type LogCategory } from "@/lib/activity-log";
+import { useAuth } from "@/lib/auth-context";
 import { getInitials } from "@/lib/utils";
 
 // ── Category config ───────────────────────────────────────────────────────────
@@ -155,17 +156,22 @@ export default function LogsPage() {
   const [catFilter, setCatFilter]   = useState<LogCategory | "all" | "notifications">("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [isAdmin, setIsAdmin]       = useState(false);
+  const { authUser } = useAuth();
 
-  // Load on mount + live updates
+  // Load on mount + live updates. Filtered by the viewer's page grants
+  // before anything else sees it, so the counts, the pills and the CSV all
+  // agree with what the list shows.
+  const access = authUser?.access;
   useEffect(() => {
-    setLogs(getLogs());
+    if (!authUser) return;
+    function onEntry() { setLogs(visibleLogs(getLogs(), access)); }
+    onEntry();
     setIsAdmin(!localStorage.getItem("current_user_id"));
     const params = new URLSearchParams(window.location.search);
     if (params.get("filter") === "notifications") setCatFilter("notifications");
-    function onEntry() { setLogs(getLogs()); }
     window.addEventListener("activity-log-entry", onEntry as EventListener);
     return () => window.removeEventListener("activity-log-entry", onEntry as EventListener);
-  }, []);
+  }, [authUser, access]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();

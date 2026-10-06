@@ -375,7 +375,8 @@ export default function DashboardPage() {
         "dashboard_last_alert_sites",
         JSON.stringify(sites.filter((s) => s.statistics.counts.criticalNotification > 0).map((s) => s.siteId)),
       );
-      setAppNotifs(getNotifications());
+      // No refresh here: anything raised above dispatched
+      // "app-notification", which the panel's own effect listens for.
 
       setLastUpdated(new Date());
     } catch {
@@ -405,15 +406,19 @@ export default function DashboardPage() {
     return () => clearInterval(iv);
   }, [load]);
 
-  // Load notifications on mount and subscribe to live updates
+  // Load notifications on mount and subscribe to live updates. Re-runs when
+  // the grants change, since what's shown depends on them, and holds off
+  // while they're still resolving rather than showing the lot for a frame.
+  const notifAccess = authUser?.access;
   useEffect(() => {
-    setAppNotifs(getNotifications());
+    if (!authUser) return;
+    setAppNotifs(getNotifications(notifAccess));
     function onNotif() {
-      setAppNotifs(getNotifications());
+      setAppNotifs(getNotifications(notifAccess));
     }
     window.addEventListener("app-notification", onNotif as EventListener);
     return () => window.removeEventListener("app-notification", onNotif as EventListener);
-  }, []);
+  }, [authUser, notifAccess]);
 
   // Projects, for upcoming/overdue deadline tracking
   useEffect(() => {
@@ -737,7 +742,7 @@ export default function DashboardPage() {
             notifs={appNotifs}
             onMarkAllRead={() => {
               markAllRead();
-              setAppNotifs(getNotifications());
+              setAppNotifs(getNotifications(notifAccess));
             }}
           />
         </div>

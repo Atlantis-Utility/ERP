@@ -1,4 +1,6 @@
 
+import { hasPageAccess } from "./nav-pages";
+
 export type LogCategory =
   | "auth"
   | "employees"
@@ -81,6 +83,21 @@ export function logActivity(params: {
 
   // Let the log page refresh in real-time
   window.dispatchEvent(new CustomEvent("activity-log-entry", { detail: entry }));
+}
+
+/**
+ * The entries this person may read. An entry tagged with the page it's
+ * about — which is what addNotification records — is withheld from somebody
+ * who doesn't hold that page, so the feed the bell opens says the same
+ * thing the badge counted. `access` undefined means unrestricted, as
+ * everywhere else.
+ */
+export function visibleLogs(entries: ActivityLogEntry[], access: string[] | undefined): ActivityLogEntry[] {
+  if (!access) return entries;
+  return entries.filter((e) => {
+    const page = e.metadata?.page;
+    return typeof page !== "string" || hasPageAccess(page, access);
+  });
 }
 
 export function getLogs(): ActivityLogEntry[] {

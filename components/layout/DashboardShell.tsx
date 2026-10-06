@@ -7,6 +7,7 @@ import Sidebar from "./Sidebar";
 import GlobalSearch from "./GlobalSearch";
 import { Menu, Bell, LogOut, User, ChevronDown } from "lucide-react";
 import { getUnreadCount } from "@/lib/notifications";
+import { hasPageAccess } from "@/lib/nav-pages";
 import { useAuth } from "@/lib/auth-context";
 import { getInitials } from "@/lib/utils";
 
@@ -26,19 +27,28 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   // only Leads stood on the dashboard with no link to it in the nav.
   const allowedHrefs = authUser?.access ? [...new Set(["/", ...authUser.access])] : undefined;
 
+  // The bell used to go to the Logs feed unconditionally, which 404s for
+  // anybody not granted Logs. The dashboard's own notification panel is the
+  // fallback, since the dashboard is everyone's.
+  const notificationsHref = hasPageAccess("/logs", authUser?.access) ? "/logs?filter=notifications" : "/";
+
+  // The badge counts what this person is allowed to read, so it can't send
+  // them to a feed where the thing it counted isn't shown — and it counts
+  // nothing until the grants have resolved, rather than counting everything
+  // for a moment.
+  const access = authUser?.access;
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved === "true") setCollapsed(true);
 
-    setUnreadCount(getUnreadCount());
-
-    function onNotif() { setUnreadCount(getUnreadCount()); }
+    function onNotif() { setUnreadCount(authUser ? getUnreadCount(access) : 0); }
+    onNotif();
     window.addEventListener("app-notification", onNotif as EventListener);
 
     return () => {
       window.removeEventListener("app-notification", onNotif as EventListener);
     };
-  }, []);
+  }, [authUser, access]);
 
   const toggle = () => {
     setCollapsed((c) => {
@@ -109,7 +119,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             <span className="text-[13px] font-semibold text-[#0a0a0a]">Atlantis Utility</span>
           </div>
           <div className="flex items-center gap-1">
-            <Link href="/logs?filter=notifications" className="relative p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors" aria-label="Notifications">
+            <Link href={notificationsHref} className="relative p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors" aria-label="Notifications">
               <Bell className="w-4 h-4 text-[#666]" />
               {unreadCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#0a0a0a] text-white text-[8px] font-bold flex items-center justify-center leading-none">
@@ -135,7 +145,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         <div className="hidden md:flex items-center justify-between gap-4 px-8 h-14 border-b border-[#f5f5f5]">
           <GlobalSearch allowedHrefs={allowedHrefs} />
           <div className="flex items-center gap-3 shrink-0">
-          <Link href="/logs?filter=notifications" className="relative p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors" aria-label="Notifications">
+          <Link href={notificationsHref} className="relative p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors" aria-label="Notifications">
             <Bell className="w-4 h-4 text-[#666]" />
             {unreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#0a0a0a] text-white text-[8px] font-bold flex items-center justify-center leading-none">

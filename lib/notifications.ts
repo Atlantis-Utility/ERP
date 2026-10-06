@@ -1,4 +1,5 @@
 import { logActivity } from "./activity-log";
+import { hasPageAccess } from "./nav-pages";
 
 export type NotifIcon = "user" | "project" | "network" | "phone" | "system" | "leave";
 
@@ -20,6 +21,38 @@ const MAX_ENTRIES = 200;
 
 // prefId used for auto-generated "new ticket arrived" notifications
 export const TICKET_NOTIF_PREF_ID = "new-ticket";
+
+/**
+ * The page a notification is about, so it can be withheld from somebody who
+ * doesn't hold that page. "A site went offline" is a sentence about the
+ * UniFi network, and telling it to a caller who has only Leads tells them
+ * something about a system they can't open and can't act on.
+ *
+ * Every notification carries an href today, which already names the page:
+ * /projects/abc is about Projects. The prefId map is the fallback for one
+ * raised without a link, and a notification that resolves to no page at all
+ * is nobody's in particular and stays visible.
+ */
+const PAGE_BY_PREF: Record<string, string> = {
+  "n-1": "/employees",
+  "n-2": "/projects",
+  "n-6": "/sites",
+  "n-7": "/alerts",
+  [TICKET_NOTIF_PREF_ID]: "/tickets",
+};
+
+export function notificationPage(n: { prefId: string; href?: string }): string | null {
+  return n.href ?? PAGE_BY_PREF[n.prefId] ?? null;
+}
+
+/**
+ * `access` is the viewer's page grants, with `undefined` meaning
+ * unrestricted — the same convention as lib/nav-pages.
+ */
+export function canSeeNotification(n: { prefId: string; href?: string }, access: string[] | undefined): boolean {
+  const page = notificationPage(n);
+  return page === null || hasPageAccess(page, access);
+}
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -81,10 +114,14 @@ export function addNotification(params: {
   writeAll([entry, ...readAll()]);
 
   // Also persist to activity log so it appears in Logs > Notifications
+  const page = notificationPage(params);
   logActivity({
     category: "notification",
     action: params.title,
     detail: params.body,
+    // Carried so the Logs feed can withhold the same entries the panel
+    // does, since a log line has no href of its own.
+    metadata: page ? { page } : undefined,
   });
 
   // Notify same-tab listeners (dashboard updates without reload)
@@ -93,18 +130,22 @@ export function addNotification(params: {
   }
 }
 
-/** Returns notifications for the current user (admin sees admin's own; employee sees theirs). */
-export function getNotifications(): AppNotification[] {
+/**
+ * The current user's notifications (admin sees admin's own; employee sees
+ * theirs), minus anything about a page they don't hold. Callers pass the
+ * viewer's grants from auth-context; leaving it out means unrestricted.
+ */
+export function getNotifications(access?: string[]): AppNotification[] {
   const uid = currentUserId();
-  return readAll().filter((n) => n.userId === uid);
+  return readAll().filter((n) => n.userId === uid && canSeeNotification(n, access));
 }
 
-export function getUnreadCount(): number {
-  return getNotifications().filter((n) => !n.read).length;
+export function getUnreadCount(access?: string[]): number {
+  return getNotifications(access).filter((n) => !n.read).length;
 }
 
-export function getUnreadCountByPrefId(prefId: string): number {
-  return getNotifications().filter((n) => !n.read && n.prefId === prefId).length;
+export function getUnreadCountByPrefId(prefId: string, access?: string[]): number {
+  return getNotifications(access).filter((n) => !n.read && n.prefId === prefId).length;
 }
 
 /** Whether the current user has an unread "new ticket" notification for this specific ticket. */
