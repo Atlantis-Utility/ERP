@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { canSeeWidget } from "@/lib/dashboard-widgets";
+import { NAV_PAGES } from "@/lib/nav-pages";
 import LeadsProgress from "@/components/dashboard/LeadsProgress";
 import MyCampaigns from "@/components/dashboard/MyCampaigns";
 import CallsToday from "@/components/dashboard/CallsToday";
@@ -260,6 +261,11 @@ export default function DashboardPage() {
   // hole: the tabbed card takes the full width when nothing sits beside
   // it, and the row of cards below is as many columns as it has cards.
   const bottomCards = ["calls", "network", "billing"].filter((k) => shows(k));
+  // Every panel off, which is a page with a greeting and a void under it.
+  const nothingGranted = panelTabs.length === 0 && bottomCards.length === 0 && !shows("activity") && !shows("kpis");
+  const myPages = NAV_PAGES.filter(
+    (p) => p.href !== "/" && (!authUser?.access || authUser.access.includes(p.href)),
+  ).slice(0, 8);
   const bottomGrid =
     bottomCards.length >= 3 ? "lg:grid-cols-3" : bottomCards.length === 2 ? "lg:grid-cols-2" : "lg:grid-cols-1";
   const panelTab: TopPanel = panelTabs.includes(topPanelTab) ? topPanelTab : (panelTabs[0] ?? "schedule");
@@ -606,6 +612,28 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {nothingGranted && (
+        <div className="bg-white border border-[#eaeaea] rounded-xl px-6 py-10 text-center">
+          <p className="text-sm font-semibold text-[#0a0a0a] mb-1">Nothing on your dashboard yet</p>
+          <p className="text-xs text-[#999] max-w-sm mx-auto">
+            An administrator decides which panels appear here. Until then, here&apos;s what you can open.
+          </p>
+          {myPages.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
+              {myPages.map((p) => (
+                <Link
+                  key={p.href}
+                  href={p.href}
+                  className="text-[13px] font-medium text-[#0a0a0a] border border-[#eaeaea] bg-white px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
+                >
+                  {p.label}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── KPI strip ─────────────────────────────────────────────────────────── */}
       {/* gap-px over the container's border colour draws the dividers, so they
           stay correct however the cells reflow across breakpoints. */}
@@ -630,16 +658,24 @@ export default function DashboardPage() {
 
       {/* ── Project Timeline / Today's Schedule · Recent Activity ────────────── */}
       {(panelTabs.length > 0 || shows("activity")) && (
-      <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 mb-4 lg:h-105">
+      <div
+        className={`grid grid-cols-1 lg:grid-cols-10 gap-4 mb-4 ${
+          panelTabs.length > 0 && shows("activity") ? "lg:h-105" : ""
+        }`}
+      >
         {panelTabs.length > 0 && (
-        <div className={`${shows("activity") ? "lg:col-span-7" : "lg:col-span-10"} flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden`}>
+        <div
+          className={`flex flex-col bg-white border border-[#eaeaea] rounded-xl overflow-hidden ${
+            shows("activity") ? "lg:col-span-7 h-full" : "lg:col-span-10 lg:min-h-80"
+          }`}
+        >
           <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-4 border-b border-[#f4f4f4] shrink-0">
-            <div className="flex items-center gap-1 bg-[#f4f4f5] rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-[#f4f4f5] rounded-lg p-1 max-w-full overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
               {panelTabs.map((t) => (
                 <button
                   key={t}
                   onClick={() => setTopPanelTab(t)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                     panelTab === t ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
                   }`}
                 >
@@ -694,7 +730,9 @@ export default function DashboardPage() {
         )}
 
         {shows("activity") && (
-        <div className={`${panelTabs.length > 0 ? "lg:col-span-3" : "lg:col-span-10"} min-h-0`}>
+        <div
+          className={`min-h-0 ${panelTabs.length > 0 ? "lg:col-span-3" : "lg:col-span-10 lg:h-105"}`}
+        >
           <NotificationPanel
             notifs={appNotifs}
             onMarkAllRead={() => {
