@@ -60,12 +60,47 @@ function wordIsThatWord(a: string, b: string): boolean {
   return nameWordsMatch(a, b);
 }
 
+/**
+ * One name inside the other, but only where that means something.
+ *
+ * Plain containment is too generous once a name is short: "The Futur" sits
+ * inside "Pier Into The Future", "Lenmar" inside "Allen, Marisa", and
+ * "#NAME?" inside "Maid in America" — all of them nonsense, and all of them
+ * matches. A real pair is either anchored, where one name is the start or
+ * the end of the other ("Famcon Pipe" of "Famcon Pipe & Supply, Inc",
+ * "Paradise Plumbing & Rooter" of "AAA Paradise Plumbing & Rooter"), or
+ * long enough to be most of it.
+ */
+function containsMeaningfully(site: string, company: string, rawSite: string, rawCompany: string): boolean {
+  const [short, long] = site.length <= company.length ? [site, company] : [company, site];
+  if (!long.includes(short)) return false;
+  // Anchored: one name is how the other starts or ends.
+  if (long.startsWith(short) || long.endsWith(short)) return true;
+  // Otherwise it has to land on whole words — "Grimes" is a word of "Diane
+  // & David Grimes Surveying", while "The Futur" only hides inside "Pier
+  // Into The Future" and "Lenmar" inside "Allen, Marisa".
+  return wordRunIn(rawSite, rawCompany) || wordRunIn(rawCompany, rawSite);
+}
+
+/** Every word of the shorter name, in order and unbroken, inside the longer. */
+function wordRunIn(shortName: string, longName: string): boolean {
+  const a = nameTokens(shortName);
+  const b = nameTokens(longName);
+  if (a.length === 0 || a.length > b.length) return false;
+  // A single short word is too common to carry a match on its own.
+  if (a.length === 1 && a[0].length < 5) return false;
+  for (let i = 0; i + a.length <= b.length; i++) {
+    if (a.every((w, j) => w === b[i + j])) return true;
+  }
+  return false;
+}
+
 /** Strict enough that a near-miss is a miss. */
 export function siteNameFits(site: string, company: string): boolean {
   const a = squash(site);
   const b = squash(company);
   if (a.length < 4 || b.length < 4) return false;
-  if (a === b || a.includes(b) || b.includes(a)) return true;
+  if (a === b || containsMeaningfully(a, b, site, company)) return true;
   return everyWordIsIn(site, company);
 }
 
