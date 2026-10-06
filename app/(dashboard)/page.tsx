@@ -4,6 +4,16 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { canSeeWidget } from "@/lib/dashboard-widgets";
+import LeadsProgress from "@/components/dashboard/LeadsProgress";
+
+/** The panels that share the big left-hand card, in the order they appear. */
+const TOP_PANELS = ["timeline", "leads", "schedule"] as const;
+type TopPanel = (typeof TOP_PANELS)[number];
+const TOP_PANEL_LABELS: Record<TopPanel, string> = {
+  timeline: "Project Timeline",
+  leads: "Leads Progress",
+  schedule: "Today's Schedule",
+};
 import IspLogo from "@/components/unifi/IspLogo";
 import {
   Wifi,
@@ -228,14 +238,12 @@ export default function DashboardPage() {
   // administrator gets all of them; everybody else gets their own day until
   // somebody widens it on the Employees page.
   const shows = (key: string) => canSeeWidget(key, authUser?.dashboardWidgets);
-  const [topPanelTab, setTopPanelTab] = useState<"timeline" | "schedule">("timeline");
-  // The tab has to be one they hold: defaulting to the timeline and then
-  // hiding it would leave the panel blank.
-  const panelTab: "timeline" | "schedule" = shows(topPanelTab)
-    ? topPanelTab
-    : shows("timeline")
-      ? "timeline"
-      : "schedule";
+  const [topPanelTab, setTopPanelTab] = useState<TopPanel>("timeline");
+  // The tabs are whatever they hold, in a fixed order, and the open one has
+  // to be among them: defaulting to the timeline and then hiding it would
+  // leave the panel blank, which is what a caller with no projects saw.
+  const panelTabs = TOP_PANELS.filter((t) => shows(t));
+  const panelTab: TopPanel = panelTabs.includes(topPanelTab) ? topPanelTab : (panelTabs[0] ?? "schedule");
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -602,32 +610,23 @@ export default function DashboardPage() {
       )}
 
       {/* ── Project Timeline / Today's Schedule · Recent Activity ────────────── */}
-      {(shows("timeline") || shows("schedule") || shows("activity")) && (
+      {(panelTabs.length > 0 || shows("activity")) && (
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 mb-4 lg:h-105">
-        {(shows("timeline") || shows("schedule")) && (
+        {panelTabs.length > 0 && (
         <div className="lg:col-span-7 flex flex-col h-full bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
           <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-4 border-b border-[#f4f4f4] shrink-0">
             <div className="flex items-center gap-1 bg-[#f4f4f5] rounded-lg p-1">
-              {shows("timeline") && (
-              <button
-                onClick={() => setTopPanelTab("timeline")}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  panelTab === "timeline" ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
-                }`}
-              >
-                Project Timeline
-              </button>
-              )}
-              {shows("schedule") && (
-              <button
-                onClick={() => setTopPanelTab("schedule")}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  panelTab === "schedule" ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
-                }`}
-              >
-                Today&apos;s Schedule
-              </button>
-              )}
+              {panelTabs.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTopPanelTab(t)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    panelTab === t ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
+                  }`}
+                >
+                  {TOP_PANEL_LABELS[t]}
+                </button>
+              ))}
             </div>
 
             {panelTab === "timeline" ? (
@@ -648,20 +647,22 @@ export default function DashboardPage() {
                   />
                 </div>
               </div>
-            ) : (
+            ) : panelTab === "schedule" ? (
               <Link
                 href="/tasks"
                 className="flex items-center gap-1 text-xs text-[#666] hover:text-[#0a0a0a] transition-colors font-medium"
               >
                 View all <ArrowRight className="w-3 h-3" />
               </Link>
-            )}
+            ) : null /* the leads panel carries its own footer link */}
           </div>
           <div className="flex-1 min-h-0">
             {panelTab === "timeline" ? (
               <div className="h-full p-5">
                 <ProjectTimelineChart data={timelineMonths} />
               </div>
+            ) : panelTab === "leads" ? (
+              <LeadsProgress />
             ) : (
               <TodaySchedule cards={visibleCards} />
             )}

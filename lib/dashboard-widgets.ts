@@ -19,6 +19,7 @@ export interface DashboardWidget {
 export const DASHBOARD_WIDGETS: DashboardWidget[] = [
   { key: "schedule", label: "Today's Schedule", hint: "Their meetings and calls for today" },
   { key: "timeline", label: "Project Timeline", hint: "Projects across the months" },
+  { key: "leads", label: "Leads Progress", hint: "Their pipeline by stage, and the next follow-ups" },
   { key: "activity", label: "Recent Activity", hint: "The notification feed" },
   { key: "kpis", label: "Headline numbers", hint: "Deadlines, overdue projects, unpaid customers, sites, meetings" },
   { key: "network", label: "Network", hint: "UniFi sites, offline counts and alerts" },
@@ -27,6 +28,22 @@ export const DASHBOARD_WIDGETS: DashboardWidget[] = [
 
 /** Everyone gets their own day, and nothing about the business. */
 export const DEFAULT_DASHBOARD_WIDGETS = ["schedule", "timeline"];
+
+/**
+ * What somebody sees before anyone has chosen for them.
+ *
+ * Today's schedule always, plus the panel about the work they actually
+ * hold: the project timeline is an empty box for a caller who has no
+ * projects, and their leads pipeline is an empty box for a technician who
+ * has no leads. Keyed off the pages they're granted, which is the only
+ * thing we know about what their job is.
+ */
+export function defaultDashboardWidgets(access: string[] | undefined): string[] {
+  const holds = (href: string) => !access || access.includes(href);
+  if (holds("/projects")) return ["schedule", "timeline"];
+  if (holds("/leads")) return ["schedule", "leads"];
+  return ["schedule"];
+}
 
 export const DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGETS.map((w) => w.key);
 

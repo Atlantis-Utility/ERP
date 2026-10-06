@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase/client";
-import { DEFAULT_DASHBOARD_WIDGETS } from "./dashboard-widgets";
+import { defaultDashboardWidgets } from "./dashboard-widgets";
 
 export interface AuthUser {
   user: User;
@@ -229,7 +229,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // means all of them. Someone with an employee record and no list
         // yet gets the default rather than everything, since the panels
         // this is here to cover are the ones not everybody should see.
-        dashboardWidgets:   unrestricted ? undefined : (employeeExtra?.dashboard ?? DEFAULT_DASHBOARD_WIDGETS),
+        dashboardWidgets:   unrestricted
+          ? undefined
+          : (employeeExtra?.dashboard ?? defaultDashboardWidgets(employeeExtra?.access)),
       });
       setLoading(false);
     }
@@ -316,7 +318,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               dashboardWidgets:
                 row.data?.accessRole === "Administrator"
                   ? undefined
-                  : (row.data?.dashboard ?? DEFAULT_DASHBOARD_WIDGETS),
+                  : (row.data?.dashboard ?? defaultDashboardWidgets(row.data?.access)),
               employeeRole:       row.data?.role ?? prev.employeeRole,
               employeeAccessRole: row.data?.accessRole ?? prev.employeeAccessRole,
             } : prev
