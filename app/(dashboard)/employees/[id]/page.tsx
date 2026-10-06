@@ -9,6 +9,7 @@ import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
 import { ArrowLeft, Mail, Phone, Pencil, Check } from "lucide-react";
 import type { Employee, EmployeeStatus } from "@/lib/mock-data";
 import { NAV_PAGES } from "@/lib/nav-pages";
+import { availableWidgets, defaultDashboardWidgets } from "@/lib/dashboard-widgets";
 import EditEmployeeDrawer from "@/components/employees/EditEmployeeDrawer";
 
 const statusConfig: Record<EmployeeStatus, { label: string; bg: string; text: string; dot: string }> = {
@@ -66,6 +67,11 @@ export default function EmployeeProfilePage() {
   }, [id]);
 
   const access = employee?.access ?? [];
+  // Which panels they hold, and which could even be offered: the answer
+  // depends on their pages, so it's the same rule the drawer uses.
+  const isAdministrator = employee?.accessRole === "Administrator";
+  const offerablePanels = availableWidgets(employee?.access);
+  const panels = employee?.dashboard ?? defaultDashboardWidgets(employee?.access);
 
   // Load activity log entries related to this employee
   useEffect(() => {
@@ -185,6 +191,48 @@ export default function EmployeeProfilePage() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Dashboard panels (read-only). Beside Page Access because they
+              are the same kind of grant, and because an admin looking for
+              "what does this person see" looks here. */}
+          <div className="bg-white border border-[#eaeaea] rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-semibold text-[#0a0a0a]">Dashboard</p>
+                <p className="text-xs text-[#999] mt-0.5">
+                  {isAdministrator
+                    ? "An administrator sees every panel"
+                    : `${panels.length} of ${offerablePanels.length} panels shown`}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditOpen(true)}
+                className="text-xs font-medium text-[#0070f3] hover:underline"
+              >
+                Edit
+              </button>
+            </div>
+            {isAdministrator ? (
+              <p className="text-xs text-[#999]">Everything on the dashboard, by access role.</p>
+            ) : panels.length === 0 ? (
+              <p className="text-xs text-[#999]">No panels shown. Their dashboard will be empty.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {offerablePanels
+                  .filter((w) => panels.includes(w.key))
+                  .map((w) => (
+                    <span
+                      key={w.key}
+                      title={w.hint}
+                      className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-[#f5f5f5] text-[#666]"
+                    >
+                      <Check className="w-3 h-3 shrink-0" />
+                      {w.label}
+                    </span>
+                  ))}
+              </div>
+            )}
           </div>
 
           {/* Page Access (read-only) */}
