@@ -11,6 +11,7 @@ import { getUnifiLink } from "@/lib/db/unifi-links";
 import { subscribeProjects } from "@/lib/db/projects";
 import { statusConfig, type Project } from "@/lib/mock-projects";
 import { matchScore, LIKELY_MATCH_THRESHOLD } from "@/lib/name-match";
+import { gdmsDevicesForCustomer } from "@/lib/gdms-match";
 import { withScheme } from "@/lib/utils";
 import IspLogo from "@/components/unifi/IspLogo";
 import {
@@ -18,7 +19,7 @@ import {
 } from "@/lib/isp-accounts";
 import {
   ArrowLeft, RefreshCw, AlertCircle, Building2, Phone, User,
-  Smartphone, ListOrdered, Wifi, Pencil, FolderKanban, ArrowUpRight,
+  Smartphone, ListOrdered, Wifi, Router, Pencil, FolderKanban, ArrowUpRight,
   ChevronLeft, ChevronRight, Mail, Network,
 } from "lucide-react";
 
@@ -66,6 +67,31 @@ interface InventoryDevice {
   notes?: string;
   domain?: string;
   [line: string]: string | undefined;
+}
+
+/** A Grandstream device from GDMS: ATAs, DECT bases, the odd phone. */
+interface GdmsRow {
+  mac: string;
+  name?: string;
+  model?: string;
+  status?: string;
+  siteName?: string;
+  privateIp?: string;
+  publicIp?: string;
+  firmwareVersion?: string;
+}
+
+/** A UniFi device from the linked site: gateway, switch, access point. */
+interface UnifiRow {
+  id: string;
+  name?: string;
+  mac?: string;
+  model?: string;
+  shortname?: string;
+  productLine?: string;
+  status?: string;
+  ip?: string;
+  version?: string;
 }
 
 /** "sip:106@292332" -> "106". Empty slots and "n/a" are not lines. */
@@ -174,6 +200,43 @@ function Field({
       </div>
       {hint && <p className="text-[10px] text-[#bbb] mt-0.5 truncate">{hint}</p>}
     </div>
+  );
+}
+
+/**
+ * The band that separates one kind of hardware from another, so a list of
+ * phones, ATAs and switches reads as three lists rather than one muddle.
+ */
+function DeviceGroupHeader({
+  icon: Icon,
+  title,
+  count,
+  source,
+}: {
+  icon: React.ElementType;
+  title: string;
+  count: number;
+  source: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 px-5 py-3 bg-[#fafafa] border-b border-[#eaeaea] first:border-t-0">
+      <Icon className="w-3.5 h-3.5 text-[#666] shrink-0" />
+      <p className="text-[11px] font-semibold text-[#0a0a0a] uppercase tracking-wider">{title}</p>
+      <span className="text-[11px] font-medium text-[#999] tabular-nums">{count}</span>
+      <span className="ml-auto text-[10px] text-[#bbb]">{source}</span>
+    </div>
+  );
+}
+
+function DeviceStatus({ online, label }: { online: boolean; label: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+        online ? "bg-[#e8fdf0] text-[#17c964]" : "bg-[#f1f1f1] text-[#999]"
+      }`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -454,7 +517,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const { id } = use(params);
   const [state, setState] = useState<ViewState>("loading");
   const [data, setData] = useState<CustomerDetail | null>(null);
-  const [cachedCustomer, setCachedCustomer] = useState<PortalCustomer | null>(null);
+  // The customers list page's cache: this customer, so the overview can
+  // render before the detail fetch lands, and all the others, for deciding
+  // which company a GDMS site name belongs to.
+  const [allCustomers, setAllCustomers] = useState<PortalCustomer[]>([]);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<TabKey>("numbers");
   const [overlay, setOverlay] = useState<CustomerProfileOverlay | null>(null);
@@ -465,6 +531,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   // The hardware. devicesRes is the registration side, kept because it's
   // what says whether a given phone is online right now.
   const [inventoryRes, setInventoryRes] = useState<ResourceState<InventoryDevice>>(emptyResource);
+  // The other two places a customer's hardware lives. Both are optional:
+  // plenty of customers have phones and nothing else.
+  const [gdmsRes, setGdmsRes] = useState<ResourceState<GdmsRow>>(emptyResource);
+  const [unifiDevicesRes, setUnifiDevicesRes] = useState<ResourceState<UnifiRow>>(emptyResource);
   const [subscribersRes, setSubscribersRes] = useState<ResourceState<Subscriber>>(emptyResource);
   const [phoneNumbersRes, setPhoneNumbersRes] = useState<ResourceState<DIDNumber>>(emptyResource);
   const [queuesRes, setQueuesRes] = useState<ResourceState<GenericRow>>(emptyResource);
@@ -495,6 +565,21 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     setQueuesRes({ status: "loading", items: [] });
     fetchResource<Device>(`/api/ringlogix/devices?domain=${id}`).then(setDevicesRes);
     fetchResource<InventoryDevice>(`/api/ringlogix/device-inventory?domain=${id}`).then(setInventoryRes);
+    // GDMS has no customer id of its own; its devices carry a site name,
+    // which is matched against the company below the same way the UniFi
+    // site suggestion works.
+    fetchResource<GdmsRow>("/api/gdms/devices").then(setGdmsRes);
+    // UniFi devices hang off the site this customer is linked to, so there
+    // are two hops: the link, then that site's devices.
+    getUnifiLink(id)
+      .then(async (link) => {
+        if (!link?.siteId) {
+          setUnifiDevicesRes({ status: "ok", items: [] });
+          return;
+        }
+        setUnifiDevicesRes(await fetchResource<UnifiRow>(`/api/unifi/devices?siteId=${link.siteId}`));
+      })
+      .catch(() => setUnifiDevicesRes({ status: "error", items: [] }));
     fetchResource<Subscriber>(`/api/ringlogix/subscribers?domain=${id}`).then(setSubscribersRes);
     fetchResource<DIDNumber>(`/api/ringlogix/dids?domain=${id}`).then(setPhoneNumbersRes);
     fetchResource<GenericRow>(`/api/ringlogix/queues?domain=${id}`).then(setQueuesRes);
@@ -505,10 +590,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     // the overview renders instantly instead of blocking on devices/subscribers/etc.
     try {
       const raw = localStorage.getItem("sc:customers");
-      if (raw) {
-        const found = (JSON.parse(raw) as PortalCustomer[]).find((c) => c.id === id);
-        if (found) setCachedCustomer(found);
-      }
+      if (raw) setAllCustomers(JSON.parse(raw) as PortalCustomer[]);
     } catch {}
     load();
     loadSections();
@@ -559,7 +641,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   // Only the cached (or freshly fetched) customer record is needed to render
   // the header/overview — fall back to a full-page state when we have neither.
-  const customer = data?.customer ?? cachedCustomer;
+  const customer = data?.customer ?? allCustomers.find((c) => c.id === id) ?? null;
 
   if (!customer) {
     if (state === "loading") {
@@ -603,6 +685,22 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   // rather than padding the device list with them, which is what the tab
   // used to do.
   const unprovisioned = devices.filter((d) => !d.mac || !inventory.some((i) => i.mac?.toLowerCase() === d.mac?.toLowerCase()));
+
+  // GDMS keys its devices by a site name somebody typed, so which customer
+  // they belong to is a name match — a strict one, and one made against
+  // every company at once, or a site that reads like two of them lands on
+  // both. See lib/gdms-match.
+  const gdmsDevices = gdmsDevicesForCustomer(gdmsRes.items, customer, allCustomers);
+  const unifiDevices = unifiDevicesRes.items;
+  // One number for "how much hardware is at this customer".
+  const hardwareCount = inventory.length + gdmsDevices.length + unifiDevices.length;
+  // The three sources answer separately, so the tab shows what has arrived
+  // instead of waiting on the slowest or vanishing with the one that
+  // failed: Del Mar Seafoods' phone inventory comes back 401 from
+  // RingLogix while its Grandstream and UniFi kit load fine.
+  const hardwareSources = [inventoryRes, gdmsRes, unifiDevicesRes];
+  const hardwareLoading = hardwareSources.some((r) => r.status === "loading");
+  const hardwareFailed = hardwareSources.every((r) => r.status === "error");
   const subscribers = subscribersRes.items;
   const queues = queuesRes.items;
 
@@ -745,7 +843,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           </div>
           <div className="flex items-center gap-2">
             <Smartphone className="w-4 h-4 text-[#0070f3]" />
-            <span className="text-sm font-semibold text-[#0a0a0a]">{inventoryRes.status === "ok" ? inventory.length : "…"}</span>
+            <span className="text-sm font-semibold text-[#0a0a0a]">{inventoryRes.status === "ok" ? hardwareCount : "…"}</span>
             <span className="text-sm text-[#666]">Devices</span>
           </div>
         </div>
@@ -776,7 +874,9 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               tab.key === "numbers" ? (phoneNumbersRes.status === "ok" ? phoneNumbers.length : null) :
               tab.key === "extensions" ? (subscribersRes.status === "ok" ? subscribers.length : null) :
               tab.key === "queues" ? (queuesRes.status === "ok" ? queues.length : null) :
-              tab.key === "devices" ? (inventoryRes.status === "ok" ? inventory.length : null) :
+              // Counted once anything has settled, since the count is three
+              // sources added up and one of them can fail on its own.
+              tab.key === "devices" ? (hardwareLoading ? null : hardwareCount) :
               null;
             const isActive = activeTab === tab.key;
             return (
@@ -874,89 +974,223 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         )}
 
         {activeTab === "devices" && (
-          inventoryRes.status !== "ok" ? (
-            <SectionPending status={inventoryRes.status === "error" ? "error" : "loading"} onRetry={loadSections} />
-          ) : inventory.length === 0 ? (
-            <p className="text-sm text-[#999] px-5 py-6 text-center">No devices in this customer&apos;s inventory.</p>
+          hardwareFailed || (hardwareCount === 0 && hardwareLoading) ? (
+            <SectionPending status={hardwareFailed ? "error" : "loading"} onRetry={loadSections} />
+          ) : hardwareCount === 0 ? (
+            <p className="text-sm text-[#999] px-5 py-6 text-center">
+              No devices on file for this customer, in RingLogix, GDMS or UniFi.
+            </p>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-140">
-                  <thead>
-                    <tr className="border-b border-[#eaeaea]">
-                      {["MAC Address", "Model", "Extensions", "Status", "Notes"].map((h) => (
-                        <th
-                          key={h}
-                          className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inventory.map((d, i) => {
-                      const mac = (d.mac ?? "").toLowerCase();
-                      const reg = mac ? registrationByMac.get(mac) : undefined;
-                      // "registered_endpoint" is the one mode that means a
-                      // phone is actually talking to the platform.
-                      const online = reg?.mode === "registered_endpoint";
-                      const lines = devicesLines(d);
-                      return (
-                        <tr
-                          key={d.mac ?? `row-${i}`}
-                          className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors"
-                        >
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-mono font-medium text-[#0a0a0a]">
-                                {d.mac ? d.mac.toUpperCase() : "-"}
-                              </span>
-                              {d.mac && <CopyButton value={d.mac.toUpperCase()} label="MAC address" />}
-                            </div>
-                            {reg?.user_agent && <p className="text-[10px] text-[#bbb] mt-0.5">{reg.user_agent}</p>}
-                          </td>
-                          <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap">{d.model || "-"}</td>
-                          <td className="px-5 py-3">
-                            {lines.length === 0 ? (
-                              <span className="text-sm text-[#ccc]">Not assigned</span>
-                            ) : (
-                              <div className="flex flex-wrap gap-1">
-                                {lines.map((ext) => (
-                                  <span
-                                    key={ext}
-                                    className="text-[11px] font-medium text-[#666] bg-[#f5f5f5] rounded px-1.5 py-0.5"
-                                  >
-                                    {ext}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {reg?.sub_fullname && <p className="text-[10px] text-[#bbb] mt-1">{reg.sub_fullname}</p>}
-                          </td>
-                          <td className="px-5 py-3 whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                online ? "bg-[#e8fdf0] text-[#17c964]" : "bg-[#f1f1f1] text-[#999]"
-                              }`}
+              {/* Phones, from RingLogix's own inventory. */}
+              {inventory.length > 0 && (
+                <>
+                  <DeviceGroupHeader icon={Smartphone} title="Phones" count={inventory.length} source="RingLogix" />
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-140">
+                      <thead>
+                        <tr className="border-b border-[#eaeaea]">
+                          {["MAC Address", "Model", "Extensions", "Status", "Notes"].map((h) => (
+                            <th
+                              key={h}
+                              className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3"
                             >
-                              {online ? "Registered" : reg ? "Known, not registered" : "Not registered"}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-sm text-[#666]">{d.notes || "-"}</td>
+                              {h}
+                            </th>
+                          ))}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody>
+                        {inventory.map((d, i) => {
+                          const mac = (d.mac ?? "").toLowerCase();
+                          const reg = mac ? registrationByMac.get(mac) : undefined;
+                          // "registered_endpoint" is the one mode that means
+                          // a phone is actually talking to the platform.
+                          const online = reg?.mode === "registered_endpoint";
+                          const lines = devicesLines(d);
+                          return (
+                            <tr
+                              key={d.mac ?? `row-${i}`}
+                              className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors"
+                            >
+                              <td className="px-5 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm font-mono font-medium text-[#0a0a0a]">
+                                    {d.mac ? d.mac.toUpperCase() : "-"}
+                                  </span>
+                                  {d.mac && <CopyButton value={d.mac.toUpperCase()} label="MAC address" />}
+                                </div>
+                                {reg?.user_agent && <p className="text-[10px] text-[#bbb] mt-0.5">{reg.user_agent}</p>}
+                              </td>
+                              <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap">{d.model || "-"}</td>
+                              <td className="px-5 py-3">
+                                {lines.length === 0 ? (
+                                  <span className="text-sm text-[#ccc]">Not assigned</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {lines.map((ext) => (
+                                      <span
+                                        key={ext}
+                                        className="text-[11px] font-medium text-[#666] bg-[#f5f5f5] rounded px-1.5 py-0.5"
+                                      >
+                                        {ext}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {reg?.sub_fullname && (
+                                  <p className="text-[10px] text-[#bbb] mt-1">{reg.sub_fullname}</p>
+                                )}
+                              </td>
+                              <td className="px-5 py-3 whitespace-nowrap">
+                                <DeviceStatus
+                                  online={online}
+                                  label={online ? "Registered" : reg ? "Known, not registered" : "Not registered"}
+                                />
+                              </td>
+                              <td className="px-5 py-3 text-sm text-[#666]">{d.notes || "-"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {devicesRes.status === "ok" && unprovisioned.length > 0 && (
+                    <p className="text-[11px] text-[#999] px-5 py-3 border-t border-[#f4f4f4]">
+                      {unprovisioned.length} other registration{unprovisioned.length === 1 ? "" : "s"} on this account
+                      with no device in inventory: softphones, apps, and extensions that answer calls without a phone.
+                    </p>
+                  )}
+                </>
+              )}
 
-              {/* Said rather than hidden: these are real registrations, they
-                  just aren't hardware this customer owns. */}
-              {devicesRes.status === "ok" && unprovisioned.length > 0 && (
-                <p className="text-[11px] text-[#999] px-5 py-3 border-t border-[#f4f4f4]">
-                  {unprovisioned.length} other registration{unprovisioned.length === 1 ? "" : "s"} on this account with
-                  no device in inventory: softphones, apps, and extensions that answer calls without a phone.
+              {/* Grandstream kit, from GDMS: ATAs, DECT bases, fax boxes. */}
+              {gdmsDevices.length > 0 && (
+                <>
+                  <DeviceGroupHeader icon={Router} title="Grandstream" count={gdmsDevices.length} source="GDMS" />
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-140">
+                      <thead>
+                        <tr className="border-b border-[#eaeaea]">
+                          {["Device", "Model", "IP Address", "Firmware", "Status"].map((h) => (
+                            <th
+                              key={h}
+                              className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3"
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gdmsDevices.map((d) => (
+                          <tr
+                            key={d.mac}
+                            className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors"
+                          >
+                            <td className="px-5 py-3">
+                              <p className="text-sm font-medium text-[#0a0a0a]">{d.name || "-"}</p>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-mono text-[#999]">{d.mac}</span>
+                                <CopyButton value={d.mac} label="MAC address" />
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap">{d.model || "-"}</td>
+                            <td className="px-5 py-3 text-sm font-mono text-[#666] whitespace-nowrap">
+                              {d.privateIp || d.publicIp || "-"}
+                            </td>
+                            <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap">
+                              {d.firmwareVersion || "-"}
+                            </td>
+                            <td className="px-5 py-3 whitespace-nowrap">
+                              <DeviceStatus
+                                online={(d.status ?? "").toLowerCase() === "online"}
+                                label={d.status ? d.status[0].toUpperCase() + d.status.slice(1) : "Unknown"}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {/* The network itself, from the linked UniFi site. */}
+              {unifiDevices.length > 0 && (
+                <>
+                  <DeviceGroupHeader icon={Wifi} title="Network" count={unifiDevices.length} source="UniFi" />
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-140">
+                      <thead>
+                        <tr className="border-b border-[#eaeaea]">
+                          {["Device", "Model", "IP Address", "Firmware", "Status"].map((h) => (
+                            <th
+                              key={h}
+                              className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3"
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unifiDevices.map((d) => (
+                          <tr
+                            key={d.id}
+                            className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors"
+                          >
+                            <td className="px-5 py-3">
+                              <p className="text-sm font-medium text-[#0a0a0a]">{d.name || d.shortname || "-"}</p>
+                              {d.mac && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[11px] font-mono text-[#999]">{d.mac.toUpperCase()}</span>
+                                  <CopyButton value={d.mac.toUpperCase()} label="MAC address" />
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap">
+                              {d.model || d.shortname || "-"}
+                              {d.productLine && d.productLine !== "network" && (
+                                <span className="ml-1.5 text-[10px] text-[#bbb] capitalize">{d.productLine}</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-sm font-mono text-[#666] whitespace-nowrap">{d.ip || "-"}</td>
+                            <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap">{d.version || "-"}</td>
+                            <td className="px-5 py-3 whitespace-nowrap">
+                              <DeviceStatus
+                                online={(d.status ?? "").toLowerCase() === "online"}
+                                label={d.status ? d.status[0].toUpperCase() + d.status.slice(1) : "Unknown"}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+              {(hardwareLoading || hardwareSources.some((r) => r.status === "error")) && (
+                <p className="text-[11px] text-[#999] px-5 py-3 border-t border-[#f4f4f4] flex items-center gap-2">
+                  {hardwareLoading ? (
+                    <>
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Still checking {[
+                        inventoryRes.status === "loading" && "RingLogix",
+                        gdmsRes.status === "loading" && "GDMS",
+                        unifiDevicesRes.status === "loading" && "UniFi",
+                      ].filter(Boolean).join(", ")}…
+                    </>
+                  ) : (
+                    <>
+                      Couldn&apos;t reach {[
+                        inventoryRes.status === "error" && "RingLogix",
+                        gdmsRes.status === "error" && "GDMS",
+                        unifiDevicesRes.status === "error" && "UniFi",
+                      ].filter(Boolean).join(", ")}, so there may be more hardware than this.
+                      <button onClick={loadSections} className="text-[#0070f3] hover:underline">Retry</button>
+                    </>
+                  )}
                 </p>
               )}
             </>

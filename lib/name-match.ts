@@ -71,3 +71,8 @@ export function matchScore(nameA: string, nameB: string): number {
 }
 
 export const LIKELY_MATCH_THRESHOLD = 0.6;
+
+// Shared with the GDMS site matcher, which needs the same notion of "a
+// significant word" and "close enough spelling" to ask a stricter question
+// than a score: is every word of this name in that one?
+export { tokenize as nameTokens, wordsMatch as nameWordsMatch };
