@@ -196,3 +196,25 @@ export function paletteBg(palette: PaletteColor[] | undefined, colorId: string |
   const color = palette?.find((p) => p.id === colorId);
   return (color && SWATCH_BY_ID.get(color.swatch)?.bg) || "";
 }
+
+/**
+ * Colours ready to use, so naming one is a click rather than a decision.
+ *
+ * Suggestions, not a fixed scheme: a campaign takes the ones it wants and
+ * renames or drops them afterwards, and two campaigns can give the same
+ * swatch different jobs — amber is "Follow up" on one sheet and
+ * "Interested" on another, because the meaning belongs to the campaign.
+ */
+export const PRESET_COLORS: { name: string; swatch: string }[] = [
+  // The outreach funnel, in the order a row tends to travel it, and one
+  // swatch each: two colours wearing the same tint can't be told apart on
+  // the sheet, and there are eight tints.
+  { name: "Hot lead", swatch: "green" },
+  { name: "Follow up", swatch: "amber" },
+  { name: "Appointment booked", swatch: "blue" },
+  { name: "Emailed, awaiting reply", swatch: "cyan" },
+  { name: "Decision maker reached", swatch: "violet" },
+  { name: "Gatekeeper", swatch: "orange" },
+  { name: "Not interested", swatch: "grey" },
+  { name: "Do not call", swatch: "red" },
+];

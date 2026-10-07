@@ -68,6 +68,7 @@ import {
   ROW_COLOR_KEY,
   SWATCH_BY_ID,
   SWATCHES,
+  PRESET_COLORS,
   type SheetColumnDef,
 } from "@/lib/campaign-constants";
 import {
@@ -86,6 +87,11 @@ const PAGE_SIZE = 100;
 const UNASSIGN = "__unassign__";
 /** The colour menu's "take the colour off" entry. */
 const CLEAR_COLOR = "__clear";
+
+/** A new palette entry's key. Outside the component: the clock is impure. */
+function newColorId(): string {
+  return `k${Date.now().toString(36)}`;
+}
 
 // Shared cell chrome. A spreadsheet reads as a grid, so every cell is the
 // same height with a hairline border and no rounded corners: the editable
@@ -281,6 +287,11 @@ export default function CampaignSheetPage() {
   const hidden = useMemo(() => hiddenColumns(campaign?.columns), [campaign?.columns]);
   const shows = (key: string) => !hidden.has(key);
   const palette = useMemo(() => campaign?.columns.palette ?? [], [campaign?.columns]);
+  // The suggestions this campaign hasn't taken yet.
+  const unusedPresets = useMemo(() => {
+    const taken = new Set(palette.map((c) => c.name.trim().toLowerCase()));
+    return PRESET_COLORS.filter((p) => !taken.has(p.name.toLowerCase()));
+  }, [palette]);
 
   /**
    * A cell's tint: its own colour if it has one, otherwise the row's. The
@@ -635,10 +646,11 @@ export default function CampaignSheetPage() {
     setNewColor({ name: "", swatch: (SWATCHES.find((sw) => !taken.has(sw.id)) ?? SWATCHES[0]).id });
   }
 
-  async function addColorAndApply() {
-    const name = newColor?.name.trim();
-    if (!paint || !newColor || !name) return;
-    const color = { id: `k${Date.now().toString(36)}`, name, swatch: newColor.swatch };
+  async function addColorAndApply(preset?: { name: string; swatch: string }) {
+    const name = (preset?.name ?? newColor?.name ?? "").trim();
+    const swatch = preset?.swatch ?? newColor?.swatch;
+    if (!paint || !name || !swatch) return;
+    const color = { id: newColorId(), name, swatch };
     const { row, key } = paint;
     setPaint(null);
     setNewColor(null);
@@ -959,20 +971,23 @@ export default function CampaignSheetPage() {
             is just a highlighted row, and whoever painted it is the only one
             who knows why. */}
         {palette.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap px-4 pb-3 -mt-1">
-            <span className="text-[11px] font-medium text-[#999] uppercase tracking-wider">Legend</span>
+          <div className="flex items-center gap-2 flex-wrap px-4 py-2.5 border-b border-[#eaeaea] bg-[#fafafa]">
+            <span className="text-[11px] font-medium text-[#999] uppercase tracking-wider shrink-0">Legend</span>
             {palette.map((color) => (
               <span
                 key={color.id}
-                className="inline-flex items-center gap-1.5 text-[11px] text-[#444] border border-[#eaeaea] rounded-full pl-1.5 pr-2.5 py-0.5"
+                className="inline-flex items-center gap-1.5 text-[11px] text-[#444] bg-white border border-[#eaeaea] rounded-full pl-1.5 pr-2.5 py-1"
               >
                 <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${SWATCH_BY_ID.get(color.swatch)?.dot ?? "bg-[#999]"}`} />
                 {color.name}
               </span>
             ))}
             {canEdit && (
-              <button onClick={() => setShowColumns(true)} className="text-[11px] text-[#0070f3] hover:underline">
-                Edit
+              <button
+                onClick={() => setShowColumns(true)}
+                className="ml-auto shrink-0 text-[11px] font-medium text-[#0070f3] hover:underline"
+              >
+                Edit colours
               </button>
             )}
           </div>
@@ -1544,6 +1559,24 @@ export default function CampaignSheetPage() {
 
             {newColor ? (
               <div className="px-3 pt-2 pb-2.5 border-t border-[#f5f5f5] mt-1">
+                {unusedPresets.length > 0 && (
+                  <>
+                    <p className="text-[10px] font-semibold text-[#bbb] uppercase tracking-wider mb-1">Ready-made</p>
+                    <div className="flex flex-wrap gap-1 mb-2.5">
+                      {unusedPresets.map((preset) => (
+                        <button
+                          key={preset.name}
+                          onClick={() => addColorAndApply(preset)}
+                          className="inline-flex items-center gap-1.5 text-[11px] text-[#444] border border-[#eaeaea] rounded-full pl-1.5 pr-2 py-0.5 hover:bg-[#fafafa] transition-colors"
+                        >
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${SWATCH_BY_ID.get(preset.swatch)?.dot ?? ""}`} />
+                          {preset.name}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] font-semibold text-[#bbb] uppercase tracking-wider mb-1">Or your own</p>
+                  </>
+                )}
                 <div className="flex items-center gap-1 mb-2">
                   {SWATCHES.map((swatch) => (
                     <button
@@ -1562,7 +1595,7 @@ export default function CampaignSheetPage() {
                   value={newColor.name}
                   onChange={(e) => setNewColor({ ...newColor, name: e.target.value })}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") addColorAndApply();
+                    if (e.key === "Enter") void addColorAndApply();
                     if (e.key === "Escape") setNewColor(null);
                   }}
                   placeholder="What it means"
@@ -1570,7 +1603,7 @@ export default function CampaignSheetPage() {
                 />
                 <div className="flex items-center gap-1.5 mt-1.5">
                   <button
-                    onClick={addColorAndApply}
+                    onClick={() => addColorAndApply()}
                     disabled={!newColor.name.trim()}
                     className="flex-1 text-[11px] font-semibold bg-[#0a0a0a] text-white py-1.5 rounded-md hover:bg-[#333] transition-colors disabled:opacity-40"
                   >

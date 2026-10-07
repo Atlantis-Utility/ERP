@@ -4,7 +4,7 @@ import { useState } from "react";
 import Overlay from "@/components/ui/Overlay";
 import { X, Loader2, Plus, Trash2, RotateCcw, Eye, EyeOff } from "lucide-react";
 import { setCampaignMeta, type Campaign, type ExtraColumn, type PaletteColor } from "@/lib/db/campaigns";
-import { SHEET_COLUMNS, ALWAYS_SHOWN, SWATCHES } from "@/lib/campaign-constants";
+import { SHEET_COLUMNS, ALWAYS_SHOWN, SWATCHES, PRESET_COLORS, SWATCH_BY_ID } from "@/lib/campaign-constants";
 import { getErrorMessage } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
 
@@ -22,6 +22,11 @@ import { useToast } from "@/lib/toast";
  * column the campaign adds is free text stored on the row, so it can hold
  * whatever the spreadsheet it came from held.
  */
+/** A new palette or column key. Outside the component: the clock is impure. */
+function newKey(): string {
+  return `k${Date.now().toString(36)}`;
+}
+
 export default function SheetColumnsModal({
   campaign,
   onClose,
@@ -53,17 +58,26 @@ export default function SheetColumnsModal({
     });
   }
 
+  /** The ready-made ones this campaign hasn't taken. */
+  const unusedPresets = PRESET_COLORS.filter(
+    (preset) => !colors.some((c) => c.name.trim().toLowerCase() === preset.name.toLowerCase()),
+  );
+
+  function addPreset(preset: { name: string; swatch: string }) {
+    setColors((prev) => [...prev, { id: newKey(), name: preset.name, swatch: preset.swatch }]);
+  }
+
   function addColor() {
     // The next swatch nobody has taken, so two colours don't start the same.
     const taken = new Set(colors.map((c) => c.swatch));
     const swatch = (SWATCHES.find((s) => !taken.has(s.id)) ?? SWATCHES[0]).id;
-    setColors((prev) => [...prev, { id: `k${Date.now().toString(36)}`, name: "", swatch }]);
+    setColors((prev) => [...prev, { id: newKey(), name: "", swatch }]);
   }
 
   function addColumn() {
     // Keyed by when it was made, because row values are stored against this
     // id: renaming the column later must not orphan what people typed.
-    setExtra((prev) => [...prev, { id: `c${Date.now().toString(36)}`, label: "" }]);
+    setExtra((prev) => [...prev, { id: `c${newKey().slice(1)}`, label: "" }]);
   }
 
   async function save() {
@@ -146,10 +160,29 @@ export default function SheetColumnsModal({
               <Plus className="w-3.5 h-3.5" /> Add colour
             </button>
           </div>
+          {/* Ready-made, because naming eight colours from nothing is a
+              chore and these are what a call sheet tends to need. They are
+              a starting point: rename or remove any of them below. */}
+          {unusedPresets.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {unusedPresets.map((preset) => (
+                <button
+                  key={preset.name}
+                  onClick={() => addPreset(preset)}
+                  className="inline-flex items-center gap-1.5 text-[11px] text-[#444] border border-[#eaeaea] rounded-full pl-1.5 pr-2 py-0.5 hover:bg-[#fafafa] transition-colors"
+                >
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${SWATCH_BY_ID.get(preset.swatch)?.dot ?? ""}`} />
+                  {preset.name}
+                </button>
+              ))}
+            </div>
+          )}
           {colors.length === 0 ? (
             <p className="text-[12px] text-[#bbb] border border-dashed border-[#eaeaea] rounded-md px-3 py-3">
-              None yet. Name a colour and it becomes something you can paint a row or a cell with —
-              right-click any cell on the sheet — and it appears in the legend above the sheet.
+              Take one of the ready-made colours above, or make your own. Either way it becomes something you
+              can paint a row or a cell with — right-click any cell — and it appears in the legend above the
+              sheet. What a colour means is this campaign&apos;s own business: amber can be &quot;Follow up&quot;
+              here and &quot;Interested&quot; on another sheet.
             </p>
           ) : (
             <div className="space-y-2">
