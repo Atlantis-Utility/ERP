@@ -792,6 +792,88 @@ const PATCH_COLUMNS: Record<keyof CampaignRowPatch, string> = {
   colors: "colors",
 };
 
+/** A row somebody filled in, and where it sits in the sheet. */
+export interface LastEdit {
+  rowId: string;
+  rowNo: number;
+  /** 0-based, for a sheet paged `pageSize` at a time. */
+  page: number;
+  updatedAt: string;
+  byName: string | null;
+  /** Whether this was the caller's own work or somebody else's. */
+  mine: boolean;
+}
+
+/**
+ * Where you left off.
+ *
+ * A sheet of a few hundred rows is six or seven pages, and the work moves
+ * down it: somebody who called their way to row 537 on Friday opens the
+ * sheet on Monday at row 1 and pages through to get back. The sheet knows
+ * perfectly well which row they touched last, so it can take them there.
+ *
+ * Their own last edit if they have one, anybody's otherwise - on a shared
+ * sheet "where did we get to" is as useful an answer as "where did I".
+ *
+ * Note it reads campaign_leads directly rather than through campaign_rows:
+ * the question is about one row, not a page of them, and this way the
+ * answer is two cheap indexed queries.
+ */
+export async function findLastEdit(
+  campaignId: string,
+  pageSize: number,
+  employeeId?: string,
+): Promise<LastEdit | null> {
+  interface EditRow {
+    id: string;
+    row_no: number;
+    updated_at: string;
+    updated_by_name: string | null;
+  }
+
+  const latest = async (mine: boolean): Promise<EditRow | null> => {
+    let query = supabase
+      .from("campaign_leads")
+      .select("id, row_no, updated_at, updated_by_name")
+      .eq("campaign_id", campaignId)
+      // Every row carries an updated_at from the moment it was created, so
+      // what separates a row somebody worked from a row that was merely
+      // added is whether anybody is recorded as having touched it.
+      .not("updated_by", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (mine) query = query.eq("updated_by", employeeId!);
+    const { data, error } = await withTimeout(query);
+    if (error) throw error;
+    return (data as EditRow[])[0] ?? null;
+  };
+
+  const own = employeeId ? await latest(true) : null;
+  const row = own ?? (await latest(false));
+  if (!row) return null;
+
+  // Which page it falls on. The sheet is ordered by (row_no, id), so the
+  // number of rows ahead of it in that order is its index; the tie-break on
+  // id matters because nothing stops two rows sharing a row_no.
+  const { count, error } = await withTimeout(
+    supabase
+      .from("campaign_leads")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .or(`row_no.lt.${row.row_no},and(row_no.eq.${row.row_no},id.lt.${row.id})`),
+  );
+  if (error) throw error;
+
+  return {
+    rowId: row.id,
+    rowNo: row.row_no,
+    page: Math.floor((count ?? 0) / pageSize),
+    updatedAt: row.updated_at,
+    byName: row.updated_by_name,
+    mine: own !== null,
+  };
+}
+
 /**
  * Saves one cell (or a few at once). Empty strings are written as NULL, not
  * "", so a cleared date column stops being a date rather than failing to

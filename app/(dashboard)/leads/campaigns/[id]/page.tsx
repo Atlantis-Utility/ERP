@@ -23,6 +23,7 @@ import {
   ClipboardCheck,
   Phone,
   Mail,
+  History,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import CopyButton from "@/components/ui/CopyButton";
@@ -54,6 +55,8 @@ import {
   type CampaignRowFilters,
   type SheetResult,
   type SheetQuery,
+  findLastEdit,
+  type LastEdit,
 } from "@/lib/db/campaigns";
 import {
   CALL_OUTCOME_OPTIONS,
@@ -77,7 +80,7 @@ import {
   LEAD_FIELD_LABELS,
   type EditableLeadField,
 } from "@/lib/db/lead-changes";
-import { getErrorMessage, formatPhone, telHref, emailAddress } from "@/lib/utils";
+import { getErrorMessage, formatDate, formatPhone, telHref, emailAddress } from "@/lib/utils";
 
 const PAGE_SIZE = 100;
 
@@ -214,6 +217,15 @@ export default function CampaignSheetPage() {
   // fetch (the same job `edits` does for the call columns).
   const [localFacts, setLocalFacts] = useState<Record<string, Record<string, LocalFact>>>({});
 
+  /**
+   * The row this sheet was last worked on, and the row to flash when we
+   * jump to it. A sheet of 500 is six pages and the work moves down it, so
+   * coming back to one means paging to where you got to; the sheet knows
+   * which row that was.
+   */
+  const [lastEdit, setLastEdit] = useState<LastEdit | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
+
   const [showAccess, setShowAccess] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showAddLeads, setShowAddLeads] = useState(false);
@@ -243,11 +255,29 @@ export default function CampaignSheetPage() {
     return querySheet(query, setResult);
   }, [query, campaignId, revision]);
 
+  useEffect(() => {
+    if (!campaignId) return;
+    let cancelled = false;
+    findLastEdit(campaignId, PAGE_SIZE, access.myEmployeeId || undefined)
+      .then((found) => { if (!cancelled) setLastEdit(found); })
+      // Not worth a message: this is a shortcut, and the sheet works
+      // without it.
+      .catch(() => { if (!cancelled) setLastEdit(null); });
+    return () => { cancelled = true; };
+  }, [campaignId, access.myEmployeeId, revision]);
+
   // Debounced, and it resets paging: searching from page 4 would otherwise
   // land on an offset the narrowed result set doesn't reach.
+  //
+  // The guard is what keeps "go to my last edit" working: that clears the
+  // search box and then picks a page, and without this the debounce would
+  // fire 300ms later and send it back to page 1.
+  const appliedSearch = useRef("");
   useEffect(() => {
     const timer = setTimeout(() => {
-      setFilters((prev) => (prev.search === searchInput ? prev : { ...prev, search: searchInput }));
+      if (appliedSearch.current === searchInput) return;
+      appliedSearch.current = searchInput;
+      setFilters((prev) => ({ ...prev, search: searchInput }));
       setPage(0);
     }, 300);
     return () => clearTimeout(timer);
@@ -269,12 +299,41 @@ export default function CampaignSheetPage() {
     setSelected(new Set());
   }, []);
 
+  /**
+   * Back to the row that was last filled in.
+   *
+   * The filters go with it: a row's page is its place on the whole sheet,
+   * and a search that doesn't match that row would land you on a page it
+   * isn't on. The row is flashed rather than merely shown, because landing
+   * on a page of a hundred identical-looking rows isn't arriving anywhere.
+   */
+  const goToLastEdit = useCallback(() => {
+    if (!lastEdit) return;
+    setSearchInput("");
+    appliedSearch.current = "";
+    setFilters(EMPTY_ROW_FILTERS);
+    setEdits({});
+    setSelected(new Set());
+    setPage(lastEdit.page);
+    setHighlight(lastEdit.rowId);
+    // Long enough to catch your eye, short enough that the row isn't left
+    // looking like it means something.
+    setTimeout(() => setHighlight(null), 6000);
+  }, [lastEdit]);
+
   const rows: CampaignRow[] = useMemo(
     () => (result?.rows ?? []).map((r) => ({ ...r, ...edits[r.rowId] })),
     [result, edits],
   );
 
   const pageFullySelected = rows.length > 0 && rows.every((r) => selected.has(r.rowId));
+
+  // The jump sets the page; the row it was aiming at only exists once that
+  // page has been fetched, so the scroll waits for it here.
+  useEffect(() => {
+    if (!highlight) return;
+    document.getElementById(`row-${highlight}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [highlight, rows]);
 
   // This campaign's columns: the built-in ones under whatever it calls
   // them, plus any it has added itself.
@@ -915,6 +974,20 @@ export default function CampaignSheetPage() {
               full width anyway, so there's nothing to push. */}
           <div className="hidden sm:block flex-1" />
 
+          {/* Only worth offering when it would move you: on the right page
+              already, the sheet is the answer. */}
+          {lastEdit && lastEdit.page !== page && (
+            <button
+              onClick={goToLastEdit}
+              title={`Row ${lastEdit.rowNo}, ${lastEdit.mine ? "your last edit" : `last touched by ${lastEdit.byName ?? "somebody"}`}, ${formatDate(lastEdit.updatedAt)}`}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[#eaeaea] text-[#0070f3] hover:bg-[#fafafa] transition-colors"
+            >
+              <History className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">{lastEdit.mine ? "Where I left off" : "Last worked on"}</span>
+              <span className="tabular-nums">· {lastEdit.rowNo}</span>
+            </button>
+          )}
+
           <button
             onClick={() => applyFilters({ uncalled: !filters.uncalled })}
             className={`text-xs font-medium px-3 py-1.5 rounded-md border transition-colors ${
@@ -1075,18 +1148,33 @@ export default function CampaignSheetPage() {
               <tbody>
                 {rows.map((row) => {
                   const state = saveState[row.rowId] ?? "idle";
+                  // The frozen columns carry their own background, so the
+                  // flash has to be painted on them too or it stops at the
+                  // pane edge.
+                  const flashed = highlight === row.rowId;
+                  const pinBg = row.doNotCall
+                    ? "bg-[#fef2f2]"
+                    : flashed
+                      ? "bg-[#eff6ff]"
+                      : "bg-white group-hover:bg-[#fafafa]";
                   const company = factCell(row, "companyName");
                   const dueSoon =
                     row.followUpDate !== null && row.followUpDate <= new Date().toISOString().slice(0, 10);
                   return (
                     <tr
                       key={row.rowId}
+                      id={`row-${row.rowId}`}
+                      style={
+                        highlight === row.rowId
+                          ? { outline: "2px solid #0070f3", outlineOffset: "-2px" }
+                          : undefined
+                      }
                       className={`group ${row.doNotCall ? "bg-[#fef2f2]" : "hover:bg-[#fafafa]"} transition-colors`}
                     >
                       {canEdit && (
                         <td
                           style={{ left: pins.check }}
-                          className={`sticky z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea]`}
+                          className={`sticky z-10 ${pinBg} ${CELL} border-[#eaeaea]`}
                         >
                           <input
                             type="checkbox"
@@ -1106,7 +1194,7 @@ export default function CampaignSheetPage() {
                       )}
                       <td
                         style={{ left: pins.no }}
-                        className={`sticky z-10 ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea] text-[11px] text-[#999] tabular-nums`}
+                        className={`sticky z-10 ${pinBg} ${CELL} border-[#eaeaea] text-[11px] text-[#999] tabular-nums`}
                       >
                         {/* The save indicator sits with the row number rather
                             than in a column of its own at the far right, which
@@ -1140,7 +1228,7 @@ export default function CampaignSheetPage() {
                       </td>
                       <td
                         style={{ left: pins.company }}
-                        className={`sticky z-10 ${PIN_EDGE} ${row.doNotCall ? "bg-[#fef2f2]" : "bg-white group-hover:bg-[#fafafa]"} ${CELL} border-[#eaeaea]`}
+                        className={`sticky z-10 ${PIN_EDGE} ${pinBg} ${CELL} border-[#eaeaea]`}
                       >
                         <div className="flex items-center gap-1">
                           {/* min-w-0 or the name refuses to shrink inside the
