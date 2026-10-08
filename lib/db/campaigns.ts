@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../supabase/client";
 import { subscribeChanges } from "../supabase/realtime";
 import { getErrorMessage } from "../utils";
-import { STALE_DAYS, type LeadFilters } from "./leads";
+import { addLead, STALE_DAYS, type Lead, type LeadFilters } from "./leads";
 
 /**
  * Campaigns: a named list of leads worked as a call sheet.
@@ -458,6 +458,96 @@ export async function addLeadsToCampaign(campaignId: string, fill: CampaignFill)
   );
   if (error) throw error;
   return Number(data ?? 0);
+}
+
+/** The details somebody types for a lead that isn't in the database yet. */
+export interface NewSheetLead {
+  companyName: string;
+  pocName?: string;
+  pocTitle?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  city?: string;
+  state?: string;
+  businessType?: string;
+  description?: string;
+  /** Goes on the row, not the lead: this sheet's business, not the company's. */
+  notes?: string;
+}
+
+/**
+ * Puts a lead nobody has yet straight onto a sheet.
+ *
+ * Everything else that fills a campaign draws on leads the database already
+ * holds, which is no use to a caller who was just handed a name and a
+ * number on a call they were already making. So the lead is created first
+ * and the row second, in that order, because a row is a pointer at a lead
+ * and there is nothing to point at until the lead exists.
+ *
+ * It is created owned by whoever typed it. Not only because the insert
+ * policy requires that of anybody who isn't an administrator: a lead you
+ * found is yours, and a lead owned by nobody is one nobody can see.
+ *
+ * The row arrives unassigned, like every other row added to a sheet - who
+ * works a row stays an administrator's call, and the database enforces
+ * that (campaign_leads_guard_rep).
+ */
+export async function addNewLeadToSheet(
+  campaignId: string,
+  draft: NewSheetLead,
+  self: { id: string; name: string },
+): Promise<string> {
+  const text = (value: string | undefined) => value?.trim() || undefined;
+  const company = draft.companyName.trim();
+  if (!company) throw new Error("A company name is the one thing a row needs.");
+
+  const now = new Date().toISOString();
+  const lead: Lead = {
+    id: `lead-${crypto.randomUUID()}`,
+    companyName: company,
+    pocName: text(draft.pocName),
+    pocTitle: text(draft.pocTitle),
+    phone: text(draft.phone),
+    email: text(draft.email),
+    website: text(draft.website),
+    city: text(draft.city),
+    state: text(draft.state),
+    businessType: text(draft.businessType),
+    description: text(draft.description),
+    source: "manual",
+    status: "new",
+    assignedTo: self.id || undefined,
+    assignedToName: self.id ? self.name : undefined,
+    createdBy: self.id || undefined,
+    createdByName: self.name || undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const actor = self.id ? { id: self.id, name: self.name } : null;
+  await addLead(lead, actor);
+
+  const added = await addLeadsToCampaign(campaignId, { kind: "ids", ids: [lead.id] });
+  if (added === 0) {
+    throw new Error(
+      `${company} was saved as a lead but didn't reach the sheet. It's on the Leads page; add it from there.`,
+    );
+  }
+
+  const notes = text(draft.notes);
+  if (notes) {
+    // The row the insert above just wrote, found by what it points at:
+    // campaign_add_leads returns a count, not the row it made.
+    const { error } = await withTimeout(
+      supabase
+        .from("campaign_leads")
+        .update({ notes, updated_at: now, updated_by: actor?.id ?? null, updated_by_name: actor?.name ?? null })
+        .eq("campaign_id", campaignId)
+        .eq("lead_id", lead.id),
+    );
+    if (error) throw error;
+  }
+  return lead.id;
 }
 
 export interface SelectionPreview {

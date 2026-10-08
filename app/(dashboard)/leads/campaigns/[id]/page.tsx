@@ -1634,6 +1634,8 @@ export default function CampaignSheetPage() {
         <AddLeadsToSheetModal
           campaignId={campaign.id}
           campaignName={campaign.name}
+          selfEmployeeId={access.myEmployeeId}
+          selfName={access.myName}
           onClose={() => setShowAddLeads(false)}
           onAdded={(message) => {
             success(message);
