@@ -42,6 +42,11 @@ export const DASHBOARD_WIDGETS: DashboardWidget[] = [
   },
   { key: "timeline", label: "Project Timeline", hint: "Projects across the months", requires: "/projects" },
   { key: "work", label: "My Tickets & Tasks", hint: "What's assigned to them, soonest first" },
+  {
+    key: "timeclock",
+    label: "Time Clock",
+    hint: "Clocking in and out, and what their day and week add up to",
+  },
   { key: "activity", label: "Recent Activity", hint: "The notification feed" },
   { key: "kpis", label: "Headline numbers", hint: "Deadlines, overdue projects, unpaid customers, sites, meetings" },
   { key: "network", label: "Network", hint: "UniFi sites, offline counts and alerts", requires: "/sites" },
@@ -75,7 +80,10 @@ export function availableWidgets(access: string[] | undefined): DashboardWidget[
  * (the headline numbers, the network, the money) stay off until granted,
  * even for somebody who holds those pages.
  */
-const BUSINESS_WIDE = new Set(["kpis", "network", "billing", "activity"]);
+// The clock is in here for a different reason than the rest: it isn't
+// management's view of the business, it's a thing you give to the people
+// whose hours are being tracked. Nobody gets it until somebody says so.
+const BUSINESS_WIDE = new Set(["kpis", "network", "billing", "activity", "timeclock"]);
 
 export function defaultDashboardWidgets(access: string[] | undefined): string[] {
   const keys = availableWidgets(access)

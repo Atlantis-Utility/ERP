@@ -15,6 +15,7 @@ import {
   Wifi,
   AlertTriangle,
   Users,
+  Clock,
   FolderKanban,
   FileBarChart,
   ScrollText,
@@ -115,7 +116,8 @@ const navSections: { label: string; items: NavItem[] }[] = [
   {
     label: "People",
     items: [
-      { label: "Employees", href: "/employees", icon: Users },
+      { label: "Employees",  href: "/employees",  icon: Users },
+      { label: "Time Clock", href: "/time-clock", icon: Clock },
     ],
   },
   {

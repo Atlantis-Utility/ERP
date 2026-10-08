@@ -69,6 +69,7 @@ export const NAV_PAGES: NavPage[] = [
   { href: "/logs",          label: "Logs",          section: "Operations"  },
 
   { href: "/employees",     label: "Employees",     section: "People"      },
+  { href: "/time-clock",    label: "Time Clock",    section: "People"      },
 
   { href: "/vault",         label: "Vault",         section: "Security"    },
   { href: "/settings",      label: "Settings",      section: "Settings"    },

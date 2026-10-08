@@ -8,6 +8,7 @@ import { NAV_PAGES } from "@/lib/nav-pages";
 import LeadsProgress from "@/components/dashboard/LeadsProgress";
 import MyCampaigns from "@/components/dashboard/MyCampaigns";
 import CallsToday from "@/components/dashboard/CallsToday";
+import TimeClock from "@/components/dashboard/TimeClock";
 import MyWork from "@/components/dashboard/MyWork";
 
 /**
@@ -260,7 +261,7 @@ export default function DashboardPage() {
   // The layout follows what's actually shown, so no combination leaves a
   // hole: the tabbed card takes the full width when nothing sits beside
   // it, and the row of cards below is as many columns as it has cards.
-  const bottomCards = ["calls", "network", "billing"].filter((k) => shows(k));
+  const bottomCards = ["timeclock", "calls", "network", "billing"].filter((k) => shows(k));
   // Every panel off, which is a page with a greeting and a void under it.
   const nothingGranted = panelTabs.length === 0 && bottomCards.length === 0 && !shows("activity") && !shows("kpis");
   const myPages = NAV_PAGES.filter(
@@ -756,6 +757,9 @@ export default function DashboardPage() {
           mostly-empty box. */}
       {bottomCards.length > 0 && (
       <div className={`grid grid-cols-1 ${bottomGrid} gap-4 mb-4 ${bottomCards.length > 1 ? "lg:h-105" : ""}`}>
+        {/* Clocking in and out, for whoever has been given it. */}
+        {shows("timeclock") && <TimeClock />}
+
         {/* A caller's own scoreboard, from the sheet rows they touched. */}
         {shows("calls") && <CallsToday />}
 
