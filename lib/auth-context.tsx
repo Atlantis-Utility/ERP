@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase/client";
-import { defaultDashboardWidgets } from "./dashboard-widgets";
+import { adminDashboardWidgets, defaultDashboardWidgets } from "./dashboard-widgets";
 
 export interface AuthUser {
   user: User;
@@ -30,10 +30,11 @@ export interface AuthUser {
   /** Allowed page hrefs — undefined means unrestricted (Administrator, or no employee record). */
   access: string[] | undefined;
   /**
-   * Which dashboard panels this person sees. undefined means all of them
-   * (an administrator, or a login with no employee record); otherwise the
-   * granted list, which defaults to their own day until somebody widens it.
-   * See lib/dashboard-widgets.ts.
+   * Which dashboard panels this person sees. undefined means all of them,
+   * which is now only a login with no employee record behind it; otherwise
+   * the granted list, which defaults to their own day until somebody
+   * widens it. An administrator gets a list as well, since one panel (the
+   * clock) is granted rather than implied. See lib/dashboard-widgets.ts.
    */
   dashboardWidgets: string[] | undefined;
 }
@@ -229,8 +230,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // means all of them. Someone with an employee record and no list
         // yet gets the default rather than everything, since the panels
         // this is here to cover are the ones not everybody should see.
+        //
+        // An administrator gets a list too, not `undefined`: all the panels
+        // less the ones that are only ever granted (the clock), plus any of
+        // those their list names. Being an administrator is a reason to see
+        // everything about the business, not a reason to be handed a clock
+        // nobody asked them to punch.
         dashboardWidgets:   unrestricted
-          ? undefined
+          ? adminDashboardWidgets(employeeExtra?.dashboard)
           : (employeeExtra?.dashboard ?? defaultDashboardWidgets(employeeExtra?.access)),
       });
       setLoading(false);
@@ -317,7 +324,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 row.data?.access ?? (row.data?.accessRole === "Administrator" ? undefined : []),
               dashboardWidgets:
                 row.data?.accessRole === "Administrator"
-                  ? undefined
+                  ? adminDashboardWidgets(row.data?.dashboard)
                   : (row.data?.dashboard ?? defaultDashboardWidgets(row.data?.access)),
               employeeRole:       row.data?.role ?? prev.employeeRole,
               employeeAccessRole: row.data?.accessRole ?? prev.employeeAccessRole,

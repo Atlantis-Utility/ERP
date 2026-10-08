@@ -9,7 +9,7 @@ import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
 import { ArrowLeft, Mail, Phone, Pencil, Check } from "lucide-react";
 import type { Employee, EmployeeStatus } from "@/lib/mock-data";
 import { NAV_PAGES } from "@/lib/nav-pages";
-import { availableWidgets, defaultDashboardWidgets } from "@/lib/dashboard-widgets";
+import { adminDashboardWidgets, availableWidgets, defaultDashboardWidgets, isGrantOnly } from "@/lib/dashboard-widgets";
 import EditEmployeeDrawer from "@/components/employees/EditEmployeeDrawer";
 
 const statusConfig: Record<EmployeeStatus, { label: string; bg: string; text: string; dot: string }> = {
@@ -71,7 +71,11 @@ export default function EmployeeProfilePage() {
   // depends on their pages, so it's the same rule the drawer uses.
   const isAdministrator = employee?.accessRole === "Administrator";
   const offerablePanels = availableWidgets(employee?.access);
-  const panels = employee?.dashboard ?? defaultDashboardWidgets(employee?.access);
+  const panels = isAdministrator
+    ? adminDashboardWidgets(employee?.dashboard)
+    : (employee?.dashboard ?? defaultDashboardWidgets(employee?.access));
+  // The panels an administrator holds only because somebody said so.
+  const grantedToAdmin = offerablePanels.filter((w) => isGrantOnly(w.key) && panels.includes(w.key));
 
   // Load activity log entries related to this employee
   useEffect(() => {
@@ -202,7 +206,9 @@ export default function EmployeeProfilePage() {
                 <p className="text-sm font-semibold text-[#0a0a0a]">Dashboard</p>
                 <p className="text-xs text-[#999] mt-0.5">
                   {isAdministrator
-                    ? "An administrator sees every panel"
+                    ? grantedToAdmin.length > 0
+                      ? `Every panel, ${grantedToAdmin.map((w) => w.label).join(" and ")} included`
+                      : "Every panel bar the time clock"
                     : `${panels.length} of ${offerablePanels.length} panels shown`}
                 </p>
               </div>
@@ -214,7 +220,12 @@ export default function EmployeeProfilePage() {
               </button>
             </div>
             {isAdministrator ? (
-              <p className="text-xs text-[#999]">Everything on the dashboard, by access role.</p>
+              <p className="text-xs text-[#999]">
+                Everything on the dashboard, by access role
+                {grantedToAdmin.length > 0
+                  ? `, plus ${grantedToAdmin.map((w) => w.label).join(", ")}.`
+                  : ". The time clock is off until it's ticked, same as for anybody else."}
+              </p>
             ) : panels.length === 0 ? (
               <p className="text-xs text-[#999]">No panels shown. Their dashboard will be empty.</p>
             ) : (

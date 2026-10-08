@@ -80,9 +80,9 @@ export function availableWidgets(access: string[] | undefined): DashboardWidget[
  * (the headline numbers, the network, the money) stay off until granted,
  * even for somebody who holds those pages.
  */
-// The clock is in here for a different reason than the rest: it isn't
-// management's view of the business, it's a thing you give to the people
-// whose hours are being tracked. Nobody gets it until somebody says so.
+// The clock is in here for a different reason than the rest, and it is
+// also in GRANT_ONLY below: it isn't management's view of the business,
+// it's a thing you give to the people whose hours are being tracked.
 const BUSINESS_WIDE = new Set(["kpis", "network", "billing", "activity", "timeclock"]);
 
 export function defaultDashboardWidgets(access: string[] | undefined): string[] {
@@ -98,11 +98,39 @@ export function defaultDashboardWidgets(access: string[] | undefined): string[] 
 export const DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGETS.map((w) => w.key);
 
 /**
- * `undefined` means every panel, which is what an administrator gets and
- * what the absence of an employee record falls back to. An empty list is a
- * deliberate "nothing", not a missing answer, so it is respected.
+ * Panels nobody holds by virtue of who they are.
+ *
+ * Every other panel is a view of something, so "sees everything" covers
+ * it. The clock is not a view, it's a thing somebody does: being an
+ * administrator makes you the person who tracks other people's hours, not
+ * automatically one of the people whose hours are tracked. So the clock
+ * stays off for everybody, administrators included, until it is put on a
+ * person's list by hand.
+ */
+const GRANT_ONLY = new Set(["timeclock"]);
+
+export function isGrantOnly(key: string): boolean {
+  return GRANT_ONLY.has(key);
+}
+
+/**
+ * An administrator's panels: all of them, less the grant-only ones, plus
+ * whichever of those they were actually given. Spelled out as a list
+ * rather than left as `undefined`, because "everything" can no longer say
+ * what it needs to say.
+ */
+export function adminDashboardWidgets(saved: string[] | undefined): string[] {
+  const granted = new Set(saved ?? []);
+  return DASHBOARD_WIDGET_KEYS.filter((key) => !GRANT_ONLY.has(key) || granted.has(key));
+}
+
+/**
+ * `undefined` means every panel, which is what the absence of an employee
+ * record falls back to. An empty list is a deliberate "nothing", not a
+ * missing answer, so it is respected. Either way a grant-only panel is off
+ * unless the list names it.
  */
 export function canSeeWidget(key: string, widgets: string[] | undefined): boolean {
-  if (!widgets) return true;
+  if (!widgets) return !GRANT_ONLY.has(key);
   return widgets.includes(key);
 }

@@ -9,7 +9,7 @@ import Select from "@/components/ui/Select";
 import { updateEmployee, updateEmployeeAccess, removeEmployee } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { NAV_PAGES } from "@/lib/nav-pages";
-import { availableWidgets, defaultDashboardWidgets } from "@/lib/dashboard-widgets";
+import { availableWidgets, defaultDashboardWidgets, isGrantOnly } from "@/lib/dashboard-widgets";
 import { Check, Lock, Mail } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getErrorMessage } from "@/lib/utils";
@@ -343,7 +343,8 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
                 lands. What's on it is. */}
             Everyone has the dashboard. These are the panels on it, and only the ones their pages support:
             tick Leads below and the leads panels appear here.
-            {form.accessRole === "Administrator" && " An administrator sees all of them."}
+            {form.accessRole === "Administrator" &&
+              " An administrator sees all of them bar the clock, which is theirs only if you tick it."}
           </p>
           <div className="space-y-1.5 mb-4">
             {offerable.length === 0 && (
@@ -352,20 +353,22 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
               </p>
             )}
             {offerable.map((w) => {
-              const on = form.accessRole === "Administrator" || dashboard.includes(w.key);
+              // An administrator holds every panel already, so the boxes
+              // are ticked and fixed - except the clock, which is handed
+              // out one person at a time whoever they are.
+              const fixed = form.accessRole === "Administrator" && !isGrantOnly(w.key);
+              const on = fixed || dashboard.includes(w.key);
               return (
                 <label
                   key={w.key}
                   className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border transition-colors ${
-                    isAdmin && form.accessRole !== "Administrator"
-                      ? "cursor-pointer hover:bg-[#fafafa]"
-                      : "cursor-not-allowed opacity-70"
+                    isAdmin && !fixed ? "cursor-pointer hover:bg-[#fafafa]" : "cursor-not-allowed opacity-70"
                   } ${on ? "border-[#0a0a0a] bg-[#fafafa]" : "border-[#eaeaea]"}`}
                 >
                   <input
                     type="checkbox"
                     checked={on}
-                    disabled={!isAdmin || form.accessRole === "Administrator"}
+                    disabled={!isAdmin || fixed}
                     onChange={() =>
                       setDashboard((prev) =>
                         prev.includes(w.key) ? prev.filter((k) => k !== w.key) : [...prev, w.key],
