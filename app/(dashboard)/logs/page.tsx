@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  Search, Trash2, Download, Users, FolderKanban, Settings,
+  Search, Trash2, Users, FolderKanban, Settings,
   Shield, Wifi, Layers, LogIn, Filter, Bell, BellRing,
 } from "lucide-react";
 import Select from "@/components/ui/Select";
 import { getLogs, clearLogs, visibleLogs, type ActivityLogEntry, type LogCategory } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { getInitials } from "@/lib/utils";
 
 // ── Category config ───────────────────────────────────────────────────────────
@@ -73,26 +74,6 @@ function withinDateFilter(ts: string, filter: DateFilter): boolean {
   return true;
 }
 
-function downloadCSV(entries: ActivityLogEntry[]) {
-  const header = ["Timestamp", "User", "Category", "Action", "Detail"].join(",");
-  const rows = entries.map((e) =>
-    [
-      new Date(e.timestamp).toISOString(),
-      `"${e.userName}"`,
-      e.category,
-      `"${e.action}"`,
-      `"${e.detail.replace(/"/g, '""')}"`,
-    ].join(",")
-  );
-  const csv = [header, ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = `atlantis-audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
@@ -185,6 +166,15 @@ export default function LogsPage() {
     });
   }, [logs, search, catFilter, dateFilter]);
 
+  const exportData = () => ({
+    filename: `atlantis-audit-log-${new Date().toISOString().slice(0, 10)}`,
+    title: "Activity Log",
+    headers: ["Timestamp", "User", "Category", "Action", "Detail"],
+    rows: filtered.map((e) => [
+      new Date(e.timestamp).toLocaleString(), e.userName, e.category, e.action, e.detail,
+    ]),
+  });
+
   const notifCount = useMemo(
     () => logs.filter((e) => ["notification", "network", "system"].includes(e.category)).length,
     [logs]
@@ -209,13 +199,7 @@ export default function LogsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => downloadCSV(filtered)}
-            disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 border border-[#eaeaea] text-sm font-medium text-[#666] px-3 py-2 rounded-lg hover:bg-[#fafafa] hover:text-[#0a0a0a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download className="w-3.5 h-3.5" /> Export CSV
-          </button>
+          <ExportMenu data={exportData} disabled={filtered.length === 0} />
           {isAdmin && (
             <div className="relative group">
               <button

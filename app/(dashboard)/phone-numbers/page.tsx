@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { Phone, PhoneIncoming, PhoneOff, RefreshCw, AlertCircle } from "lucide-react";
 
 interface RLDid {
@@ -91,6 +92,22 @@ export default function PhoneNumbersPage() {
   const assigned = dids.filter((d) => !isUnassigned(d));
   const unassigned = dids.filter(isUnassigned);
 
+  const exportData = () => ({
+    filename: "phone-numbers",
+    title: "Phone Numbers",
+    headers: ["Phone Number", "Description", "Customer Account", "Status"],
+    rows: filtered.map((d) => {
+      const owner = d.domain_owner != null ? String(d.domain_owner) : "";
+      const number = numberFromMatchrule(d.matchrule);
+      return [
+        number ? formatNumber(number) : "",
+        d.plan_description ?? "",
+        customerNames[owner] ?? owner,
+        isUnassigned(d) ? "Available" : "Assigned",
+      ];
+    }),
+  });
+
   const filtered = dids.filter((d) => {
     const q = search.toLowerCase();
     const domainOwner = d.domain_owner != null ? String(d.domain_owner) : "";
@@ -110,14 +127,17 @@ export default function PhoneNumbersPage() {
         title="Phone Numbers"
         subtitle="DID inventory from RingLogix"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Sync
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Sync
+            </button>
+          </>
         }
       />
 

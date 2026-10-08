@@ -5,6 +5,7 @@ import DateTimePicker from "@/components/ui/DateTimePicker";
 import { useConfirm } from "@/lib/confirm";
 import Overlay from "@/components/ui/Overlay";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import { AlarmClock, Clock, CheckCircle, RefreshCw, AlertCircle, Plus, X, Trash2 } from "lucide-react";
 
@@ -129,6 +130,16 @@ export default function WakeUpCallsPage() {
     }
   };
 
+  const exportData = () => ({
+    filename: "wake-up-calls",
+    title: "Wake-Up Calls",
+    headers: ["Request ID", "Type", "User", "Destination", "Time to Call", "Status"],
+    rows: calls.map((c) => [
+      c.request_id ?? "", c.request ?? "", c.orig_address ?? "", c.dest_address ?? "",
+      c.time_to_call ?? "", c.request_status ?? "Pending",
+    ]),
+  });
+
   const pending = calls.filter((c) => !c.request_status || c.request_status?.toLowerCase() === "pending").length;
   const completed = calls.filter((c) => c.request_status?.toLowerCase() === "completed").length;
 
@@ -138,13 +149,16 @@ export default function WakeUpCallsPage() {
         title="Wake-Up Calls"
         subtitle="Scheduled wake-up call requests"
         actions={
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-[#0070f3] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#005fcc] transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Schedule
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={calls.length === 0} />
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-[#0070f3] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#005fcc] transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Schedule
+            </button>
+          </>
         }
       />
 

@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import CopyButton from "@/components/ui/CopyButton";
 import CustomerUnifiPanel from "@/components/customers/CustomerUnifiPanel";
 import EditCustomerDetailsDrawer from "@/components/customers/EditCustomerDetailsDrawer";
@@ -629,6 +630,78 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     return () => { cancelled = true; };
   }, [id]);
 
+  /**
+   * Whatever tab is open: that's the table somebody is looking at, and the
+   * one they mean when they ask for it as a spreadsheet.
+   */
+  function exportData() {
+    const base = `${customer?.company ?? "customer"}-${activeTab}`;
+    if (activeTab === "numbers") {
+      return {
+        filename: base,
+        title: `${customer?.company ?? "Customer"} — Phone Numbers`,
+        headers: ["Number", "Description"],
+        rows: phoneNumbers.map((p) => {
+          const number = numberFromMatchrule(p.matchrule);
+          return [number ? formatNumber(number) : "", p.plan_description ?? ""];
+        }),
+      };
+    }
+    if (activeTab === "extensions") {
+      return {
+        filename: base,
+        title: `${customer?.company ?? "Customer"} — Extensions`,
+        headers: ["Ext", "Name", "Login", "Email", "Scope", "Status"],
+        rows: subscribers.map((sub) => [
+          sub.user ?? "", [sub.first_name, sub.last_name].filter(Boolean).join(" "),
+          sub.subscriber_login ?? "", sub.email ?? "",
+          sub.scope ?? "", sub.account_status ?? "",
+        ]),
+      };
+    }
+    if (activeTab === "queues") {
+      const keys = queues.length > 0 ? Object.keys(queues[0]).slice(0, 6) : [];
+      return {
+        filename: base,
+        title: `${customer?.company ?? "Customer"} — Call Queues`,
+        headers: keys,
+        rows: queues.map((q) => keys.map((k) => String(q[k] ?? ""))),
+      };
+    }
+    if (activeTab === "devices") {
+      return {
+        filename: base,
+        title: `${customer?.company ?? "Customer"} — Devices`,
+        headers: ["Source", "Device", "Model", "Identifier", "Extensions / IP", "Status", "Notes"],
+        rows: [
+          ...inventory.map((d) => [
+            "RingLogix", d.mac ? d.mac.toUpperCase() : "", d.model ?? "", d.mac ?? "",
+            devicesLines(d).join(" "),
+            registrationByMac.get((d.mac ?? "").toLowerCase())?.mode === "registered_endpoint"
+              ? "Registered" : "Not registered",
+            d.notes ?? "",
+          ]),
+          ...gdmsDevices.map((d) => [
+            "GDMS", d.name ?? "", d.model ?? "", d.mac ?? "", d.privateIp ?? d.publicIp ?? "",
+            d.status ?? "", d.firmwareVersion ?? "",
+          ]),
+          ...unifiDevices.map((d) => [
+            "UniFi", d.name ?? d.shortname ?? "", d.model ?? d.shortname ?? "", d.mac ?? "",
+            d.ip ?? "", d.status ?? "", d.version ?? "",
+          ]),
+        ],
+      };
+    }
+    return {
+      filename: base,
+      title: `${customer?.company ?? "Customer"} — Network`,
+      headers: ["Device", "Model", "IP Address", "Firmware", "Status"],
+      rows: unifiDevices.map((d) => [
+        d.name ?? d.shortname ?? "", d.model ?? "", d.ip ?? "", d.version ?? "", d.status ?? "",
+      ]),
+    };
+  }
+
   const backAction = (
     <Link
       href="/customers"
@@ -743,7 +816,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <div>
-      <Header title={customer.company} subtitle={`Domain ${customer.id}`} actions={backAction} />
+      <Header
+        title={customer.company}
+        subtitle={`Domain ${customer.id}`}
+        actions={
+          <>
+            <ExportMenu data={exportData} disabled={exportData().rows.length === 0} label="Export tab" />
+            {backAction}
+          </>
+        }
+      />
 
       {/* Overview */}
       <div className="bg-white border border-[#eaeaea] rounded-xl p-6 mb-6">

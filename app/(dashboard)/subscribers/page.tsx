@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { Users, CheckCircle, Phone, Building2, RefreshCw, AlertCircle } from "lucide-react";
 
 interface RLSubscriber {
@@ -61,6 +62,16 @@ export default function SubscribersPage() {
   const withDid = subscribers.filter((s) => Boolean(s.did)).length;
   const uniqueDomains = new Set(subscribers.map((s) => s.domain).filter(Boolean)).size;
 
+  const exportData = () => ({
+    filename: "subscribers",
+    title: "Subscribers",
+    headers: ["Extension", "Name", "Customer Account", "Email", "DID", "Status"],
+    rows: filtered.map((s) => [
+      s.subscriber ?? "", displayName(s), s.domain ?? "", s.email ?? "", s.did ?? "",
+      s.status === "enabled" || !s.status ? "Enabled" : (s.status ?? "Disabled"),
+    ]),
+  });
+
   const filtered = subscribers.filter((s) => {
     const q = search.toLowerCase();
     return (
@@ -80,14 +91,17 @@ export default function SubscribersPage() {
         title="Subscribers"
         subtitle="Extensions across all RingLogix accounts"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Sync
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Sync
+            </button>
+          </>
         }
       />
 

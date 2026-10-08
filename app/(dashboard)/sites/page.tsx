@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { Wifi, AlertTriangle, RefreshCw, AlertCircle } from "lucide-react";
 import type { UiEnrichedSite, UiIssuePeriod } from "@/lib/unifi";
 import IspLogo from "@/components/unifi/IspLogo";
@@ -237,6 +238,18 @@ export default function SitesPage() {
   const healthyCount        = sites.filter((s) => getSiteStatus(s) === "healthy").length;
   const degradedCount       = sites.filter((s) => getSiteStatus(s) === "degraded").length;
 
+  const exportData = () => ({
+    filename: "unifi-sites",
+    title: "UniFi Sites",
+    headers: ["Site", "Status", "ISP", "WAN IP", "LAN IP", "Hardware", "Firmware",
+      "Location", "WAN Uptime", "Serial"],
+    rows: filtered.map((s) => [
+      s.displayName, s.connected ? "Online" : "Offline", s.ispName, s.wanIp, s.lanIp,
+      s.hardware.name || s.hardware.shortname, s.firmwareVersion, s.location,
+      s.wanUptime == null ? "" : `${s.wanUptime}%`, s.serialNumber,
+    ]),
+  });
+
   const filtered = sortSites(
     sites.filter((s) => {
       const q = search.toLowerCase();
@@ -280,21 +293,24 @@ export default function SitesPage() {
         title="Sites"
         subtitle="UniFi Site Manager"
         actions={
-          <div className="flex items-center gap-3">
-            {lastUpdated && (
-              <span className="text-xs text-[#aaa]">
-                Updated {lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-              </span>
-            )}
-            <button
-              onClick={() => load(false)}
-              disabled={state === "loading"}
-              className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-xs font-medium text-[#444] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-40"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${state === "loading" ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
+          <>
+            <ExportMenu data={exportData} disabled={filtered.length === 0} />
+            <div className="flex items-center gap-3">
+              {lastUpdated && (
+                <span className="text-xs text-[#aaa]">
+                  Updated {lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                </span>
+              )}
+              <button
+                onClick={() => load(false)}
+                disabled={state === "loading"}
+                className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-xs font-medium text-[#444] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-40"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${state === "loading" ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+            </div>
+          </>
         }
       />
 

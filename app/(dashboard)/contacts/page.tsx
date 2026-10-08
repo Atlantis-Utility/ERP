@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "@/lib/confirm";
 import Overlay from "@/components/ui/Overlay";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import { BookUser, Mail, Smartphone, Phone, RefreshCw, AlertCircle, Plus, X, Trash2 } from "lucide-react";
 
@@ -137,6 +138,17 @@ export default function ContactsPage() {
   const withMobile = contacts.filter((c) => Boolean(c.cell_phone)).length;
   const withWork = contacts.filter((c) => Boolean(c.work_phone)).length;
 
+  const exportData = () => ({
+    filename: "contacts",
+    title: "Contacts",
+    headers: ["Name", "Company", "Customer Account", "Work Phone", "Cell Phone", "Home Phone", "Email", "Tags"],
+    rows: filtered.map((c) => [
+      [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(" "),
+      c.company ?? "", c.domain ?? "", c.work_phone ?? "", c.cell_phone ?? "",
+      c.home_phone ?? "", c.email ?? "", c.tags ?? "",
+    ]),
+  });
+
   const filtered = contacts.filter((c) => {
     const term = search.toLowerCase();
     return (
@@ -153,13 +165,16 @@ export default function ContactsPage() {
         title="Contacts"
         subtitle={state === "ok" ? `${contacts.length} contact${contacts.length !== 1 ? "s" : ""}` : "Manage RingLogix contacts"}
         actions={
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-[#0070f3] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#005fcc] transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Contact
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-[#0070f3] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#005fcc] transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Contact
+            </button>
+          </>
         }
       />
 

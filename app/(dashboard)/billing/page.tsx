@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { DollarSign, TrendingUp, AlertCircle, RefreshCw, CheckCircle, Clock } from "lucide-react";
 
 interface RLClient {
@@ -59,6 +60,16 @@ export default function BillingPage() {
   const overdue = clients.filter((c) => parseFloat(c.balance ?? "0") > parseFloat(c.credit_limit ?? "9999999"));
   const active = clients.filter((c) => !c.status || c.status === "active");
 
+  const exportData = () => ({
+    filename: "billing",
+    title: "Billing",
+    headers: ["Client", "Account", "Billing Plan", "Balance", "Credit Limit", "Status"],
+    rows: filtered.map((c) => [
+      c.name ?? c.domain ?? "", c.domain ?? "", c.billing_plan ?? "",
+      formatUSD(c.balance), formatUSD(c.credit_limit), c.status ?? "",
+    ]),
+  });
+
   const filtered = clients.filter((c) => {
     const q = search.toLowerCase();
     return (
@@ -75,14 +86,17 @@ export default function BillingPage() {
         title="Billing"
         subtitle="RingLogix reseller billing"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Sync
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Sync
+            </button>
+          </>
         }
       />
 

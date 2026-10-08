@@ -14,7 +14,6 @@ import {
   Trash2,
   Check,
   AlertTriangle,
-  Download,
   ListOrdered,
   Columns3,
   Lock,
@@ -31,6 +30,7 @@ import Select from "@/components/ui/Select";
 import DateTimePicker from "@/components/ui/DateTimePicker";
 import CampaignAccessModal from "@/components/campaigns/CampaignAccessModal";
 import AddLeadsToSheetModal from "@/components/campaigns/AddLeadsToSheetModal";
+import ExportMenu from "@/components/ui/ExportMenu";
 import SheetColumnsModal from "@/components/campaigns/SheetColumnsModal";
 import ReviewChangesModal from "@/components/campaigns/ReviewChangesModal";
 import { useEmployees } from "@/lib/db/employees";
@@ -77,7 +77,6 @@ import {
   LEAD_FIELD_LABELS,
   type EditableLeadField,
 } from "@/lib/db/lead-changes";
-import { exportToCsv } from "@/lib/export";
 import { getErrorMessage, formatPhone, telHref, emailAddress } from "@/lib/utils";
 
 const PAGE_SIZE = 100;
@@ -493,55 +492,53 @@ export default function CampaignSheetPage() {
    * campaign exported as the visible 100 would be quietly wrong. Paged
    * through in 500s, which is the ceiling campaign_rows allows.
    */
-  async function exportSheet() {
-    setBusy(true);
-    try {
-      const all: CampaignRow[] = [];
-      for (let p = 0; ; p++) {
-        const batch = await fetchSheetRows({ campaignId, filters, page: p, pageSize: 500 });
-        all.push(...batch);
-        if (batch.length < 500 || all.length >= total) break;
-      }
-      // The same columns the sheet shows, under the same headings: an
-      // export that doesn't match what you were looking at is a puzzle.
-      const value: Record<string, (r: CampaignRow) => string | number> = {
-        no: (r) => r.position,
-        company: (r) => r.companyName ?? "",
-        address1: (r) => r.address1 ?? "",
-        city: (r) => r.city ?? "",
-        state: (r) => r.state ?? "",
-        zip: (r) => r.zip ?? "",
-        category: (r) => r.category ?? "",
-        phone: (r) => r.phone ?? "",
-        email: (r) => r.email ?? "",
-        contact: (r) => r.contactName ?? "",
-        callDate: (r) => r.callDate ?? "",
-        attempts: (r) => r.attempts,
-        outcome: (r) => r.callOutcome ?? "",
-        feedback: (r) => r.callerFeedback ?? "",
-        interested: (r) => r.interestedIn ?? "",
-        bestTime: (r) => r.bestTime ?? "",
-        followUp: (r) => r.followUpDate ?? "",
-        nextAction: (r) => r.nextAction ?? "",
-        rep: (r) => r.assignedRepName ?? "",
-        dnc: (r) => (r.doNotCall ? "Yes" : ""),
-        notes: (r) => r.notes ?? "",
-      };
-      exportToCsv(
-        `${(campaign?.name ?? "campaign").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`,
-        columnDefs.map((c) => c.label),
-        all.map((r) =>
-          columnDefs.map((c) =>
-            c.key.startsWith("x:") ? (r.extra[c.key.slice(2)] ?? "") : (value[c.key]?.(r) ?? ""),
-          ),
-        ),
-      );
-      success(`Exported ${all.length.toLocaleString()} rows.`);
-    } catch (err) {
-      notifyError(getErrorMessage(err, "Failed to export"));
-    } finally {
-      setBusy(false);
+  /**
+   * The whole sheet, not the page on screen: a 4,000-row campaign exported
+   * as the visible 100 would be quietly wrong. Paged through in 500s, which
+   * is the ceiling campaign_rows allows, under the same columns and
+   * headings the sheet is showing — an export that doesn't match what you
+   * were looking at is a puzzle.
+   */
+  async function exportData() {
+    const all: CampaignRow[] = [];
+    for (let p = 0; ; p++) {
+      const batch = await fetchSheetRows({ campaignId, filters, page: p, pageSize: 500 });
+      all.push(...batch);
+      if (batch.length < 500 || all.length >= total) break;
     }
+    const value: Record<string, (r: CampaignRow) => string | number> = {
+      no: (r) => r.position,
+      company: (r) => r.companyName ?? "",
+      address1: (r) => r.address1 ?? "",
+      city: (r) => r.city ?? "",
+      state: (r) => r.state ?? "",
+      zip: (r) => r.zip ?? "",
+      category: (r) => r.category ?? "",
+      phone: (r) => r.phone ?? "",
+      email: (r) => r.email ?? "",
+      contact: (r) => r.contactName ?? "",
+      callDate: (r) => r.callDate ?? "",
+      attempts: (r) => r.attempts,
+      outcome: (r) => r.callOutcome ?? "",
+      feedback: (r) => r.callerFeedback ?? "",
+      interested: (r) => r.interestedIn ?? "",
+      bestTime: (r) => r.bestTime ?? "",
+      followUp: (r) => r.followUpDate ?? "",
+      nextAction: (r) => r.nextAction ?? "",
+      rep: (r) => r.assignedRepName ?? "",
+      dnc: (r) => (r.doNotCall ? "Yes" : ""),
+      notes: (r) => r.notes ?? "",
+    };
+    return {
+      filename: campaign?.name ?? "campaign",
+      title: campaign?.name ?? "Campaign",
+      headers: columnDefs.map((c) => c.label),
+      rows: all.map((r) =>
+        columnDefs.map((c) =>
+          c.key.startsWith("x:") ? (r.extra[c.key.slice(2)] ?? "") : (value[c.key]?.(r) ?? ""),
+        ),
+      ),
+    };
   }
 
   /**
@@ -755,14 +752,7 @@ export default function CampaignSheetPage() {
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Campaigns
             </Link>
-            <button
-              onClick={exportSheet}
-              disabled={busy || total === 0}
-              className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#444] px-3 py-2 rounded-md hover:bg-[#fafafa] transition-colors disabled:opacity-40"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Export</span>
-            </button>
+            <ExportMenu data={exportData} rowCount={total} disabled={busy || total === 0} />
             {isAdmin && (stats?.pending ?? 0) > 0 && (
               <button
                 onClick={() => setShowReview(true)}

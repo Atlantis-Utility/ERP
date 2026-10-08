@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { Mic, Clock, Building2, BarChart, RefreshCw, AlertCircle } from "lucide-react";
 
 interface RLRecording {
@@ -74,6 +75,16 @@ export default function RecordingsPage() {
   const uniqueDomains = new Set(recordings.map((r) => r.domain).filter(Boolean)).size;
   const avgDuration = recordings.length > 0 ? Math.round(totalSeconds / recordings.length) : 0;
 
+  const exportData = () => ({
+    filename: "recordings",
+    title: "Call Recordings",
+    headers: ["Recording ID", "Customer", "Extension", "From", "To", "Duration"],
+    rows: filtered.map((r) => [
+      r.recording ?? "", r.domain ?? "", r.subscriber ?? "", r.orig_from_user ?? "", r.dest_to_user ?? "",
+      formatDuration(r.duration),
+    ]),
+  });
+
   const filtered = recordings.filter((r) => {
     const term = search.toLowerCase();
     return (
@@ -92,14 +103,17 @@ export default function RecordingsPage() {
         title="Recordings"
         subtitle="Call recordings from RingLogix"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </>
         }
       />
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { PhoneCall, PhoneIncoming, PhoneOutgoing, Clock, RefreshCw, AlertCircle } from "lucide-react";
 
 interface RLCDR {
@@ -84,6 +85,17 @@ export default function CallRecordsPage() {
   const outbound = cdrs.filter((c) => c.direction === "outbound" || c.leg_type === "term");
   const totalMin = cdrs.reduce((s, c) => s + parseInt(c.duration ?? "0", 10), 0);
 
+  const exportData = () => ({
+    filename: "call-records",
+    title: "Call Records",
+    headers: ["Time", "From", "To", "Account", "Duration", "Direction"],
+    rows: filtered.map((c) => [
+      formatTime(c.start_time), formatNumber(c.orig_from_user), formatNumber(c.dest_to_user),
+      c.domain ?? "", formatDuration(c.duration),
+      c.direction === "inbound" || c.leg_type === "orig" ? "Inbound" : "Outbound",
+    ]),
+  });
+
   const filtered = cdrs.filter((c) => {
     const q = search.toLowerCase();
     return (
@@ -100,14 +112,17 @@ export default function CallRecordsPage() {
         title="Call Records"
         subtitle="CDR data from RingLogix"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </>
         }
       />
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import { Building2, RefreshCw, AlertCircle } from "lucide-react";
 
@@ -58,11 +59,21 @@ export default function DepartmentsPage() {
     }
   }, [domain]);
 
+  const exportData = () => ({
+    filename: `departments-${domain || "all"}`,
+    title: "Departments",
+    headers: ["Extension / User", "First Name", "Last Name", "Directory Listed", "Dir ANC"],
+    rows: departments.map((d) => [
+      d.user ?? "", d.first_name ?? "", d.last_name ?? "", d.dir_list ?? "", d.dir_anc ?? "",
+    ]),
+  });
+
   return (
     <div>
       <Header
         title="Departments"
         subtitle="Directory listings and department entries"
+        actions={<ExportMenu data={exportData} disabled={departments.length === 0} />}
       />
 
       {/* Domain selector */}

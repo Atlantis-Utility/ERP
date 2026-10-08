@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { ListFilter, Building2, CheckCircle, Clock, RefreshCw, AlertCircle } from "lucide-react";
 
 interface RLQueue {
@@ -53,6 +54,15 @@ export default function QueuesPage() {
   const totalTimeout = queues.reduce((s, q) => s + parseInt(q.timeout ?? "0", 10), 0);
   const avgTimeout = queues.length > 0 ? Math.round(totalTimeout / queues.length) : 0;
 
+  const exportData = () => ({
+    filename: "call-queues",
+    title: "Call Queues",
+    headers: ["Queue", "Customer Account", "Strategy", "Timeout", "Max Length", "Members"],
+    rows: filtered.map((q) => [
+      q.queue ?? "", q.domain ?? "", q.strategy ?? "", q.timeout ?? "", q.maxlen ?? "", q.members ?? "",
+    ]),
+  });
+
   const filtered = queues.filter((q) => {
     const term = search.toLowerCase();
     return (
@@ -69,14 +79,17 @@ export default function QueuesPage() {
         title="Call Queues"
         subtitle="Hunt groups and call queues from RingLogix"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </>
         }
       />
 

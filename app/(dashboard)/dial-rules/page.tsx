@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Overlay from "@/components/ui/Overlay";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import { GitBranch, RefreshCw, AlertCircle, Plus, X } from "lucide-react";
 
@@ -115,19 +116,32 @@ export default function DialRulesPage() {
     }
   };
 
+  const exportData = () => ({
+    filename: "dial-rules",
+    title: "Dial Rules",
+    headers: ["Match Rule", "To User", "To Host", "Application", "Parameter", "Days", "Time"],
+    rows: rules.map((r) => [
+      r.matchrule ?? "", r.to_user ?? "", r.to_host ?? "", r.responder ?? "", r.parameter ?? "", r.dow ?? "",
+      r.tod_from && r.tod_to ? `${r.tod_from} - ${r.tod_to}` : (r.tod_from ?? r.tod_to ?? ""),
+    ]),
+  });
+
   return (
     <div>
       <Header
         title="Dial Rules"
         subtitle="Dial plan routing rules"
         actions={
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-[#0070f3] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#005fcc] transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Rule
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={rules.length === 0} />
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-[#0070f3] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#005fcc] transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Rule
+            </button>
+          </>
         }
       />
 

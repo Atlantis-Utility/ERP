@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Search, RefreshCw, TicketCheck, X, Plus, Mail, Phone, Globe, Pencil } from "lucide-react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import FeedbackRequestDialog from "@/components/tickets/FeedbackRequestDialog";
 import type { ReviewRequestTarget } from "@/lib/tickets/review-request";
@@ -534,6 +535,17 @@ export default function TicketsPage() {
     });
   }, [visible, search, statusFilter, priorityFilter]);
 
+  const exportData = () => ({
+    filename: "tickets",
+    title: "Tickets",
+    headers: ["Subject", "From", "Source", "Status", "Priority", "Assignee", "Received"],
+    rows: filtered.map((t) => [
+      t.subject, t.fromName || t.from, t.source,
+      STATUS_CONFIG[t.status].label, PRIORITY_CONFIG[t.priority].label,
+      t.assigneeName ?? "", t.receivedAt,
+    ]),
+  });
+
   const kpis = useMemo(() => ({
     total:      visible.length,
     open:       visible.filter((t) => t.status === "open").length,
@@ -611,23 +623,26 @@ export default function TicketsPage() {
         title="Tickets"
         subtitle={emailTotal != null && emailTotal > emailTickets.length ? `${unified.length} loaded · ${emailTotal} email threads` : `${unified.length} ticket${unified.length !== 1 ? "s" : ""}`}
         actions={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowNewTicket(true)}
-              className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#222] transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              New Ticket
-            </button>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="flex items-center gap-2 border border-[#eaeaea] text-sm font-medium text-[#444] px-3 py-2 rounded-lg hover:bg-[#fafafa] hover:text-[#0a0a0a] transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
+          <>
+            <ExportMenu data={exportData} disabled={filtered.length === 0} />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowNewTicket(true)}
+                className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#222] transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                New Ticket
+              </button>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center gap-2 border border-[#eaeaea] text-sm font-medium text-[#444] px-3 py-2 rounded-lg hover:bg-[#fafafa] hover:text-[#0a0a0a] transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+            </div>
+          </>
         }
       />
 

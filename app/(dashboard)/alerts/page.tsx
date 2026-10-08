@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
 import type { UiAlert } from "@/lib/unifi";
 
@@ -76,6 +77,16 @@ export default function AlertsPage() {
   const critical = alerts.filter((a) => a.severity === "critical");
   const high     = alerts.filter((a) => a.severity === "high" || a.severity === "warning");
 
+  const exportData = () => ({
+    filename: "unifi-alerts",
+    title: "UniFi Alerts",
+    headers: ["Severity", "Alert", "Type", "Site", "Raised", "Resolved"],
+    rows: display.map((a) => [
+      a.severity ?? "", a.message ?? "", a.type ?? "", a.siteName ?? a.site_id ?? "",
+      formatTime(a.created_at), formatTime(a.resolved_at),
+    ]),
+  });
+
   const display = alerts.filter((a) => {
     const matchesFilter =
       filter === "all" ||
@@ -105,21 +116,24 @@ export default function AlertsPage() {
         title="Alerts"
         subtitle="UniFi network alerts across all sites"
         actions={
-          <div className="flex items-center gap-3">
-            {lastUpdated && (
-              <span className="text-xs text-[#999]">
-                Updated {lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-              </span>
-            )}
-            <button
-              onClick={() => load(false)}
-              disabled={state === "loading"}
-              className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#0a0a0a] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${state === "loading" ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
+          <>
+            <ExportMenu data={exportData} disabled={display.length === 0} />
+            <div className="flex items-center gap-3">
+              {lastUpdated && (
+                <span className="text-xs text-[#999]">
+                  Updated {lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                </span>
+              )}
+              <button
+                onClick={() => load(false)}
+                disabled={state === "loading"}
+                className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#0a0a0a] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${state === "loading" ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+            </div>
+          </>
         }
       />
 

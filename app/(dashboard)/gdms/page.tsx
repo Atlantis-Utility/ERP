@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { RefreshCw, AlertCircle, Laptop, Search } from "lucide-react";
 import type { GdmsDevice, GdmsDeviceStatus } from "@/lib/gdms";
 
@@ -71,6 +72,15 @@ export default function GdmsPage() {
     });
   }, [devices, statusFilter, search]);
 
+  const exportData = () => ({
+    filename: "gdms-devices",
+    title: "GDMS Devices",
+    headers: ["Device", "Model", "MAC", "Site", "Firmware", "Status"],
+    rows: visible.map((d) => [
+      d.name ?? "", d.model ?? "", d.mac ?? "", d.siteName ?? "", d.firmwareVersion ?? "", d.status ?? "",
+    ]),
+  });
+
   // The pills follow the app's convention and carry no counts, so the headline
   // is where the online/offline split stays visible.
   const summary = `${devices.length} device${devices.length === 1 ? "" : "s"} · ${counts.online ?? 0} online · ${counts.offline ?? 0} offline`;
@@ -85,14 +95,17 @@ export default function GdmsPage() {
             : "Grandstream device management across organizations and sites"
         }
         actions={
-          <button
-            onClick={load}
-            disabled={state === "loading"}
-            className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#0a0a0a] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${state === "loading" ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={visible.length === 0} />
+            <button
+              onClick={load}
+              disabled={state === "loading"}
+              className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#0a0a0a] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${state === "loading" ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </>
         }
       />
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { Laptop, Building2, Monitor, Users, RefreshCw, AlertCircle } from "lucide-react";
 
 interface RLDevice {
@@ -58,6 +59,15 @@ export default function DevicesPage() {
   const uniqueModels = new Set(devices.map((d) => d.model || d.type).filter(Boolean)).size;
   const withSubscriber = devices.filter((d) => Boolean(d.subscriber)).length;
 
+  const exportData = () => ({
+    filename: "devices",
+    title: "Devices",
+    headers: ["Device ID", "Model / Type", "Customer Account", "Subscriber", "Status"],
+    rows: filtered.map((d) => [
+      d.device ?? "", d.model ?? d.type ?? "", d.domain ?? "", d.subscriber ?? "", d.status ?? "",
+    ]),
+  });
+
   const filtered = devices.filter((d) => {
     const q = search.toLowerCase();
     return (
@@ -76,14 +86,17 @@ export default function DevicesPage() {
         title="Devices"
         subtitle="SIP device inventory from RingLogix"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Sync
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Sync
+            </button>
+          </>
         }
       />
 

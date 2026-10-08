@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Search, Plus, Package, Boxes } from "lucide-react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import InventoryItemDrawer from "@/components/inventory/InventoryItemDrawer";
 import {
@@ -81,6 +82,19 @@ export default function InventoryPage() {
     });
   }, [items, search, category, status]);
 
+  const exportData = () => ({
+    filename: "inventory",
+    title: "Inventory",
+    headers: ["Item", "Category", "Model", "Identifier", "Identifier Type", "Line", "Status",
+      "Assigned To", "Location", "Qty", "Monthly Cost", "Purchase Cost", "Activated"],
+    rows: filtered.map((item) => [
+      item.name, CATEGORY_LABELS[item.category], item.model ?? "", identifier(item),
+      identifierLabel(item), item.phoneNumber ?? "", STATUS_LABELS[item.status],
+      item.assignedTo ?? "", item.location ?? "", item.quantity,
+      item.monthlyCost ?? "", item.purchaseCost ?? "", item.activatedOn ?? "",
+    ]),
+  });
+
   function openItem(item: InventoryItem | null) {
     setEditing(item);
     setDrawerOpen(true);
@@ -92,13 +106,16 @@ export default function InventoryPage() {
         title="Inventory"
         subtitle={`${counts.total} unit${counts.total === 1 ? "" : "s"} tracked · ${counts.unused} unused`}
         actions={
-          <button
-            onClick={() => openItem(null)}
-            className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Item
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={filtered.length === 0} />
+            <button
+              onClick={() => openItem(null)}
+              className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Item
+            </button>
+          </>
         }
       />
 

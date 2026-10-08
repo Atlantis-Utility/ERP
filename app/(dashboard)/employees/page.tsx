@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { subscribeEmployees } from "@/lib/db/employees";
 import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
 import { Search, Plus } from "lucide-react";
@@ -59,6 +60,16 @@ export default function EmployeesPage() {
     return unsub;
   }, []);
 
+  const exportData = () => ({
+    filename: "employees",
+    title: "Employees",
+    headers: ["Name", "Email", "Role", "Access", "Status", "Location", "Start Date"],
+    rows: filtered.map((emp) => [
+      emp.name, emp.email ?? "", emp.role ?? "", emp.accessRole ?? "", emp.status ?? "",
+      emp.location ?? "", emp.startDate ?? "",
+    ]),
+  });
+
   const filtered = employees.filter((emp) => {
     const matchesSearch =
       emp.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -75,13 +86,16 @@ export default function EmployeesPage() {
         title="Employees"
         subtitle={`${employees.length} team members`}
         actions={
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Employee
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={filtered.length === 0} />
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Employee
+            </button>
+          </>
         }
       />
 

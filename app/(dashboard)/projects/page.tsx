@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { formatDate } from "@/lib/utils";
 import { getAvatarColor, getInitials } from "@/lib/utils";
 import { Plus, Building2, Mail, Phone } from "lucide-react";
@@ -50,6 +51,17 @@ export default function ProjectsPage() {
     [allProjects, ownsProject],
   );
 
+  const exportData = () => ({
+    filename: "projects",
+    title: "Projects",
+    headers: ["Project", "Client", "Status", "Priority", "Owner", "Progress", "Deadline", "Department", "Team"],
+    rows: filtered.map((p) => [
+      p.name, p.clientName ?? "", statusConfig[p.status]?.label ?? p.status, p.priority,
+      p.owner, `${p.progress}%`, p.deadlineTbd ? "TBD" : p.deadline, p.department ?? "",
+      (p.team ?? []).join(", "),
+    ]),
+  });
+
   const filtered = activeTab === "all" ? projects : projects.filter((p) => p.status === activeTab);
 
   const counts: Record<ProjectStatus, number> = {
@@ -66,13 +78,16 @@ export default function ProjectsPage() {
         title="Projects"
         subtitle={`${projects.length} projects`}
         actions={
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New Project
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={filtered.length === 0} />
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New Project
+            </button>
+          </>
         }
       />
 

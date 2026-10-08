@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/lib/auth-context";
 import { useEmployees } from "@/lib/db/employees";
@@ -73,6 +74,15 @@ export default function NotesPage() {
     if (!q) return visibleNotes;
     return visibleNotes.filter((n) => n.title.toLowerCase().includes(q) || n.body.toLowerCase().includes(q));
   }, [visibleNotes, search]);
+
+  const exportData = () => ({
+    filename: "notes",
+    title: "Notes",
+    headers: ["Title", "Note", "Author", "Shared With", "Created", "Updated"],
+    rows: filteredNotes.map((n) => [
+      n.title, n.body, n.authorName, String(n.recipientIds.length), n.createdAt, n.updatedAt,
+    ]),
+  });
 
   useEffect(() => {
     setDraftTitle(selected?.title ?? "");
@@ -198,13 +208,16 @@ export default function NotesPage() {
         title="Notes"
         subtitle="Personal notes, keep them to yourself or share with a teammate"
         actions={
-          <button
-            onClick={handleCreate}
-            className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            New Note
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={filteredNotes.length === 0} />
+            <button
+              onClick={handleCreate}
+              className="flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Note
+            </button>
+          </>
         }
       />
 

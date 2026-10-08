@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Tooltip from "@/components/ui/Tooltip";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import {
@@ -495,6 +496,18 @@ export default function TasksPage() {
   // Filtered per source rather than on the merged list, because a project's
   // card carries only `team` as its assignees, the owner would otherwise lose
   // sight of their own project.
+  const exportData = () => ({
+    filename: "tasks",
+    title: "Tasks",
+    headers: ["Title", "Type", "Column", "Priority", "Assignees", "Due", "Progress", "Tags", "Project"],
+    rows: visibleCards.map((c) => [
+      c.title, c.type, COLUMNS.find((col) => col.id === c.column)?.label ?? c.column, c.priority,
+      c.assignees.join(", "), c.dueDateTbd ? "TBD" : (c.dueDate || ""),
+      c.progress == null ? "" : `${c.progress}%`, c.tags.join(", "),
+      projects.find((p) => p.id === c.projectId)?.name ?? "",
+    ]),
+  });
+
   const visibleCards = syncedCards.filter((c) => isMine(c.assignees));
   const visibleProjects = projects.filter((p) => ownsProject(p));
   const visibleTickets = tickets.filter((t) => isMine([t.assigneeName]));
@@ -716,28 +729,31 @@ export default function TasksPage() {
         title="Task Board"
         subtitle="Tasks, meetings, and projects across your team"
         actions={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setDefaultCol(undefined);
-                setMeetingDrawerOpen(true);
-              }}
-              className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-xs font-medium text-[#444] px-3 py-2 rounded-lg hover:bg-[#fafafa] transition-colors"
-            >
-              <Video className="w-3.5 h-3.5" />
-              Schedule
-            </button>
-            <button
-              onClick={() => {
-                setDefaultCol(undefined);
-                setTaskDrawerOpen(true);
-              }}
-              className="flex items-center gap-1.5 bg-[#0a0a0a] text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-[#333] transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              New Task
-            </button>
-          </div>
+          <>
+            <ExportMenu data={exportData} disabled={visibleCards.length === 0} />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setDefaultCol(undefined);
+                  setMeetingDrawerOpen(true);
+                }}
+                className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-xs font-medium text-[#444] px-3 py-2 rounded-lg hover:bg-[#fafafa] transition-colors"
+              >
+                <Video className="w-3.5 h-3.5" />
+                Schedule
+              </button>
+              <button
+                onClick={() => {
+                  setDefaultCol(undefined);
+                  setTaskDrawerOpen(true);
+                }}
+                className="flex items-center gap-1.5 bg-[#0a0a0a] text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-[#333] transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                New Task
+              </button>
+            </div>
+          </>
         }
       />
 

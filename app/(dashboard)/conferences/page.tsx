@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { Video, Building2, Shield, CheckCircle, RefreshCw, AlertCircle } from "lucide-react";
 
 interface RLConference {
@@ -57,6 +58,16 @@ export default function ConferencesPage() {
   const withPin = conferences.filter((c) => c.pin && c.pin.trim() !== "").length;
   const available = conferences.filter((c) => !c.status || c.status === "active" || c.status === "available").length;
 
+  const exportData = () => ({
+    filename: "conferences",
+    title: "Conference Rooms",
+    headers: ["Room ID", "Customer Account", "Description", "PIN", "Max Participants", "Status"],
+    rows: filtered.map((c) => [
+      c.conference ?? "", c.domain ?? "", c.description ?? "", c.pin ?? "", c.max_participants ?? "",
+      !c.status || c.status === "active" || c.status === "available" ? "Active" : c.status,
+    ]),
+  });
+
   const filtered = conferences.filter((c) => {
     const term = search.toLowerCase();
     return (
@@ -73,14 +84,17 @@ export default function ConferencesPage() {
         title="Conferences"
         subtitle="Conference rooms from RingLogix"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </>
         }
       />
 

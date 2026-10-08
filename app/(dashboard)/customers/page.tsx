@@ -5,10 +5,9 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import CopyButton from "@/components/ui/CopyButton";
 import Select from "@/components/ui/Select";
-import DownloadMenu from "@/components/ui/DownloadMenu";
+import ExportMenu from "@/components/ui/ExportMenu";
 import { customerStatusKey, balanceAmount, creditLimitAmount, type CustomerStatusKey } from "@/lib/customer-status";
 import { listUnifiLinks } from "@/lib/db/unifi-links";
-import { exportToCsv, exportToPdf } from "@/lib/export";
 import { Building2, RefreshCw, AlertCircle, Search, Wifi, DollarSign } from "lucide-react";
 
 interface PortalCustomer {
@@ -118,27 +117,22 @@ export default function CustomersPage() {
   const terminatedCount = customers.filter((c) => customerStatusKey(c.status) === "terminated").length;
   const totalOwed = customers.reduce((s, c) => s + Math.max(balanceAmount(c.balance), 0), 0);
 
-  const EXPORT_HEADERS = ["Company", "Contact", "Email", "Phone", "Balance", "Credit Limit", "Status"];
-  const exportRows = () => sorted.map((c) => [c.company || "-", c.contact || "-", c.email || "-", c.phone || "-", c.balance || "-", c.creditLimit || "-", c.status || "-"]);
-
-  function handleExportCsv() {
-    exportToCsv("customers.csv", EXPORT_HEADERS, exportRows());
-  }
-
-  function handleExportPdf() {
-    exportToPdf("customers.pdf", "Customers", EXPORT_HEADERS, exportRows());
-  }
+  const exportData = () => ({
+    filename: "customers",
+    title: "Customers",
+    headers: ["Company", "Contact", "Email", "Phone", "Balance", "Credit Limit", "Status"],
+    rows: sorted.map((c) => [
+      c.company || "-", c.contact || "-", c.email || "-", c.phone || "-",
+      c.balance || "-", c.creditLimit || "-", c.status || "-",
+    ]),
+  });
 
   return (
     <div>
       <Header
         title="Customers"
         actions={
-          <DownloadMenu
-            onExportCsv={handleExportCsv}
-            onExportPdf={handleExportPdf}
-            disabled={state !== "ok" || sorted.length === 0}
-          />
+          <ExportMenu data={exportData} disabled={state !== "ok" || sorted.length === 0} />
         }
       />
 

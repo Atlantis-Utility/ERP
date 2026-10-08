@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/lib/confirm";
 import { useToast } from "@/lib/toast";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import CopyButton from "@/components/ui/CopyButton";
 import ImportLeadsCsvModal from "@/components/leads/ImportLeadsCsvModal";
@@ -17,7 +18,7 @@ import StatusPicker from "@/components/leads/StatusPicker";
 import LeadsTabs from "@/components/leads/LeadsTabs";
 import Link from "next/link";
 import ReviewChangesModal from "@/components/campaigns/ReviewChangesModal";
-import { useCampaignsForLeads } from "@/lib/db/campaigns";
+import { useCampaignsForLeads, fetchCampaignsForLeads } from "@/lib/db/campaigns";
 import Tooltip from "@/components/ui/Tooltip";
 import {
   usePendingForLeads,
@@ -40,6 +41,7 @@ import { useIsOwner } from "@/lib/db/ownership";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   queryLeadsPage,
+  fetchLeadsPage,
   queryLeadsBoard,
   leadsQueryKey,
   useLeadsRevision,
@@ -305,6 +307,43 @@ export default function LeadsPage() {
   const loading = !isCurrent;
   // Keeps the previous page on screen while the next one loads instead of
   // flashing an empty table on every filter change.
+  /**
+   * Everything the filters match, not the page on screen: a list of 20,000
+   * exported as the 50 you happen to be looking at is quietly wrong.
+   *
+   * Walked in 200s because that is leads_search's own ceiling — asking for
+   * 500 returns 200, and a loop that stops on a short batch then stops at
+   * the first one, which is how this first exported 199 leads out of
+   * 20,162. The row count decides when to stop; the short batch is only a
+   * backstop.
+   */
+  async function exportData() {
+    const PAGE = 200;
+    const all: Lead[] = [];
+    for (let p = 0; all.length < total; p++) {
+      const batch = await fetchLeadsPage({ filters, sort, desc, page: p, pageSize: PAGE });
+      all.push(...batch);
+      if (batch.length < PAGE) break;
+    }
+    const campaigns = await fetchCampaignsForLeads(all.map((l) => l.id));
+    return {
+      filename: "leads",
+      title: "Leads",
+      headers: [
+        "Company", "DBA", "Point of Contact", "Title", "Phone", "Email", "Website",
+        "Street", "City", "State", "Zip", "Category", "Source", "Stage", "Priority",
+        "Owner", "Follow-up", "Next Step", "Tags", "Campaigns",
+      ],
+      rows: all.map((l) => [
+        l.companyName ?? "", l.dba ?? "", l.pocName ?? "", l.pocTitle ?? "", l.phone ?? "",
+        l.email ?? "", l.website ?? "", l.street ?? "", l.city ?? "", l.state ?? "", l.zip ?? "",
+        l.businessType ?? "", l.source ?? "", STATUS_LABELS[l.status] ?? l.status, l.priority ?? "",
+        l.assignedToName ?? "", l.followUpDate ?? "", l.nextStep ?? "", (l.tags ?? []).join(", "),
+        (campaigns.get(l.id) ?? []).map((c) => c.name).join(", "),
+      ]),
+    };
+  }
+
   const rows = result?.rows ?? [];
   const stats = result?.stats ?? null;
   const total = stats?.total ?? 0;
@@ -500,6 +539,7 @@ export default function LeadsPage() {
         }
         actions={
           <div className="flex items-center gap-2 flex-wrap">
+            <ExportMenu data={exportData} rowCount={total} disabled={total === 0} />
             {access.canGrant && (
               <button
                 onClick={() => setShowAccess(true)}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
+import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import { Cpu, Tag, RefreshCw, AlertCircle } from "lucide-react";
 
@@ -49,6 +50,13 @@ export default function DeviceModelsPage() {
 
   const brands = Array.from(new Set(models.map((m) => m.brand).filter(Boolean))) as string[];
 
+  const exportData = () => ({
+    filename: "device-models",
+    title: "Device Models",
+    headers: ["Brand", "Model", "NDP Syntax"],
+    rows: filtered.map((m) => [m.brand ?? "", m.model ?? "", m.ndp_syntax ?? ""]),
+  });
+
   const filtered = models.filter((m) => {
     const term = search.toLowerCase();
     const matchSearch = !term || m.model?.toLowerCase().includes(term) || m.brand?.toLowerCase().includes(term) || m.ndp_syntax?.toLowerCase().includes(term);
@@ -62,14 +70,17 @@ export default function DeviceModelsPage() {
         title="Device Models"
         subtitle="Supported provisioning devices"
         actions={
-          <button
-            onClick={() => load()}
-            disabled={state === "loading"}
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <>
+            <ExportMenu data={exportData} disabled={state !== "ok" || filtered.length === 0} />
+            <button
+              onClick={() => load()}
+              disabled={state === "loading"}
+              className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </>
         }
       />
 
