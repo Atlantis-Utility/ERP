@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabase/client";
 import { subscribeChanges } from "../supabase/realtime";
 
@@ -157,6 +157,13 @@ export interface ShiftsState {
   shifts: Shift[];
   loading: boolean;
   error: string;
+  /**
+   * Refetch now. Realtime covers somebody else clocking in, but your own
+   * clock-in has to show the moment you press the button: a clock that
+   * waits on a round trip through the server's change feed before it
+   * admits you are on it is a clock people press twice.
+   */
+  reload: () => void;
 }
 
 /**
@@ -164,7 +171,8 @@ export interface ShiftsState {
  * once: whoever is clocking in, and whoever is looking at who's in.
  */
 export function useShifts(opts: { from?: Date; to?: Date; employeeId?: string } = {}): ShiftsState {
-  const [state, setState] = useState<ShiftsState>({ shifts: [], loading: true, error: "" });
+  const [state, setState] = useState<Omit<ShiftsState, "reload">>({ shifts: [], loading: true, error: "" });
+  const [tick, setTick] = useState(0);
   const fromKey = opts.from?.toISOString() ?? "";
   const toKey = opts.to?.toISOString() ?? "";
   const who = opts.employeeId ?? "";
@@ -195,9 +203,10 @@ export function useShifts(opts: { from?: Date; to?: Date; employeeId?: string } 
       cancelled = true;
       unsubscribe();
     };
-  }, [fromKey, toKey, who]);
+  }, [fromKey, toKey, who, tick]);
 
-  return state;
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+  return { ...state, reload };
 }
 
 /** The shift somebody is on right now, if they're on one. */

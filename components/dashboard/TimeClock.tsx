@@ -46,7 +46,7 @@ export default function TimeClock() {
   const me = authUser?.accessEmployeeId ?? null;
   const isAdmin = authUser?.isAdmin ?? false;
   // An administrator watches the team; everybody else sees their own week.
-  const { shifts, loading, error } = useShifts({ from: startOfWeek() });
+  const { shifts, loading, error, reload } = useShifts({ from: startOfWeek() });
 
   const mine = shifts.filter((s) => s.employeeId === me);
   const current = openShift(shifts, me);
@@ -73,6 +73,9 @@ export default function TimeClock() {
         await clockIn(me);
         success("Clocked in.");
       }
+      // Your own press, shown now rather than whenever the change feed
+      // gets round to telling us about it.
+      reload();
     } catch (err) {
       toastError(getErrorMessage(err, "Couldn't update the clock"));
     } finally {

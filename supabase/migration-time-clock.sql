@@ -94,3 +94,12 @@ as $$
     and (p_to is null or t.clocked_in < p_to)
   group by t.employee_id;
 $$;
+
+-- ── Live ─────────────────────────────────────────────────────────────────
+-- So "who is on the clock" updates on the screen of whoever is watching it
+-- when somebody else clocks in. Your own clock-in doesn't wait on this: the
+-- panel refetches the moment you press the button.
+do $$
+begin
+  begin alter publication supabase_realtime add table time_entries; exception when duplicate_object then null; end;
+end $$;

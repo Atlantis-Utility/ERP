@@ -73,7 +73,7 @@ export default function TimeClockPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const isAdmin = authUser?.isAdmin ?? false;
-  const { shifts, loading, error } = useShifts({ from: rangeStart(range), employeeId: who || undefined });
+  const { shifts, loading, error, reload } = useShifts({ from: rangeStart(range), employeeId: who || undefined });
   const nameFor = (id: string) => employees.find((e) => e.id === id)?.name ?? id;
 
   // Live, because an open shift is still counting while this is on screen.
@@ -127,6 +127,7 @@ export default function TimeClockPage() {
     try {
       await clockOut(shift.id, authUser ? { id: authUser.accessEmployeeId ?? "", name: authUser.displayName } : null);
       success("Shift closed.");
+      reload();
     } catch (err) {
       toastError(getErrorMessage(err, "Couldn't close that shift"));
     } finally {
@@ -145,6 +146,7 @@ export default function TimeClockPage() {
     try {
       await removeShift(shift.id);
       success("Shift removed.");
+      reload();
     } catch (err) {
       toastError(getErrorMessage(err, "Couldn't remove that shift"));
     } finally {
