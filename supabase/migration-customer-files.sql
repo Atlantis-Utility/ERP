@@ -29,15 +29,26 @@ drop policy if exists "authenticated read customer files" on storage.objects;
 drop policy if exists "authenticated write customer files" on storage.objects;
 drop policy if exists "authenticated replace customer files" on storage.objects;
 drop policy if exists "authenticated delete customer files" on storage.objects;
+drop policy if exists "owner or admin replaces customer files" on storage.objects;
+drop policy if exists "owner or admin deletes customer files" on storage.objects;
 
 create policy "authenticated read customer files" on storage.objects
   for select using (bucket_id = 'customer-files' and auth.role() = 'authenticated');
 create policy "authenticated write customer files" on storage.objects
   for insert with check (bucket_id = 'customer-files' and auth.role() = 'authenticated');
-create policy "authenticated replace customer files" on storage.objects
-  for update using (bucket_id = 'customer-files' and auth.role() = 'authenticated');
-create policy "authenticated delete customer files" on storage.objects
-  for delete using (bucket_id = 'customer-files' and auth.role() = 'authenticated');
+
+-- The bytes follow the same rule as the row that describes them. Without
+-- this, somebody who may not delete the row may still delete the file it
+-- points at, which leaves a tile in the gallery with nothing behind it -
+-- worse than either outcome on its own.
+create policy "owner or admin replaces customer files" on storage.objects
+  for update using (
+    bucket_id = 'customer-files' and (owner = auth.uid() or (select erp_is_admin()))
+  );
+create policy "owner or admin deletes customer files" on storage.objects
+  for delete using (
+    bucket_id = 'customer-files' and (owner = auth.uid() or (select erp_is_admin()))
+  );
 
 -- ── What each file is ────────────────────────────────────────────────────
 create table if not exists customer_files (

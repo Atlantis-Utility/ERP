@@ -231,15 +231,24 @@ export async function updateCustomerFile(
  * Removes a file. The row goes first: it is what the gallery reads, so once
  * it is gone the file is gone as far as anybody can tell, and a bucket
  * object left behind by a failure here costs space and nothing else.
+ *
+ * The returned rows are the point of the `.select()`. A delete that the row
+ * policy filters out is not an error - it is a delete that matched nothing,
+ * and it comes back successful with an empty list. Without this the caller
+ * would report "removed", say nothing, and go on to delete the bytes out
+ * from under a row it was not allowed to touch.
  */
 export async function removeCustomerFile(file: CustomerFile): Promise<void> {
-  const { error } = await withTimeout(supabase.from(TABLE).delete().eq("id", file.id));
+  const { data, error } = await withTimeout(supabase.from(TABLE).delete().eq("id", file.id).select("id"));
   if (error) {
     throw new Error(
       /violates row-level security|permission denied/i.test(error.message)
         ? "Only the person who uploaded this, or an administrator, can remove it."
         : error.message,
     );
+  }
+  if (!data || (data as unknown[]).length === 0) {
+    throw new Error("Only the person who uploaded this, or an administrator, can remove it.");
   }
   await supabase.storage.from(BUCKET).remove([file.path]);
 }
