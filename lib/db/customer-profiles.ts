@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from "../supabase/client";
+import { emptyHours, normalizeHours, type CustomerHours } from "../customer-hours";
 
 // Editable ISP/contacts overlay for a RingLogix customer (domain id).
 // Customers have no local DB record of their own (they're fetched live from
@@ -48,6 +49,11 @@ export interface CustomerProfileOverlay {
   contacts: CustomerContact[]; // custom contacts only — the RingLogix-sourced default contact isn't stored here
   mainContactId: string; // DEFAULT_CONTACT_ID or a contact's id
   staticIps: StaticIpConfig[];
+  /**
+   * When they're open, typed in by hand. Nothing fills these automatically:
+   * see lib/customer-hours.ts. Requires supabase/migration-customer-hours.sql.
+   */
+  hours: CustomerHours;
   updatedAt: string;
   updatedBy?: string;
 }
@@ -81,6 +87,7 @@ function fromRow(row: Record<string, unknown>): CustomerProfileOverlay {
     contacts: (row.contacts as CustomerContact[]) ?? [],
     mainContactId: (row.main_contact_id as string) ?? DEFAULT_CONTACT_ID,
     staticIps: (row.static_ips as StaticIpConfig[]) ?? [],
+    hours: normalizeHours(row.hours),
     updatedAt: row.updated_at as string,
     updatedBy: (row.updated_by as string) ?? undefined,
   };
@@ -108,6 +115,8 @@ export async function setCustomerProfile(
     // Required, not optional: this is a full-row upsert, so a caller that
     // forgets it would silently wipe the customer's saved static IPs.
     staticIps: StaticIpConfig[];
+    /** Required for the same reason. */
+    hours: CustomerHours;
   },
   updatedBy?: string,
 ): Promise<void> {
@@ -120,6 +129,7 @@ export async function setCustomerProfile(
     contacts: overlay.contacts,
     main_contact_id: overlay.mainContactId,
     static_ips: overlay.staticIps,
+    hours: overlay.hours ?? emptyHours(),
     updated_at: new Date().toISOString(),
     updated_by: updatedBy ?? null,
   });

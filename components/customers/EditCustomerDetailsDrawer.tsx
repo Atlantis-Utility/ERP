@@ -13,6 +13,14 @@ import {
   type CustomerProfileOverlay,
   type StaticIpConfig,
 } from "@/lib/db/customer-profiles";
+import {
+  emptyHours,
+  weekdayDefault,
+  googleMapsSearch,
+  DAY_NAMES,
+  type CustomerHours,
+} from "@/lib/customer-hours";
+import { ExternalLink } from "lucide-react";
 
 interface DefaultContact {
   name: string;
@@ -31,6 +39,8 @@ interface Props {
   suggestedIps?: string[];
   /** How many static IPs the provider invoice says this customer pays for. */
   billedStaticIps?: number;
+  /** Only to build the Google Maps search link beside the hours. */
+  companyName?: string;
 }
 
 function newContactId() {
@@ -39,7 +49,7 @@ function newContactId() {
 
 export default function EditCustomerDetailsDrawer({
   open, onClose, customerId, defaultContact, overlay, onSaved,
-  suggestedIps = [], billedStaticIps = 0,
+  suggestedIps = [], billedStaticIps = 0, companyName = "",
 }: Props) {
   const { authUser } = useAuth();
   const [isp, setIsp] = useState("");
@@ -49,6 +59,7 @@ export default function EditCustomerDetailsDrawer({
   const [contacts, setContacts] = useState<CustomerContact[]>([]);
   const [mainContactId, setMainContactId] = useState(DEFAULT_CONTACT_ID);
   const [staticIps, setStaticIps] = useState<StaticIpConfig[]>([]);
+  const [hours, setHours] = useState<CustomerHours>(emptyHours());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -59,6 +70,7 @@ export default function EditCustomerDetailsDrawer({
     setWebsite(overlay?.website ?? "");
     setContacts(overlay?.contacts ?? []);
     setMainContactId(overlay?.mainContactId ?? DEFAULT_CONTACT_ID);
+    setHours(overlay?.hours ?? emptyHours());
 
     // Nothing saved yet: open one blank row per static IP the invoice bills
     // for, pre-filling the address from the linked site's WAN where we have
@@ -94,6 +106,25 @@ export default function EditCustomerDetailsDrawer({
     setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
   }
 
+  function setDay(index: number, patch: Partial<{ closed: boolean; open: string; close: string }>) {
+    setHours((prev) => ({
+      ...prev,
+      days: prev.days.map((d, i) => (i === index ? { ...d, ...patch } : d)),
+    }));
+  }
+
+  /**
+   * Most of these are open the same hours every weekday, so typing Monday
+   * and pressing this beats typing the same two times five times over.
+   */
+  function copyDownFrom(index: number) {
+    const source = hours.days[index];
+    setHours((prev) => ({
+      ...prev,
+      days: prev.days.map((d, i) => (i >= 1 && i <= 5 ? { ...source } : d)),
+    }));
+  }
+
   function updateStaticIp(id: string, field: keyof StaticIpConfig, value: string) {
     setStaticIps((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
   }
@@ -127,6 +158,15 @@ export default function EditCustomerDetailsDrawer({
         contacts: filtered,
         mainContactId: validMainId,
         staticIps: filledIps,
+        // A day that was ticked open and left blank is not open: the same
+        // rule normalizeHours applies on the way in, applied on the way out
+        // so nothing half-written is stored.
+        hours: {
+          days: hours.days.map((d) => (d.closed || !d.open || !d.close
+            ? { closed: true, open: "", close: "" }
+            : { closed: false, open: d.open, close: d.close })),
+          note: hours.note.trim(),
+        },
       };
       await setCustomerProfile(customerId, next, authUser?.email ?? undefined);
       onSaved({
@@ -188,6 +228,102 @@ export default function EditCustomerDetailsDrawer({
               onChange={(e) => setWebsite(e.target.value)}
             />
           </FormField>
+        </div>
+
+        <div className="pt-2 border-t border-[#f7f7f7]">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest">Office Hours</p>
+            {/* No API behind this - it is the search somebody would have
+                typed themselves, one click away, with the hours to copy
+                across sitting on the result. */}
+            <a
+              href={googleMapsSearch(companyName, address)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-[11px] font-medium text-[#0070f3] hover:underline"
+            >
+              Look them up on Google Maps <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+          <p className="text-[10px] text-[#bbb] mb-3">
+            Shown on the customer as &quot;Open now&quot; or &quot;Closed&quot;. Leave a day unticked for closed.
+          </p>
+
+          <div className="space-y-1.5">
+            {hours.days.map((d, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <label className="flex items-center gap-2 w-28 shrink-0 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!d.closed}
+                    onChange={() =>
+                      setDay(i, d.closed
+                        ? { closed: false, open: d.open || "08:00", close: d.close || "17:00" }
+                        : { closed: true })
+                    }
+                    className="w-3.5 h-3.5 accent-[#0a0a0a] cursor-pointer"
+                  />
+                  <span className="text-[13px] text-[#444]">{DAY_NAMES[i].slice(0, 3)}</span>
+                </label>
+                {d.closed ? (
+                  <span className="text-[12px] text-[#bbb]">Closed</span>
+                ) : (
+                  <>
+                    <input
+                      type="time"
+                      value={d.open}
+                      onChange={(e) => setDay(i, { open: e.target.value })}
+                      className="text-sm border border-[#eaeaea] rounded-lg px-2 py-1.5 outline-none focus:border-[#0070f3] transition-colors"
+                    />
+                    <span className="text-[12px] text-[#999]">to</span>
+                    <input
+                      type="time"
+                      value={d.close}
+                      onChange={(e) => setDay(i, { close: e.target.value })}
+                      className="text-sm border border-[#eaeaea] rounded-lg px-2 py-1.5 outline-none focus:border-[#0070f3] transition-colors"
+                    />
+                    {i === 1 && (
+                      <button
+                        type="button"
+                        onClick={() => copyDownFrom(1)}
+                        className="text-[11px] font-medium text-[#0070f3] hover:underline whitespace-nowrap"
+                      >
+                        Copy to Tue–Fri
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 mt-3">
+            <button
+              type="button"
+              onClick={() => setHours(weekdayDefault())}
+              className="text-[11px] font-medium text-[#666] border border-[#eaeaea] rounded-md px-2.5 py-1.5 hover:bg-[#fafafa] transition-colors"
+            >
+              Fill in 8–5, Mon–Fri
+            </button>
+            <button
+              type="button"
+              onClick={() => setHours(emptyHours())}
+              className="text-[11px] font-medium text-[#999] hover:text-[#f31260] transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="mt-3">
+            <FormField label="Note">
+              <input
+                className={inputClass}
+                placeholder="Closed 12–1 for lunch, Saturdays by appointment…"
+                value={hours.note}
+                onChange={(e) => setHours((prev) => ({ ...prev, note: e.target.value }))}
+              />
+            </FormField>
+          </div>
         </div>
 
         <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3 pt-2 border-t border-[#f7f7f7]">

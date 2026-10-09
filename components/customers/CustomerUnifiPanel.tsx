@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import type { UiEnrichedSite, UiDevice, UiRealTopology } from "@/lib/unifi";
 import { getUnifiLink, setUnifiLink, removeUnifiLink, type CustomerUnifiLink } from "@/lib/db/unifi-links";
 import { getCustomerProfile, setCustomerProfile, DEFAULT_CONTACT_ID } from "@/lib/db/customer-profiles";
+import { emptyHours } from "@/lib/customer-hours";
 import IspLogo from "@/components/unifi/IspLogo";
 import SiteTopology from "@/components/unifi/SiteTopology";
 import RealTopology from "@/components/unifi/RealTopology";
@@ -182,6 +183,7 @@ export default function CustomerUnifiPanel({ customerId, companyName, bare }: { 
         contacts: existing?.contacts ?? [],
         mainContactId: existing?.mainContactId ?? DEFAULT_CONTACT_ID,
         staticIps: existing?.staticIps ?? [], // pass through — this is a full-row upsert
+        hours: existing?.hours ?? emptyHours(), // likewise
         address: existing?.address ?? "",
         website: existing?.website ?? "",
       }, authUser?.email);

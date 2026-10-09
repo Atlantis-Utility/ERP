@@ -8,6 +8,8 @@ import CopyButton from "@/components/ui/CopyButton";
 import CustomerUnifiPanel from "@/components/customers/CustomerUnifiPanel";
 import EditCustomerDetailsDrawer from "@/components/customers/EditCustomerDetailsDrawer";
 import CustomerFiles from "@/components/customers/CustomerFiles";
+import OfficeHours from "@/components/customers/OfficeHours";
+import { emptyHours } from "@/lib/customer-hours";
 import { useCustomerFileSummary, formatFileSize } from "@/lib/db/customer-files";
 import { getCustomerProfile, DEFAULT_CONTACT_ID, type CustomerProfileOverlay, type StaticIpConfig } from "@/lib/db/customer-profiles";
 import { getUnifiLink } from "@/lib/db/unifi-links";
@@ -919,6 +921,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             />
             <Field label="Balance" value={customer.balance} />
             <Field label="Credit Limit" value={customer.creditLimit} />
+            {/* Beside the address, because it answers the same question:
+                where they are and whether anyone is there. */}
+            <OfficeHours
+              hours={overlay?.hours ?? emptyHours()}
+              companyName={customer.company}
+              address={overlay?.address ?? ""}
+              onEdit={() => setEditOpen(true)}
+            />
           </div>
 
           <div className="flex lg:justify-end">
@@ -960,6 +970,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         open={editOpen}
         onClose={() => setEditOpen(false)}
         customerId={id}
+        companyName={customer.company}
         defaultContact={defaultContact}
         overlay={overlay}
         onSaved={setOverlay}
