@@ -18,37 +18,60 @@
 -- downloaded whole before it plays.
 --
 -- 50 MB a file, which is the default ceiling on Supabase's smaller plans.
--- Raise file_size_limit here (and in CUSTOMER_FILE_MAX in
--- lib/db/customer-files.ts, which is only there to say no politely before
--- the upload starts) if the plan allows more and somebody needs it.
+-- To raise it, change the limit on the bucket under Storage > Buckets and
+-- change CUSTOMER_FILE_MAX in lib/db/customer-files.ts to match (that one is
+-- only there to say no politely before the upload starts).
+--
+-- "do nothing" rather than "do update": updating storage.buckets needs a
+-- privilege the SQL editor may not have, and since the editor runs this file
+-- as one transaction, a refusal on a line that only re-asserts a value the
+-- bucket already has would roll back everything below it.
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('customer-files', 'customer-files', false, 52428800)
-on conflict (id) do update set file_size_limit = excluded.file_size_limit;
+on conflict (id) do nothing;
 
-drop policy if exists "authenticated read customer files" on storage.objects;
-drop policy if exists "authenticated write customer files" on storage.objects;
-drop policy if exists "authenticated replace customer files" on storage.objects;
-drop policy if exists "authenticated delete customer files" on storage.objects;
-drop policy if exists "owner or admin replaces customer files" on storage.objects;
-drop policy if exists "owner or admin deletes customer files" on storage.objects;
+-- Policies on storage.objects belong to the storage extension's own table,
+-- and a project doesn't always let the SQL editor change them. Run inside a
+-- block that reports the problem instead of failing, because the editor runs
+-- this file as one transaction: without it, one refusal here silently rolls
+-- back the table below as well. That is exactly what happened the first time
+-- - the policies stayed as they were and nothing said so.
+--
+-- If the notice appears, set the same two rules under Storage > Policies.
+do $$
+begin
+  drop policy if exists "authenticated read customer files" on storage.objects;
+  drop policy if exists "authenticated write customer files" on storage.objects;
+  drop policy if exists "authenticated replace customer files" on storage.objects;
+  drop policy if exists "authenticated delete customer files" on storage.objects;
+  drop policy if exists "owner or admin replaces customer files" on storage.objects;
+  drop policy if exists "owner or admin deletes customer files" on storage.objects;
 
-create policy "authenticated read customer files" on storage.objects
-  for select using (bucket_id = 'customer-files' and auth.role() = 'authenticated');
-create policy "authenticated write customer files" on storage.objects
-  for insert with check (bucket_id = 'customer-files' and auth.role() = 'authenticated');
+  create policy "authenticated read customer files" on storage.objects
+    for select using (bucket_id = 'customer-files' and auth.role() = 'authenticated');
+  create policy "authenticated write customer files" on storage.objects
+    for insert with check (bucket_id = 'customer-files' and auth.role() = 'authenticated');
 
--- The bytes follow the same rule as the row that describes them. Without
--- this, somebody who may not delete the row may still delete the file it
--- points at, which leaves a tile in the gallery with nothing behind it -
--- worse than either outcome on its own.
-create policy "owner or admin replaces customer files" on storage.objects
-  for update using (
-    bucket_id = 'customer-files' and (owner = auth.uid() or (select erp_is_admin()))
-  );
-create policy "owner or admin deletes customer files" on storage.objects
-  for delete using (
-    bucket_id = 'customer-files' and (owner = auth.uid() or (select erp_is_admin()))
-  );
+  -- The bytes follow the same rule as the row that describes them. Without
+  -- this, somebody who may not delete the row may still delete the file it
+  -- points at, which leaves a tile in the gallery with nothing behind it -
+  -- worse than either outcome on its own.
+  create policy "owner or admin replaces customer files" on storage.objects
+    for update using (
+      bucket_id = 'customer-files' and (owner = auth.uid() or public.erp_is_admin())
+    );
+  create policy "owner or admin deletes customer files" on storage.objects
+    for delete using (
+      bucket_id = 'customer-files' and (owner = auth.uid() or public.erp_is_admin())
+    );
+
+  raise notice 'customer-files storage policies set.';
+exception
+  -- Deliberately broad: the point is that this hardening step must not take
+  -- the rest of the migration down with it.
+  when others then
+    raise notice 'Could not set the customer-files storage policies here (%): set them under Storage > Policies.', sqlerrm;
+end $$;
 
 -- ── What each file is ────────────────────────────────────────────────────
 create table if not exists customer_files (
