@@ -7,13 +7,15 @@ import ExportMenu from "@/components/ui/ExportMenu";
 import CopyButton from "@/components/ui/CopyButton";
 import CustomerUnifiPanel from "@/components/customers/CustomerUnifiPanel";
 import EditCustomerDetailsDrawer from "@/components/customers/EditCustomerDetailsDrawer";
+import CustomerFiles from "@/components/customers/CustomerFiles";
+import { useCustomerFileSummary, formatFileSize } from "@/lib/db/customer-files";
 import { getCustomerProfile, DEFAULT_CONTACT_ID, type CustomerProfileOverlay, type StaticIpConfig } from "@/lib/db/customer-profiles";
 import { getUnifiLink } from "@/lib/db/unifi-links";
 import { subscribeProjects } from "@/lib/db/projects";
 import { statusConfig, type Project } from "@/lib/mock-projects";
 import { matchScore, LIKELY_MATCH_THRESHOLD } from "@/lib/name-match";
 import { gdmsDevicesForCustomer } from "@/lib/gdms-match";
-import { withScheme } from "@/lib/utils";
+import { withScheme, formatDate } from "@/lib/utils";
 import IspLogo from "@/components/unifi/IspLogo";
 import {
   findBilledIsp, ISP_PROVIDERS, serviceMonthlyTotal, formatSpeed, type BilledIsp,
@@ -21,7 +23,7 @@ import {
 import {
   ArrowLeft, RefreshCw, AlertCircle, Building2, Phone, User,
   Smartphone, ListOrdered, Wifi, Router, Pencil, FolderKanban, ArrowUpRight,
-  ChevronLeft, ChevronRight, Mail, Network,
+  ChevronLeft, ChevronRight, Mail, Network, Images,
 } from "lucide-react";
 
 interface PortalCustomer {
@@ -448,6 +450,7 @@ const TABS = [
   { key: "queues", label: "Call Queues", icon: ListOrdered },
   { key: "devices", label: "Devices", icon: Smartphone },
   { key: "unifi", label: "Network", icon: Wifi },
+  { key: "files", label: "Documentation", icon: Images },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -524,6 +527,9 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const [allCustomers, setAllCustomers] = useState<PortalCustomer[]>([]);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<TabKey>("numbers");
+  // For the count on the tab and the export. The tab itself fetches again
+  // when it opens, because only then are the links worth signing.
+  const files = useCustomerFileSummary(id);
   const [overlay, setOverlay] = useState<CustomerProfileOverlay | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -690,6 +696,19 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             d.ip ?? "", d.status ?? "", d.version ?? "",
           ]),
         ],
+      };
+    }
+    if (activeTab === "files") {
+      // The tab's own list rather than the pictures, which no spreadsheet
+      // can hold: what is on file for this customer, and who put it there.
+      return {
+        filename: base,
+        title: `${customer?.company ?? "Customer"} — Documentation`,
+        headers: ["Name", "File", "Kind", "Size", "Added by", "Added", "Notes"],
+        rows: files.files.map((f) => [
+          f.title || f.name, f.name, f.kind, formatFileSize(f.size),
+          f.uploadedByName ?? "", formatDate(f.createdAt), f.caption,
+        ]),
       };
     }
     return {
@@ -959,6 +978,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               // Counted once anything has settled, since the count is three
               // sources added up and one of them can fail on its own.
               tab.key === "devices" ? (hardwareLoading ? null : hardwareCount) :
+              tab.key === "files" ? (files.loading ? null : files.files.length) :
               null;
             const isActive = activeTab === tab.key;
             return (
@@ -1282,6 +1302,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         {activeTab === "unifi" && (
           <CustomerUnifiPanel customerId={id} companyName={customer.company} bare />
         )}
+
+        {activeTab === "files" && <CustomerFiles customerId={id} customerName={customer.company} />}
       </div>
     </div>
   );
