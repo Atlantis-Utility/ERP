@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "@/lib/confirm";
 import { useToast } from "@/lib/toast";
 import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
+import UndoRedo from "@/components/ui/UndoRedo";
+import { useUndoStack } from "@/lib/use-undo";
 import Select from "@/components/ui/Select";
 import CopyButton from "@/components/ui/CopyButton";
 import ImportLeadsCsvModal from "@/components/leads/ImportLeadsCsvModal";
@@ -48,6 +50,8 @@ import {
   updateLead,
   deleteLeadsBulk,
   setLeadsStatusBulk,
+  assignLeadsBulk,
+  fetchLeadsByIds,
   EMPTY_FILTERS,
   STALE_DAYS,
   type Lead,
@@ -230,6 +234,14 @@ export default function LeadsPage() {
   }
   const [busy, setBusy] = useState(false);
   const { success, error: notifyError } = useToast();
+  /**
+   * Taking back the things that move leads in bulk. A step is only recorded
+   * when it can honestly be reversed, so a delete - which takes the lead's
+   * notes and history with it - never lands here.
+   */
+  const undoStack = useUndoStack({ onDone: success, onError: notifyError });
+  /** Who owned the selected leads before the assign modal was opened. */
+  const ownersSnapshot = useRef<Promise<Map<string, { id: string; name: string } | null> | null> | null>(null);
 
   const actor = useMemo(
     () => (access.myEmployeeId ? { id: access.myEmployeeId, name: access.myName } : null),
@@ -409,9 +421,49 @@ export default function LeadsPage() {
 
   /* ─── Mutations ────────────────────────────────────────────────────── */
 
+  /**
+   * Where a selection stands before it is changed, so the change can be put
+   * back. Only for an explicit selection: "all matching" has no id list to
+   * read, and reading one for a filter that covers the whole table would
+   * cost more than the operation being undone. Null means "don't offer it".
+   */
+  const UNDOABLE_MAX = 1000;
+  async function stagesBefore(): Promise<Map<string, LeadStatus> | null> {
+    if (bulkTarget.kind !== "ids" || bulkTarget.ids.length > UNDOABLE_MAX) return null;
+    try {
+      const leads = await fetchLeadsByIds(bulkTarget.ids);
+      return new Map(leads.map((l) => [l.id, l.status]));
+    } catch {
+      // No snapshot, no undo - and nothing said, because the action the
+      // person actually asked for is about to happen either way.
+      return null;
+    }
+  }
+
+  async function ownersBefore(ids: string[]): Promise<Map<string, { id: string; name: string } | null> | null> {
+    if (ids.length === 0 || ids.length > UNDOABLE_MAX) return null;
+    try {
+      const leads = await fetchLeadsByIds(ids);
+      return new Map(
+        leads.map((l) => [
+          l.id,
+          l.assignedTo ? { id: l.assignedTo, name: l.assignedToName ?? "" } : null,
+        ]),
+      );
+    } catch {
+      return null;
+    }
+  }
+
   async function setStatus(lead: Lead, status: LeadStatus) {
+    const was = lead.status;
     try {
       await updateLead(lead.id, { status }, actor);
+      undoStack.record({
+        label: `moved ${lead.companyName} to ${STATUS_LABELS[status]}`,
+        undo: () => updateLead(lead.id, { status: was }, actor),
+        redo: () => updateLead(lead.id, { status }, actor),
+      });
     } catch (err) {
       notifyError(getErrorMessage(err, "Failed to update stage"));
     }
@@ -420,7 +472,30 @@ export default function LeadsPage() {
   async function bulkStatus(status: LeadStatus) {
     setBusy(true);
     try {
+      // What they were, captured before the change and only for a known set
+      // of rows. "All matching" can be twenty thousand leads, and reading
+      // every one of them to make an undo nobody asked for would be slower
+      // than the change itself - so that case simply isn't recorded.
+      const before = await stagesBefore();
       const changed = await setLeadsStatusBulk(bulkTarget, status, actor);
+      if (before && changed > 0) {
+        const ids = [...before.keys()];
+        undoStack.record({
+          label: `moved ${changed.toLocaleString()} lead${changed !== 1 ? "s" : ""} to ${STATUS_LABELS[status]}`,
+          undo: async () => {
+            // Grouped by the stage each lead came from: a handful of calls
+            // rather than one per lead.
+            const groups = new Map<LeadStatus, string[]>();
+            for (const [id, was] of before) groups.set(was, [...(groups.get(was) ?? []), id]);
+            for (const [was, group] of groups) {
+              await setLeadsStatusBulk({ kind: "ids", ids: group }, was, actor);
+            }
+          },
+          redo: async () => {
+            await setLeadsStatusBulk({ kind: "ids", ids }, status, actor);
+          },
+        });
+      }
       // Reports what actually happened, not what was asked: leads already in
       // that stage aren't counted, and a member without rights gets 0.
       success(
@@ -539,6 +614,7 @@ export default function LeadsPage() {
         }
         actions={
           <div className="flex items-center gap-2 flex-wrap">
+            <UndoRedo stack={undoStack} />
             <ExportMenu data={exportData} rowCount={total} disabled={total === 0} />
             {access.canGrant && (
               <button
@@ -792,7 +868,13 @@ export default function LeadsPage() {
                 />
               </div>
               <button
-                onClick={() => setShowAssign(true)}
+                onClick={() => {
+                  // Started here rather than in the modal's own handler: by
+                  // the time it reports back the owners have already changed.
+                  ownersSnapshot.current =
+                    bulkTarget.kind === "ids" ? ownersBefore(bulkTarget.ids) : Promise.resolve(null);
+                  setShowAssign(true);
+                }}
                 disabled={busy}
                 className="flex items-center gap-1.5 text-xs font-medium bg-[#0070f3] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50"
               >
@@ -1279,8 +1361,32 @@ export default function LeadsPage() {
           count={selectedCount}
           actor={actor}
           onClose={() => setShowAssign(false)}
-          onDone={(message) => {
+          onDone={async (message, assigned) => {
             success(message);
+            const before = assigned ? await ownersSnapshot.current : null;
+            if (assigned && before && before.size > 0) {
+              const ids = [...before.keys()];
+              undoStack.record({
+                label: assigned.to
+                  ? `assigned ${ids.length.toLocaleString()} lead${ids.length !== 1 ? "s" : ""} to ${assigned.to.name}`
+                  : `unassigned ${ids.length.toLocaleString()} lead${ids.length !== 1 ? "s" : ""}`,
+                undo: async () => {
+                  // Back to whoever held each one, grouped so it's a few
+                  // calls rather than one per lead.
+                  const groups = new Map<string, string[]>();
+                  for (const [id, owner] of before) {
+                    const key = owner ? `${owner.id}|${owner.name}` : "";
+                    groups.set(key, [...(groups.get(key) ?? []), id]);
+                  }
+                  for (const [key, group] of groups) {
+                    const [id, name] = key ? key.split("|") : [];
+                    await assignLeadsBulk({ kind: "ids", ids: group }, id ? { id, name } : null, actor);
+                  }
+                },
+                redo: () => assignLeadsBulk({ kind: "ids", ids }, assigned.to, actor).then(() => undefined),
+              });
+            }
+            ownersSnapshot.current = null;
             clearSelection();
           }}
         />

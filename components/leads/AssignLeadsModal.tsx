@@ -33,7 +33,12 @@ export default function AssignLeadsModal({
   count: number;
   actor: ActivityActor | null;
   onClose: () => void;
-  onDone: (message: string) => void;
+  /**
+   * The second argument is only set when leads actually changed owner, so
+   * the page can offer to put it back. Absent for a share, which grants
+   * access rather than moving anything.
+   */
+  onDone: (message: string, assigned?: { to: { id: string; name: string } | null }) => void;
 }) {
   const employees = useEmployees();
   const [mode, setMode] = useState<Mode>("assign");
@@ -72,6 +77,7 @@ export default function AssignLeadsModal({
             : selected
               ? `Assigned ${changed.toLocaleString()} lead${changed !== 1 ? "s" : ""} to ${selected.name}.`
               : `Unassigned ${changed.toLocaleString()} lead${changed !== 1 ? "s" : ""}.`,
+          changed > 0 ? { to: selected ? { id: selected.id, name: selected.name } : null } : undefined,
         );
       } else {
         const granted = await grantLeadAccessBulk(target, employeeId, level, actor);
