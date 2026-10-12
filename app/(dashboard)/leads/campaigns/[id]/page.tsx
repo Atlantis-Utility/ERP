@@ -974,12 +974,16 @@ export default function CampaignSheetPage() {
               full width anyway, so there's nothing to push. */}
           <div className="hidden sm:block flex-1" />
 
-          {/* Only worth offering when it would move you: on the right page
-              already, the sheet is the answer. */}
-          {lastEdit && lastEdit.page !== page && (
+          {/* Shown whenever the sheet has been worked on, not only when the
+              row is on another page. Hiding it while you are on the right
+              page sounds tidy and isn't: you arrive on page 1, which is
+              where the last edit often is, so the thing is invisible until
+              you have already paged away from it - and finding row 16 among
+              a hundred is still work the click can do for you. */}
+          {lastEdit && (
             <button
               onClick={goToLastEdit}
-              title={`Row ${lastEdit.rowNo}, ${lastEdit.mine ? "your last edit" : `last touched by ${lastEdit.byName ?? "somebody"}`}, ${formatDate(lastEdit.updatedAt)}`}
+              title={`Go to row ${lastEdit.rowNo} on page ${lastEdit.page + 1} - ${lastEdit.mine ? "your last edit" : `last touched by ${lastEdit.byName ?? "somebody"}`}, ${formatDate(lastEdit.updatedAt)}`}
               className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[#eaeaea] text-[#0070f3] hover:bg-[#fafafa] transition-colors"
             >
               <History className="w-3.5 h-3.5" />
