@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/lib/confirm";
-import { Trash2, Send, Check, AlertTriangle, Loader2, MessageSquare, Pencil, Eye, Lock } from "lucide-react";
+import { Trash2, Send, Check, AlertTriangle, Loader2, MessageSquare, Pencil, Eye, Lock, X } from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useEmployees } from "@/lib/db/employees";
 import { useLeadsAccess } from "@/lib/leads-access";
 import { useLead, updateLead, type Lead, type LeadStatus, type LeadPriority } from "@/lib/db/leads";
+import { proposeLeadChange, splitLeadEdit } from "@/lib/db/lead-changes";
 import { useLeadNotes, addLeadNote, updateLeadNote, removeLeadNote, type LeadNote } from "@/lib/db/lead-notes";
 import {
   STATUS_OPTIONS,
@@ -188,6 +189,12 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
   const [editing, setEditing] = useState(false);
   const confirm = useConfirm();
   const [error, setError] = useState("");
+  /**
+   * Said once, after a save that went partly into the approval queue. Not an
+   * error: their work was recorded, and the part that wasn't theirs to
+   * change is waiting rather than lost.
+   */
+  const [notice, setNotice] = useState("");
   // Staged edits, only committed on "Save Changes" (matches the Edit Project
   // drawer's Cancel/Save pattern). Backed by useDraft so a tab switch or
   // accidental refresh mid-edit doesn't lose anything either.
@@ -251,6 +258,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
     if (!lead) return;
     setSavingEdits(true);
     setError("");
+    setNotice("");
     try {
       // Reassignment is administrator-only (enforced by a DB trigger), so a
       // member's save must not carry an owner change at all, including the
@@ -262,9 +270,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
           }
         : {};
 
-      await updateLead(
-        lead.id,
-        {
+      const edit = {
           status: form.status,
           dba: form.dba.trim() || undefined,
           businessType: form.businessType.trim() || undefined,
@@ -288,9 +294,29 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
           lostReason: isTerminalStatus(form.status) ? form.lostReason.trim() || undefined : undefined,
           tags: parseTags(form.tags),
           ...ownerPatch,
-        },
-        actor,
-      );
+      };
+
+      // An administrator writes straight through - they are the reviewer.
+      // Everybody else writes the working fields and proposes the company's
+      // details, which is the same queue a correction typed on a call sheet
+      // goes into.
+      if (access.isAdmin) {
+        await updateLead(lead.id, edit, actor);
+      } else {
+        const { direct, proposed } = splitLeadEdit(edit);
+        if (Object.keys(direct).length > 0) await updateLead(lead.id, direct, actor);
+        let queued = 0;
+        for (const { field, value } of proposed) {
+          if ((await proposeLeadChange(lead.id, field, value)) === "pending") queued++;
+        }
+        if (queued > 0) {
+          setNotice(
+            queued === 1
+              ? "Saved. One change to the company's details is waiting on an administrator."
+              : `Saved. ${queued} changes to the company's details are waiting on an administrator.`,
+          );
+        }
+      }
       clearFormDraft();
       setEditing(false);
     } catch (err) {
@@ -432,6 +458,14 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
       </div>
 
       {error && <div className="mb-5 px-4 py-2.5 rounded-lg bg-[#fdeaea] text-[#f31260] text-sm">{error}</div>}
+      {notice && (
+        <div className="mb-5 flex items-start justify-between gap-3 px-4 py-2.5 rounded-lg bg-[#fff8e6] text-[#946c00] text-sm">
+          <p>{notice}</p>
+          <button onClick={() => setNotice("")} className="shrink-0 text-[#946c00]/70 hover:text-[#946c00]" aria-label="Dismiss">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Fields */}
       <div className="pb-5 mb-5 border-b border-[#f0f0f0]">

@@ -121,6 +121,52 @@ export async function requestLeadChange(
   return (data as ChangeOutcome) ?? "pending";
 }
 
+/**
+ * Proposing a change from outside a campaign - the Leads page.
+ *
+ * Same queue and same review as a correction typed on a call sheet, because
+ * it is the same kind of thing: a company's details are the master record,
+ * and whose screen the correction was typed on doesn't change who approves
+ * it. An administrator's own edit comes back "applied" - they are the
+ * reviewer, and on the Leads page there is nobody else to tell.
+ */
+export async function proposeLeadChange(
+  leadId: string,
+  field: EditableLeadField,
+  newValue: string,
+): Promise<ChangeOutcome> {
+  const { data, error } = await withTimeout(
+    supabase.rpc("lead_request_change", {
+      p_lead_id: leadId,
+      p_field: field,
+      p_new_value: newValue,
+    }),
+  );
+  if (error) throw error;
+  return (data as ChangeOutcome) ?? "pending";
+}
+
+/**
+ * Splits an edit into what the person may write and what they may only
+ * propose. The gated set is the company's own details; everything else -
+ * stage, follow-up, next step, priority, tags - is the work, and waiting on
+ * approval to record a phone call would be absurd.
+ */
+export function splitLeadEdit<T extends Record<string, unknown>>(
+  patch: T,
+): { direct: Partial<T>; proposed: Array<{ field: EditableLeadField; value: string }> } {
+  const direct: Partial<T> = {};
+  const proposed: Array<{ field: EditableLeadField; value: string }> = [];
+  for (const [key, value] of Object.entries(patch)) {
+    if ((EDITABLE_LEAD_FIELDS as readonly string[]).includes(key)) {
+      proposed.push({ field: key as EditableLeadField, value: typeof value === "string" ? value : "" });
+    } else {
+      (direct as Record<string, unknown>)[key] = value;
+    }
+  }
+  return { direct, proposed };
+}
+
 interface RawRequest {
   id: string;
   lead_id: string;

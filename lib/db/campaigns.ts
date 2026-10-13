@@ -910,8 +910,9 @@ export async function updateSheetRow(
  *
  * Chunked like removeSheetRows, and it carries the same name
  * denormalisation the per-row control does so the sheet and its export can
- * show a rep without joining employees per row. Only an administrator gets
- * through: campaign_leads_guard_rep refuses the write otherwise.
+ * show a rep without joining employees per row. Open to any editor: the
+ * administrator-only rule this used to note was retired, because a sheet an
+ * editor can be blocked out of mid-call is not a sheet.
  */
 export async function assignSheetRows(
   rowIds: string[],

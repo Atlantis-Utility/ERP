@@ -27,6 +27,7 @@ import {
   LEAD_FIELD_LABELS,
   type EditableLeadField,
   type LeadChangeRequest,
+  usePendingChangeCount,
 } from "@/lib/db/lead-changes";
 import AddToCampaignModal from "@/components/campaigns/AddToCampaignModal";
 import {
@@ -92,6 +93,7 @@ import {
   Loader2,
   Search,
   Clock,
+  ClipboardCheck,
   Compass,
   ChevronLeft,
   ChevronRight,
@@ -240,6 +242,13 @@ export default function LeadsPage() {
    * notes and history with it - never lands here.
    */
   const undoStack = useUndoStack({ onDone: success, onError: notifyError });
+  /**
+   * How many corrections are waiting on an administrator - from a call
+   * sheet or from this page, which are the same queue. The modal itself was
+   * already here, reachable from a row's "pending" tag; the count is what
+   * makes it findable without one.
+   */
+  const pending = usePendingChangeCount();
   /** Who owned the selected leads before the assign modal was opened. */
   const ownersSnapshot = useRef<Promise<Map<string, { id: string; name: string } | null> | null> | null>(null);
 
@@ -614,6 +623,17 @@ export default function LeadsPage() {
         }
         actions={
           <div className="flex items-center gap-2 flex-wrap">
+            {access.isAdmin && pending.count > 0 && (
+              <button
+                onClick={() => setShowReview(true)}
+                title="Changes to company details, waiting on you"
+                className="flex items-center gap-2 border border-[#f5a524] bg-[#fff8e6] text-sm font-medium text-[#946c00] px-3 py-2 rounded-lg hover:bg-[#fff2d4] transition-colors"
+              >
+                <ClipboardCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">Review</span>
+                <span className="tabular-nums">{pending.count}</span>
+              </button>
+            )}
             <UndoRedo stack={undoStack} />
             <ExportMenu data={exportData} rowCount={total} disabled={total === 0} />
             {access.canGrant && (
@@ -1330,7 +1350,15 @@ export default function LeadsPage() {
           // The tags are live on lead_change_requests and the leads refetch
           // on their own realtime channel, so there is nothing to reload by
           // hand once something is approved.
-          onReviewed={() => setShowReview(false)}
+          onReviewed={(approved, rejected) => {
+            setShowReview(false);
+            pending.reload();
+            const parts = [
+              approved > 0 && `Approved ${approved.toLocaleString()}`,
+              rejected > 0 && `turned down ${rejected.toLocaleString()}`,
+            ].filter(Boolean);
+            if (parts.length > 0) success(`${parts.join(", ")}.`);
+          }}
         />
       )}
 

@@ -7,6 +7,7 @@ import Select from "@/components/ui/Select";
 import DateTimePicker from "@/components/ui/DateTimePicker";
 import { useEmployees } from "@/lib/db/employees";
 import { addLead, updateLead, type Lead, type LeadStatus, type LeadPriority } from "@/lib/db/leads";
+import { proposeLeadChange, splitLeadEdit } from "@/lib/db/lead-changes";
 import type { ActivityActor } from "@/lib/db/lead-activity";
 import { STATUS_OPTIONS, SETTABLE_STATUS_OPTIONS, PRIORITY_OPTIONS } from "@/lib/leads-constants";
 import { getErrorMessage } from "@/lib/utils";
@@ -114,6 +115,12 @@ export default function LeadFormModal({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  /**
+   * How many of the fields they changed went to the approval queue. Shown
+   * instead of closing on the quiet, so nobody walks away thinking a
+   * correction to a phone number is already live.
+   */
+  const [queued, setQueued] = useState(0);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm({ ...form, [key]: value });
 
@@ -160,7 +167,29 @@ export default function LeadFormModal({
         tags: parseTags(form.tags),
       };
       if (lead) {
-        await updateLead(lead.id, patch, actor);
+        // Editing an existing lead: an administrator writes it, anybody else
+        // writes the working fields and proposes the company's details. The
+        // owner is left out of a member's patch entirely - it is not theirs
+        // to set, and sending it unchanged still reads as a reassignment.
+        if (canAssign) {
+          await updateLead(lead.id, patch, actor);
+        } else {
+          const rest = { ...patch };
+          delete rest.assignedTo;
+          delete rest.assignedToName;
+          const { direct, proposed } = splitLeadEdit(rest);
+          if (Object.keys(direct).length > 0) await updateLead(lead.id, direct, actor);
+          let queued = 0;
+          for (const { field, value } of proposed) {
+            if ((await proposeLeadChange(lead.id, field, value)) === "pending") queued++;
+          }
+          if (queued > 0) {
+            setQueued(queued);
+            clearDraft();
+            onSaved();
+            return;
+          }
+        }
       } else {
         await addLead(
           {
@@ -422,6 +451,12 @@ export default function LeadFormModal({
           </div>
 
           {error && <p className="text-xs text-[#f31260]">{error}</p>}
+          {queued > 0 && (
+            <p className="text-xs text-[#946c00] bg-[#fff8e6] rounded-lg px-3 py-2">
+              Saved. {queued === 1 ? "One change" : `${queued} changes`} to the company&apos;s details{" "}
+              {queued === 1 ? "is" : "are"} waiting on an administrator to approve.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-[#eaeaea] shrink-0">
@@ -429,16 +464,18 @@ export default function LeadFormModal({
             onClick={onClose}
             className="text-sm border border-[#eaeaea] bg-white text-[#0a0a0a] font-medium px-4 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
           >
-            Cancel
+            {queued > 0 ? "Close" : "Cancel"}
           </button>
-          <button
-            onClick={save}
-            disabled={saving}
-            className="text-sm bg-[#0070f3] text-white font-medium px-4 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            {lead ? "Save Changes" : "Add Lead"}
-          </button>
+          {queued === 0 && (
+            <button
+              onClick={save}
+              disabled={saving}
+              className="text-sm bg-[#0070f3] text-white font-medium px-4 py-1.5 rounded-lg hover:bg-[#005fcc] transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {lead ? "Save Changes" : "Add Lead"}
+            </button>
+          )}
         </div>
       </div>
     </Overlay>

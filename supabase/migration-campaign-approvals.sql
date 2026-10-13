@@ -895,23 +895,13 @@ create trigger campaign_leads_fill_rep_trg
 -- The exception is campaign_fill_assigned_rep above, which fills blank rows
 -- when a campaign is handed to a single editor. It sets erp.filling_reps for
 -- the transaction so this can tell the two apart.
-create or replace function campaign_leads_guard_rep() returns trigger
-language plpgsql security definer set search_path = public, auth
-as $$
-begin
-  if coalesce(new.assigned_rep, '') <> coalesce(old.assigned_rep, '')
-     and coalesce(current_setting('erp.filling_reps', true), 'off') <> 'on'
-     and not erp_is_admin() then
-    raise exception 'Only an administrator can change who a row is assigned to';
-  end if;
-  return new;
-end;
-$$;
-
+-- Retired. Keeping who-works-a-row to administrators meant an editor on a
+-- shared sheet had to stop and ask for a row to be handed over, mid-call,
+-- and a sheet you can be blocked out of is not a sheet. Anyone who can edit
+-- the campaign can now assign its rows.
+-- See supabase/migration-lead-changes-everywhere.sql.
 drop trigger if exists campaign_leads_guard_rep_trg on campaign_leads;
-create trigger campaign_leads_guard_rep_trg
-  before update on campaign_leads
-  for each row execute function campaign_leads_guard_rep();
+drop function if exists campaign_leads_guard_rep();
 
 -- ── 15. manual_tickets in the realtime publication ──────────────────────
 --

@@ -920,10 +920,9 @@ export default function CampaignSheetPage() {
               in among the filters, which stay put. */}
           {canEdit && selected.size > 0 && (
             <>
-              {/* Only an administrator can move work between people, which is
-                  what campaign_leads_guard_rep enforces; the control is only
-                  offered to someone it wouldn't refuse. */}
-              {isAdmin && (
+              {/* Assigning rows is any editor's now, the same as filling them
+                  in. */}
+              {canEdit && (
                 <div className="w-44">
                   <Select
                     value=""
@@ -1472,11 +1471,11 @@ export default function CampaignSheetPage() {
                             floating
                             searchable
                             clearable
-                            // Who works a row is a management decision, not part
-                            // of filling the sheet in. Enforced by
-                            // campaign_leads_guard_rep, this only stops the
-                            // control being offered to someone it would refuse.
-                            disabled={!isAdmin || row.doNotCall}
+                            // Anyone who can edit the sheet can hand a row
+                            // over. It used to be an administrator's alone,
+                            // which meant an editor had to stop and ask for a
+                            // row mid-call.
+                            disabled={!canEdit || row.doNotCall}
                           />
                         </td>
                       )}
