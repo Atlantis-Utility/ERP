@@ -258,7 +258,11 @@ create or replace function leads_guard_reassign() returns trigger
 language plpgsql security definer set search_path = public, auth
 as $$
 begin
-  if coalesce(new.assigned_to, '') <> coalesce(old.assigned_to, '') then
+  -- data->>'assignedTo', not the generated assigned_to column: PostgreSQL
+  -- computes generated columns after BEFORE triggers, so new.assigned_to is
+  -- null here and every edit read as a reassignment. See
+  -- supabase/migration-fix-reassign-guard.sql.
+  if coalesce(new.data->>'assignedTo', '') <> coalesce(old.data->>'assignedTo', '') then
     -- auth.uid() is null for the service-role key (API routes, SQL editor,
     -- scripts), which is already trusted server-side and must stay able to
     -- run bulk reassignment.
