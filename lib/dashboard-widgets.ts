@@ -98,16 +98,22 @@ export function defaultDashboardWidgets(access: string[] | undefined): string[] 
 export const DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGETS.map((w) => w.key);
 
 /**
- * Panels nobody holds by virtue of who they are.
+ * Panels an administrator is not handed for being one.
  *
  * Every other panel is a view of something, so "sees everything" covers
- * it. The clock is not a view, it's a thing somebody does: being an
- * administrator makes you the person who tracks other people's hours, not
- * automatically one of the people whose hours are tracked. So the clock
- * stays off for everybody, administrators included, until it is put on a
- * person's list by hand.
+ * it. These two are not views, they are somebody's work:
+ *
+ *   The clock. Being an administrator makes you the person who tracks
+ *   other people's hours, not one of the people whose hours are tracked.
+ *   It is also in BUSINESS_WIDE, so nobody gets it until it is granted.
+ *
+ *   Calls today. That is a caller's tally of their own morning, and
+ *   management does not make the calls. It stays in everybody else's
+ *   default, because for the people who do call it is the point.
+ *
+ * Either can still be ticked on for an administrator who wants it.
  */
-const GRANT_ONLY = new Set(["timeclock"]);
+const GRANT_ONLY = new Set(["timeclock", "calls"]);
 
 export function isGrantOnly(key: string): boolean {
   return GRANT_ONLY.has(key);

@@ -344,7 +344,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
             Everyone has the dashboard. These are the panels on it, and only the ones their pages support:
             tick Leads below and the leads panels appear here.
             {form.accessRole === "Administrator" &&
-              " An administrator sees all of them bar the clock, which is theirs only if you tick it."}
+              " An administrator sees all of them bar the clock and the call tally, which are theirs only if you tick them."}
           </p>
           <div className="space-y-1.5 mb-4">
             {offerable.length === 0 && (

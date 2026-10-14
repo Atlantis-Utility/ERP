@@ -74,8 +74,10 @@ export default function EmployeeProfilePage() {
   const panels = isAdministrator
     ? adminDashboardWidgets(employee?.dashboard)
     : (employee?.dashboard ?? defaultDashboardWidgets(employee?.access));
-  // The panels an administrator holds only because somebody said so.
+  // The panels an administrator holds only because somebody said so, and
+  // the ones they haven't been given.
   const grantedToAdmin = offerablePanels.filter((w) => isGrantOnly(w.key) && panels.includes(w.key));
+  const withheldFromAdmin = offerablePanels.filter((w) => isGrantOnly(w.key) && !panels.includes(w.key));
 
   // Load activity log entries related to this employee
   useEffect(() => {
@@ -208,7 +210,7 @@ export default function EmployeeProfilePage() {
                   {isAdministrator
                     ? grantedToAdmin.length > 0
                       ? `Every panel, ${grantedToAdmin.map((w) => w.label).join(" and ")} included`
-                      : "Every panel bar the time clock"
+                      : `Every panel bar ${withheldFromAdmin.map((w) => w.label).join(" and ") || "none"}`
                     : `${panels.length} of ${offerablePanels.length} panels shown`}
                 </p>
               </div>
@@ -224,7 +226,7 @@ export default function EmployeeProfilePage() {
                 Everything on the dashboard, by access role
                 {grantedToAdmin.length > 0
                   ? `, plus ${grantedToAdmin.map((w) => w.label).join(", ")}.`
-                  : ". The time clock is off until it's ticked, same as for anybody else."}
+                  : `. ${withheldFromAdmin.map((w) => w.label).join(" and ")} stay off until ticked, same as for anybody else.`}
               </p>
             ) : panels.length === 0 ? (
               <p className="text-xs text-[#999]">No panels shown. Their dashboard will be empty.</p>
