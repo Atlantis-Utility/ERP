@@ -101,6 +101,13 @@ $$;
 -- Approvals pass: lead_changes_approve runs as an administrator, who is
 -- exempt. So does the service-role key (auth.uid() null), which is the
 -- imports and the API routes.
+--
+-- The message does not say "your change has been proposed", which an
+-- earlier version did: nothing is queued on this path. The queue entry is
+-- made by the client calling lead_request_change, and anything that lands
+-- here went round it - a browser still running an older build, or the API
+-- called directly. Telling somebody their change is waiting when the queue
+-- is empty is worse than telling them it failed.
 create or replace function leads_guard_details() returns trigger
 language plpgsql security definer set search_path = public, auth
 as $$
@@ -114,7 +121,7 @@ begin
     'website', 'street', 'city', 'state', 'zip', 'businessType', 'description']
   loop
     if coalesce(new.data->>v_field, '') <> coalesce(old.data->>v_field, '') then
-      raise exception 'A company''s details need an administrator''s approval. Your change has been proposed instead.';
+      raise exception 'A company''s details need an administrator''s approval, and this change was not saved. Reload the page and try again - the app proposes it for you.';
     end if;
   end loop;
   return new;
@@ -133,3 +140,9 @@ create trigger leads_guard_details_trg
 -- rows, which is what "editor" ought to have meant.
 drop trigger if exists campaign_leads_guard_rep_trg on campaign_leads;
 drop function if exists campaign_leads_guard_rep();
+
+-- ── Re-run note ──────────────────────────────────────────────────────────
+-- If you ran an earlier copy of this file, re-run it: the first version of
+-- leads_guard_details told people "your change has been proposed instead",
+-- which is not true on that path - nothing is queued when the trigger
+-- refuses. The function above replaces it.
