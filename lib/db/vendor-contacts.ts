@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabase/client";
 import { subscribeTable } from "../supabase/realtime";
 
@@ -159,6 +159,23 @@ export function useVendorContacts(): VendorContact[] {
   const [list, setList] = useState<VendorContact[]>([]);
   useEffect(() => subscribeVendorContacts(setList), []);
   return list;
+}
+
+/**
+ * The same list, with a way to ask for it again.
+ *
+ * Realtime covers somebody else's change. Your own save has to show at
+ * once: a vendor saved with two contacts on it went to the database and the
+ * card on screen didn't move, which reads as "it didn't save" and sends
+ * people round again. A write refetches rather than waiting to be told
+ * about itself.
+ */
+export function useVendorContactsLive(): { contacts: VendorContact[]; reload: () => void } {
+  const [list, setList] = useState<VendorContact[]>([]);
+  const [tick, setTick] = useState(0);
+  useEffect(() => subscribeVendorContacts(setList), [tick]);
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+  return { contacts: list, reload };
 }
 
 export function emptyVendorContact(): VendorContact {

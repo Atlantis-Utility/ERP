@@ -10,7 +10,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast";
 import {
-  useVendorContacts,
+  useVendorContactsLive,
   removeVendorContact,
   seedVendorContacts,
   vendorLogoDomain,
@@ -51,7 +51,7 @@ export default function VendorContactsTab() {
   const { authUser } = useAuth();
   const isAdmin = Boolean(authUser?.isAdmin);
 
-  const contacts = useVendorContacts();
+  const { contacts, reload } = useVendorContactsLive();
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<VendorContact | null>(null);
@@ -87,6 +87,7 @@ export default function VendorContactsTab() {
     try {
       const n = await seedVendorContacts(contacts);
       success(n === 0 ? "Already up to date" : `Added ${n} provider${n === 1 ? "" : "s"}`);
+      reload();
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to add providers");
     } finally {
@@ -101,6 +102,7 @@ export default function VendorContactsTab() {
       await removeVendorContact(deleting.id);
       success(`Removed ${deleting.company}`);
       setDeleting(null);
+      reload();
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to remove");
     } finally {
@@ -283,7 +285,11 @@ export default function VendorContactsTab() {
           key={editing?.id ?? "new"}
           contact={editing}
           onClose={() => setDrawerOpen(false)}
-          onSaved={success}
+          onSaved={(message) => {
+            success(message);
+            // Shown now, not whenever the change feed gets round to it.
+            reload();
+          }}
         />
       )}
 
