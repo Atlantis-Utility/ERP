@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useConfirm } from "@/lib/confirm";
 import { useToast } from "@/lib/toast";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Loader2,
@@ -49,6 +49,7 @@ import {
   fetchSheetRowIds,
   renumberCampaign,
   fetchSheetRows,
+  FOLLOW_UP_OPTIONS,
   EMPTY_ROW_FILTERS,
   type CampaignRow,
   type CampaignRowPatch,
@@ -200,7 +201,18 @@ export default function CampaignSheetPage() {
   const canEdit = campaign?.myLevel === "admin" || campaign?.myLevel === "editor";
   const isAdmin = campaign?.myLevel === "admin";
 
-  const [filters, setFilters] = useState<CampaignRowFilters>(EMPTY_ROW_FILTERS);
+  /**
+   * ?followup=due (or =set) opens the sheet already filtered, which is what
+   * the dashboard's follow-up tile links to: the number you clicked and the
+   * rows you land on are then the same rows.
+   */
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<CampaignRowFilters>(() => {
+    const wanted = searchParams.get("followup");
+    return wanted === "due" || wanted === "set"
+      ? { ...EMPTY_ROW_FILTERS, followUp: wanted }
+      : EMPTY_ROW_FILTERS;
+  });
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(0);
   const [result, setResult] = useState<SheetResult | null>(null);
@@ -1001,16 +1013,18 @@ export default function CampaignSheetPage() {
           >
             Not called
           </button>
-          <button
-            onClick={() => applyFilters({ due: !filters.due })}
-            className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border transition-colors ${
-              filters.due
-                ? "border-[#f31260] bg-[#fef2f2] text-[#f31260]"
-                : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
-            }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" /> Follow-up due
-          </button>
+          {/* Two questions, not one: "what has come round" and "what have I
+              booked". The second used to be unanswerable - a call booked for
+              next week was invisible until the day it fell due. */}
+          <div className="w-44">
+            <Select
+              value={filters.followUp}
+              onChange={(v) => applyFilters({ followUp: (v as CampaignRowFilters["followUp"]) || "" })}
+              placeholder="Any follow-up"
+              options={FOLLOW_UP_OPTIONS}
+              clearable
+            />
+          </div>
           <div className="w-40">
             <Select
               value={filters.outcome}

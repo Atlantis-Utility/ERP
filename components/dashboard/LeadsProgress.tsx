@@ -13,6 +13,7 @@ import {
   type LeadStats,
 } from "@/lib/db/leads";
 import { STATUS_LABELS, STATUS_STYLES, isFollowUpOverdue } from "@/lib/leads-constants";
+import { fetchFollowUpLoad, type FollowUpLoad } from "@/lib/db/campaigns";
 
 /**
  * How the leads assigned to this person are going.
@@ -29,9 +30,16 @@ export default function LeadsProgress() {
   const [stages, setStages] = useState<Record<string, { n: number }>>({});
   const [next, setNext] = useState<Lead[]>([]);
   const [failed, setFailed] = useState(false);
+  const [followUps, setFollowUps] = useState<FollowUpLoad[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+    // Where follow-ups actually live. Counting lead-level dates put a number
+    // on the tile from a place nobody works: the team books follow-ups on
+    // the call sheets.
+    fetchFollowUpLoad()
+      .then((load) => { if (!cancelled) setFollowUps(load); })
+      .catch(() => { if (!cancelled) setFollowUps([]); });
     Promise.all([
       fetchLeadStats(EMPTY_FILTERS),
       fetchStageCounts(EMPTY_FILTERS),
@@ -53,6 +61,11 @@ export default function LeadsProgress() {
     };
   }, [revision]);
 
+  // Summed across the sheets they can open, and the busiest one is where the
+  // tile sends them.
+  const followUpsDue = followUps.reduce((sum, c) => sum + c.due, 0);
+  const topCampaign = followUps.find((c) => c.due > 0) ?? followUps[0] ?? null;
+
   const ordered = Object.entries(stages)
     .filter(([, v]) => v.n > 0)
     .sort((a, b) => b[1].n - a[1].n);
@@ -63,7 +76,16 @@ export default function LeadsProgress() {
       <div className="grid grid-cols-3 gap-px bg-[#f4f4f4] border-b border-[#f4f4f4]">
         {[
           { label: "Leads", value: stats?.total ?? 0, href: "/leads" },
-          { label: "Follow-ups due", value: stats?.overdue ?? 0, href: "/leads", warn: (stats?.overdue ?? 0) > 0 },
+          {
+            label: "Follow-ups due",
+            value: followUpsDue,
+            // Straight to the sheet that holds them, already filtered, so
+            // the number clicked and the rows landed on are the same rows.
+            href: topCampaign
+              ? `/leads/campaigns/${topCampaign.campaignId}?followup=due`
+              : "/leads",
+            warn: followUpsDue > 0,
+          },
           { label: "Appointments", value: stats?.appointments ?? 0, href: "/leads" },
         ].map((k) => (
           <Link key={k.label} href={k.href} className="bg-white px-5 py-4 hover:bg-[#fafafa] transition-colors">

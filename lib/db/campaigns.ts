@@ -214,7 +214,15 @@ export interface CampaignRowFilters {
   rep: string;
   outcome: string;
   uncalled: boolean;
-  due: boolean;
+  /**
+   * "" for every row, "due" for follow-ups that have come round, "set" for
+   * every row that has one booked at all.
+   *
+   * It used to be a boolean meaning "due", which left somebody who had just
+   * booked a call for next Tuesday unable to find the row they had booked:
+   * the only filter there was hid it until the day arrived.
+   */
+  followUp: "" | "due" | "set";
 }
 
 export const EMPTY_ROW_FILTERS: CampaignRowFilters = {
@@ -222,8 +230,44 @@ export const EMPTY_ROW_FILTERS: CampaignRowFilters = {
   rep: "",
   outcome: "",
   uncalled: false,
-  due: false,
+  followUp: "",
 };
+
+export const FOLLOW_UP_OPTIONS = [
+  { value: "due", label: "Follow-up due" },
+  { value: "set", label: "Has a follow-up" },
+];
+
+/** Follow-ups waiting on this person, per campaign. */
+export interface FollowUpLoad {
+  campaignId: string;
+  campaignName: string;
+  /** Rows with a follow-up booked, whenever it falls. */
+  scheduled: number;
+  /** Of those, the ones that have come round. */
+  due: number;
+}
+
+/**
+ * What the dashboard's follow-up tile counts.
+ *
+ * The sheets are where follow-ups actually get set, so counting lead-level
+ * dates told somebody a number from a place nobody was working. Returns one
+ * row per campaign so the tile can link to the sheet it is talking about
+ * rather than to a list.
+ *
+ * Requires supabase/migration-follow-ups.sql.
+ */
+export async function fetchFollowUpLoad(): Promise<FollowUpLoad[]> {
+  const { data, error } = await withTimeout(supabase.rpc("my_follow_ups"));
+  if (error) throw error;
+  return (data as { campaign_id: string; campaign_name: string; scheduled: number; due: number }[]).map((r) => ({
+    campaignId: r.campaign_id,
+    campaignName: r.campaign_name,
+    scheduled: Number(r.scheduled ?? 0),
+    due: Number(r.due ?? 0),
+  }));
+}
 
 export interface CampaignStats {
   total: number;
@@ -689,7 +733,12 @@ const rowFilterArgs = (f: CampaignRowFilters) => ({
   p_rep: f.rep || null,
   p_outcome: f.outcome || null,
   p_uncalled: f.uncalled,
-  p_due: f.due,
+  p_due: f.followUp === "due",
+  // Sent only when it is being used. PostgREST picks the function by the
+  // arguments it is given, so passing this unconditionally would miss the
+  // older signature entirely and break every sheet on a database where
+  // supabase/migration-follow-ups.sql has not been run yet.
+  ...(f.followUp === "set" ? { p_scheduled: true } : {}),
 });
 
 export interface SheetQuery {
