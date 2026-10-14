@@ -149,7 +149,9 @@ export default function ReviewChangesModal({
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[#0a0a0a]">Review changes</p>
               <p className="text-[11px] text-[#999] truncate">
-                {campaignName ? `From ${campaignName}` : "From every campaign"}
+                {/* Corrections now arrive from the Leads page as well as from
+                    sheets, so the unscoped queue can't call itself campaigns. */}
+                {campaignName ? `From ${campaignName}` : "Everything waiting, wherever it came from"}
               </p>
             </div>
           </div>
