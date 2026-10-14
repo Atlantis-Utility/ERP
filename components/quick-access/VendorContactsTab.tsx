@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
-  Plus, Pencil, Trash2, Phone, Mail, ExternalLink, User, Search, Building2, Download,
+  Plus, Pencil, Trash2, Phone, Mail, ExternalLink, LifeBuoy, User, Search, Building2, Download,
 } from "lucide-react";
 import BrandLogo from "@/components/quick-access/BrandLogo";
 import VendorContactDrawer from "@/components/quick-access/VendorContactDrawer";
@@ -68,6 +68,7 @@ export default function VendorContactsTab() {
         c.category,
         c.supportPhone,
         c.supportEmail,
+        c.supportUrl ?? "",
         ...vendorPeople(c).flatMap((p) => [p.name, p.title, p.phone, p.email]),
         c.notes,
       ]
@@ -165,7 +166,7 @@ export default function VendorContactsTab() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {filtered.map((c) => {
             const people = vendorPeople(c);
-            const hasSupport = Boolean(c.supportPhone || c.supportEmail || c.portal);
+            const hasSupport = Boolean(c.supportPhone || c.supportEmail || c.portal || c.supportUrl);
             return (
             <div
               key={c.id}
@@ -235,6 +236,19 @@ export default function VendorContactsTab() {
                     >
                       <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                       <span className="text-[12px] truncate">Portal</span>
+                    </a>
+                  )}
+                  {/* The account you log into and the form you raise a
+                      ticket on are different errands. */}
+                  {c.supportUrl && (
+                    <a
+                      href={c.supportUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-[#0070f3] hover:underline min-w-0"
+                    >
+                      <LifeBuoy className="w-3.5 h-3.5 shrink-0" />
+                      <span className="text-[12px] truncate">Raise a ticket</span>
                     </a>
                   )}
                 </div>

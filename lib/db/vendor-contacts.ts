@@ -63,6 +63,12 @@ export interface VendorContact {
   /** General support line — the number you call at 2am. */
   supportPhone: string;
   supportEmail: string;
+  /**
+   * Where you raise a ticket with them. Distinct from `portal`, which is
+   * the account you log into: a vendor can have both, and the one you want
+   * at 2am is not the one you want on invoice day.
+   */
+  supportUrl?: string;
   /** Our account number with them, as printed on the invoice. */
   accountNumber: string;
   /** Named points of contact: our people at this vendor. */
@@ -188,6 +194,7 @@ export function emptyVendorContact(): VendorContact {
     portal: "",
     supportPhone: "",
     supportEmail: "",
+    supportUrl: "",
     accountNumber: "",
     people: [],
     notes: "",

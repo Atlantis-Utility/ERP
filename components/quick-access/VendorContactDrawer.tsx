@@ -190,6 +190,16 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
                 placeholder="support@example.com"
               />
             </FormField>
+            <div className="sm:col-span-2">
+            <FormField label="Raise a ticket" hint="Their support form, if they have one">
+              <input
+                className={inputClass}
+                value={form.supportUrl ?? ""}
+                onChange={(e) => set("supportUrl", e.target.value)}
+                placeholder="https://support.example.com/newticket"
+              />
+            </FormField>
+            </div>
           </div>
         </div>
 
