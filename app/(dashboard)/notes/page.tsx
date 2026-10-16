@@ -455,8 +455,12 @@ export default function NotesPage() {
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
-                <div className="max-w-3xl">
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-6">
+                {/* Full height, so the writing area is the card rather than
+                    a 320px window scrolling inside one. A note of twenty
+                    lines was leaving half the card empty and still making
+                    you scroll a box within a box. */}
+                <div className="max-w-3xl h-full flex flex-col">
                   {isMine ? (
                     <>
                       <input
@@ -471,7 +475,7 @@ export default function NotesPage() {
                         onChange={(e) => setDraftBody(e.target.value)}
                         onBlur={() => draftBody !== selected.body && persist({ body: draftBody })}
                         placeholder="Start writing…"
-                        className="w-full h-full min-h-[320px] resize-none text-sm text-[#333] placeholder:text-[#ccc] focus:outline-none leading-[1.7] bg-transparent"
+                        className="w-full flex-1 min-h-[320px] resize-none text-sm text-[#333] placeholder:text-[#ccc] focus:outline-none leading-[1.7] bg-transparent"
                       />
                     </>
                   ) : (
