@@ -110,6 +110,10 @@ export default function ExportMenu({
 
       {open && (
         <FloatingLayer anchorRef={triggerRef} width={168} onClose={() => setOpen(false)}>
+          {/* The layer itself is transparent - every other menu in the app
+              brings its own panel, and this one didn't: the list rendered
+              straight onto whatever happened to be underneath it. */}
+          <div className="bg-white border border-[#eaeaea] rounded-lg shadow-lg py-1 overflow-hidden">
           {(Object.keys(LABELS) as ExportFormat[]).map((format) => {
             const Icon = ICONS[format];
             return (
@@ -124,6 +128,7 @@ export default function ExportMenu({
               </button>
             );
           })}
+          </div>
         </FloatingLayer>
       )}
     </>
