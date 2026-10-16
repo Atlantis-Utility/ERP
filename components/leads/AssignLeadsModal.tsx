@@ -6,6 +6,7 @@ import { X, Loader2, UserCheck, Eye, Pencil, Check } from "lucide-react";
 import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
 import { assignLeadsBulk, type BulkTarget } from "@/lib/db/leads";
+import { notifyAccessShared } from "@/lib/notify-access";
 import { grantLeadAccessBulk, type LeadGrantLevel } from "@/lib/db/lead-grants";
 import type { ActivityActor } from "@/lib/db/lead-activity";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
@@ -46,6 +47,8 @@ export default function AssignLeadsModal({
   const [level, setLevel] = useState<LeadGrantLevel>("viewer");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  /** Whether sharing also tells them. Only applies to a share, not a move. */
+  const [notify, setNotify] = useState(true);
 
   const selected = employees.find((e) => e.id === employeeId);
   const plural = count !== 1 ? "s" : "";
@@ -84,6 +87,22 @@ export default function AssignLeadsModal({
         onDone(
           `Gave ${selected?.name ?? "them"} ${level === "viewer" ? "read-only" : "edit"} access to ${granted.toLocaleString()} lead${granted !== 1 ? "s" : ""}.`,
         );
+        // One lead has somewhere to send them; a hundred do not, so that
+        // link goes to the Leads page and the mail says how many.
+        if (notify && granted > 0) {
+          const single = target.kind === "ids" && target.ids.length === 1 ? target.ids[0] : "";
+          const note = await notifyAccessShared({
+            toEmployeeId: employeeId,
+            toName: selected?.name,
+            kind: "lead",
+            id: single,
+            name: single
+              ? "a lead"
+              : `${granted.toLocaleString()} lead${granted !== 1 ? "s" : ""}`,
+            level: level === "viewer" ? "read-only" : "can edit",
+          });
+          if (note) onDone(note);
+        }
       }
       onClose();
     } catch (err) {
@@ -202,6 +221,15 @@ export default function AssignLeadsModal({
                   </button>
                 ))}
               </div>
+              <label className="flex items-center gap-2 mt-1 cursor-pointer w-fit">
+                <input
+                  type="checkbox"
+                  checked={notify}
+                  onChange={(e) => setNotify(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-[#0a0a0a] cursor-pointer"
+                />
+                <span className="text-[11px] text-[#666]">Email them a link</span>
+              </label>
             </div>
           )}
 

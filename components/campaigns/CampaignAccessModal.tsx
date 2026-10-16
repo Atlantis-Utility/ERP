@@ -12,6 +12,7 @@ import {
   type Campaign,
   type CampaignGrant,
 } from "@/lib/db/campaigns";
+import { notifyAccessShared } from "@/lib/notify-access";
 import type { LeadGrantLevel } from "@/lib/db/lead-grants";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
@@ -46,7 +47,9 @@ export default function CampaignAccessModal({
   const [employeeId, setEmployeeId] = useState("");
   const [level, setLevel] = useState<LeadGrantLevel>("editor");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const { error: toastError } = useToast();
+  /** Whether handing somebody the sheet also tells them so. */
+  const [notify, setNotify] = useState(true);
+  const { success, error: toastError } = useToast();
 
   const employeeFor = (id: string) => employees.find((e) => e.id === id);
   const granted = new Set(grants.map((g) => g.employeeId));
@@ -59,6 +62,19 @@ export default function CampaignAccessModal({
       if (busyKey === "new") {
         setEmployeeId("");
         setLevel("editor");
+      }
+      // Only when the access is new. Changing somebody's level from editor
+      // to viewer is not something to send a cheerful email about.
+      if (notify && busyKey === "new") {
+        const line = await notifyAccessShared({
+          toEmployeeId: targetId,
+          toName: employeeFor(targetId)?.name,
+          kind: "campaign",
+          id: campaign.id,
+          name: campaign.name,
+          level: targetLevel === "editor" ? "can fill it in" : "read-only",
+        });
+        if (line) success(line);
       }
     } catch (err) {
       toastError(getErrorMessage(err, "Failed to update access"));
@@ -119,6 +135,15 @@ export default function CampaignAccessModal({
               {busyId === "new" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
             </button>
           </div>
+          <label className="flex items-center gap-2 mt-2.5 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={notify}
+              onChange={(e) => setNotify(e.target.checked)}
+              className="w-3.5 h-3.5 accent-[#0a0a0a] cursor-pointer"
+            />
+            <span className="text-[11px] text-[#666]">Email them a link to the sheet</span>
+          </label>
           {options.length === 0 && employees.length > 0 && (
             <p className="text-[11px] text-[#bbb] mt-2">Everyone already has access to this campaign.</p>
           )}

@@ -59,3 +59,38 @@ export async function requireAdmin(): Promise<AdminActor> {
 
   return { uid: user.id, email: email || profile.email || "unknown" };
 }
+
+export interface EmployeeActor {
+  uid: string;
+  email: string;
+  employeeId: string;
+  name: string;
+}
+
+/**
+ * Verifies the caller is signed in and works here.
+ *
+ * Weaker than requireAdmin on purpose: a member shares their own note, so
+ * the question is "do we employ you", not "do you run the place". Read with
+ * the service key for the same reason as above - the answer must not depend
+ * on what the caller can see.
+ */
+export async function requireEmployee(): Promise<EmployeeActor> {
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) throw new ApiAuthError("Missing or invalid session", 401);
+
+  const email = user.email ?? "";
+  if (!email) throw new ApiAuthError("That account has no email address", 403);
+
+  const admin = createServiceRoleClient();
+  const { data: employee } = await admin
+    .from("employees")
+    .select("id, name")
+    .ilike("email", email)
+    .maybeSingle();
+  if (!employee) throw new ApiAuthError("That account isn't an employee", 403);
+
+  const row = employee as { id: string; name: string };
+  return { uid: user.id, email, employeeId: row.id, name: row.name };
+}

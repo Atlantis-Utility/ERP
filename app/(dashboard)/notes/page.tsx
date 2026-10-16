@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -8,6 +9,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useEmployees } from "@/lib/db/employees";
 import { useNotes, addNote, updateNote, removeNote, type Note } from "@/lib/db/notes";
 import { useCurrentEmployeeId } from "@/lib/hooks/use-current-employee-id";
+import { useToast } from "@/lib/toast";
+import { notifyAccessShared } from "@/lib/notify-access";
 import { getAvatarColor, getInitials, getErrorMessage } from "@/lib/utils";
 import {
   Plus, Search, Send, Trash2, Check, AlertCircle, X, ChevronLeft, StickyNote as StickyNoteIcon,
@@ -48,9 +51,19 @@ export default function NotesPage() {
   const myId = useCurrentEmployeeId();
   const myName = authUser?.displayName || authUser?.email || "Me";
 
+  const { success } = useToast();
+  /** Whether sharing also sends them a link. Remembered for the session. */
+  const [notifyOnShare, setNotifyOnShare] = useState(true);
+
   const [filter, setFilter] = useState<ViewFilter>("mine");
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /**
+   * ?note=<id> opens straight onto it, which is where the "shared with you"
+   * email points. Read once, as the starting selection: after that the list
+   * is in charge, so clicking another note doesn't fight the URL.
+   */
+  const searchParams = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("note"));
   const [shareOpen, setShareOpen] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -92,8 +105,12 @@ export default function NotesPage() {
   }, [selectedId]);
 
   // Falls back cleanly if the selected note is deleted from elsewhere.
+  //
+  // The length check is what lets ?note=<id> work: on the first render the
+  // list is still empty, and without it a note named in the URL was
+  // deselected before it had a chance to arrive.
   useEffect(() => {
-    if (selectedId && !notes.some((n) => n.id === selectedId)) setSelectedId(null);
+    if (notes.length > 0 && selectedId && !notes.some((n) => n.id === selectedId)) setSelectedId(null);
   }, [notes, selectedId]);
 
   // Edits save on blur, which is invisible — drop the "Saved" tick shortly
@@ -192,12 +209,28 @@ export default function NotesPage() {
     }
   }
 
-  function toggleRecipient(employeeId: string) {
+  async function toggleRecipient(employeeId: string) {
     if (!selected) return;
-    const next = selected.recipientIds.includes(employeeId)
-      ? selected.recipientIds.filter((id) => id !== employeeId)
-      : [...selected.recipientIds, employeeId];
+    const adding = !selected.recipientIds.includes(employeeId);
+    const next = adding
+      ? [...selected.recipientIds, employeeId]
+      : selected.recipientIds.filter((id) => id !== employeeId);
     persist({ recipientIds: next });
+
+    // Sharing is silent otherwise - they find out when they next happen to
+    // open Notes. Only on the way in: being removed from a note is not news
+    // anybody needs emailed to them.
+    if (adding && notifyOnShare) {
+      const to = employees.find((e) => e.id === employeeId);
+      const line = await notifyAccessShared({
+        toEmployeeId: employeeId,
+        toName: to?.name,
+        kind: "note",
+        id: selected.id,
+        name: selected.title || "a note",
+      });
+      if (line) success(line);
+    }
   }
 
   const recipientEmployees = employees.filter((e) => selected?.recipientIds.includes(e.id));
@@ -439,6 +472,18 @@ export default function NotesPage() {
                               })
                             )}
                           </div>
+                          {/* Off is a real choice: a note you are sharing
+                              with somebody sitting next to you doesn't need
+                              an email about it. */}
+                          <label className="flex items-center gap-2 px-2.5 py-2 mt-1 border-t border-[#f4f4f4] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={notifyOnShare}
+                              onChange={(e) => setNotifyOnShare(e.target.checked)}
+                              className="w-3.5 h-3.5 accent-[#0a0a0a] cursor-pointer"
+                            />
+                            <span className="text-[11px] text-[#666]">Email them a link</span>
+                          </label>
                         </div>
                       )}
                     </div>
