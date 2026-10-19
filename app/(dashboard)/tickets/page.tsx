@@ -25,6 +25,8 @@ interface EmailTicket {
   snippet: string;
   receivedAt: string;
   isUnread: boolean;
+  /** Emails in the thread. Absent on a response from an older deploy. */
+  messageCount?: number;
 }
 
 // Unified display type covering both email and manual tickets
@@ -37,6 +39,8 @@ interface UnifiedTicket {
   snippet: string;
   receivedAt: string;
   isUnread: boolean;
+  /** Emails in the thread, for an email ticket. */
+  messageCount?: number;
   status: TicketStatus;
   priority: TicketPriority;
   assigneeId?: string;
@@ -471,6 +475,7 @@ export default function TicketsPage() {
         threadId:     t.threadId,
         subject:      t.subject,
         fromName:     t.fromName,
+        messageCount: t.messageCount,
         from:         t.from,
         snippet:      t.snippet,
         receivedAt:   t.receivedAt,
@@ -778,7 +783,15 @@ export default function TicketsPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-[#999] truncate mt-0.5">{ticket.fromName || ticket.from}</p>
+                      <p className="text-xs text-[#999] truncate mt-0.5">
+                        {ticket.fromName || ticket.from}
+                        {/* A thread is one ticket; this is how you can tell
+                            it is a thread, and that the name beside it is
+                            whoever wrote last. */}
+                        {(ticket.messageCount ?? 1) > 1 && (
+                          <span className="ml-1.5 text-[#bbb]">· {ticket.messageCount} emails</span>
+                        )}
+                      </p>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${sourceCfg.color}`}>

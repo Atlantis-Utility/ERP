@@ -23,6 +23,8 @@ export interface UnifiedTicket {
   receivedAt: string;
   updatedAt?: string;
   ticketNumber?: number;
+  /** Emails in the thread, for an email ticket. */
+  messageCount?: number;
 }
 
 interface EmailTicketRaw {
@@ -34,6 +36,7 @@ interface EmailTicketRaw {
   snippet: string;
   receivedAt: string;
   isUnread: boolean;
+  messageCount?: number;
 }
 
 export function useUnifiedTickets(): { tickets: UnifiedTicket[]; notConfigured: boolean } {
@@ -83,6 +86,7 @@ export function useUnifiedTickets(): { tickets: UnifiedTicket[]; notConfigured: 
         fromName: t.fromName,
         from: t.from,
         snippet: t.snippet,
+        messageCount: t.messageCount,
         receivedAt: t.receivedAt,
         updatedAt: meta?.updatedAt,
         status: meta?.status ?? "open",
