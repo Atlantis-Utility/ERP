@@ -35,6 +35,12 @@ export interface VendorPerson {
   title: string;
   phone: string;
   email: string;
+  /**
+   * The one to ring first. At most one per vendor (saveVendorContact keeps
+   * it that way): with three names on a card, somebody new to the account
+   * shouldn't have to guess which of them actually owns it.
+   */
+  primary?: boolean;
 }
 
 export function newVendorPerson(overrides: Partial<VendorPerson> = {}): VendorPerson {
@@ -137,6 +143,16 @@ export function vendorPeople(c: VendorContact): VendorPerson[] {
   return hasPersonDetail(legacy) ? [legacy] : [];
 }
 
+/**
+ * Who to contact first: the person tagged as main, or the only person on
+ * file when there's just one. With several and none tagged there is no
+ * honest answer, so it's null and the card says nothing rather than guess.
+ */
+export function mainVendorPerson(c: VendorContact): VendorPerson | null {
+  const people = vendorPeople(c);
+  return people.find((p) => p.primary) ?? (people.length === 1 ? people[0] : null);
+}
+
 function withTimeout<T>(promise: PromiseLike<T>, ms = 12_000): Promise<T> {
   return Promise.race([
     Promise.resolve(promise),
@@ -215,7 +231,7 @@ export async function saveVendorContact(contact: VendorContact): Promise<void> {
   // read), so they're dropped rather than left to drift out of date.
   const updated: VendorContact = {
     ...contact,
-    people: (contact.people ?? []).filter(hasPersonDetail),
+    people: onePrimary((contact.people ?? []).filter(hasPersonDetail)),
     updatedAt: new Date().toISOString(),
   };
   delete updated.pocName;
@@ -226,6 +242,16 @@ export async function saveVendorContact(contact: VendorContact): Promise<void> {
     supabase.from(TABLE).upsert({ id: updated.id, updated_at: updated.updatedAt, data: updated })
   );
   if (error) throw error;
+}
+
+// The first one tagged wins, so a stale flag can't leave two "main" contacts.
+function onePrimary(people: VendorPerson[]): VendorPerson[] {
+  const first = people.findIndex((p) => p.primary);
+  return people.map((p, i) => {
+    const rest = { ...p };
+    delete rest.primary;
+    return i === first ? { ...rest, primary: true } : rest;
+  });
 }
 
 export async function removeVendorContact(id: string): Promise<void> {

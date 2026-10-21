@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Star } from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
@@ -47,6 +47,15 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
     setForm((f) => ({
       ...f,
       people: (f.people ?? []).map((p) => (p.id === id ? { ...p, [field]: value } : p)),
+    }));
+  }
+
+  // One main contact per vendor: tagging someone untags whoever had it, and
+  // tagging the current main again clears it.
+  function toggleMain(id: string) {
+    setForm((f) => ({
+      ...f,
+      people: (f.people ?? []).map((p) => ({ ...p, primary: p.id === id ? !p.primary : false })),
     }));
   }
 
@@ -220,9 +229,30 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
 
           <div className="space-y-3">
             {(form.people ?? []).map((person, i) => (
-              <div key={person.id} className="rounded-lg border border-[#f1f1f1] bg-[#fcfcfc] p-3">
+              <div
+                key={person.id}
+                className={`rounded-lg border p-3 transition-colors ${
+                  person.primary ? "border-[#fde68a] bg-[#fffbeb]" : "border-[#f1f1f1] bg-[#fcfcfc]"
+                }`}
+              >
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-medium text-[#999]">Contact {i + 1}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[11px] font-medium text-[#999]">Contact {i + 1}</p>
+                    <button
+                      type="button"
+                      onClick={() => toggleMain(person.id)}
+                      aria-pressed={!!person.primary}
+                      title={person.primary ? "Main contact. Click to untag." : "Make this the main contact"}
+                      className={`flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                        person.primary
+                          ? "border-[#fcd34d] bg-[#fef3c7] text-[#92400e]"
+                          : "border-[#eaeaea] bg-white text-[#999] hover:text-[#0a0a0a] hover:border-[#d4d4d4]"
+                      }`}
+                    >
+                      <Star className={`w-3 h-3 ${person.primary ? "fill-[#f59e0b] text-[#f59e0b]" : ""}`} />
+                      {person.primary ? "Main contact" : "Set as main"}
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={() => removePerson(person.id)}
@@ -270,7 +300,7 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
             ))}
           </div>
           <p className="text-[10px] text-[#bbb] mt-2">
-            Blank contacts aren&apos;t saved.
+            Blank contacts aren&apos;t saved. Star the person to call first so nobody has to guess.
           </p>
         </div>
 

@@ -89,6 +89,16 @@ html.dark .bg-\[\#fefce8\]     { background-color: #1f1a0d; }
 html.dark .bg-\[\#f3e8ff\]     { background-color: #231831; }
 html.dark .bg-\[\#fff7e6\]     { background-color: #2a1e0c; }
 html.dark .bg-\[\#ecfeff\]     { background-color: #0c2226; }
+/* "Main contact" on Quick Access vendor cards (amber), and the Vault's
+   outside-link status pills, so neither renders as a light block. */
+html.dark .bg-\[\#fffbeb\]     { background-color: #1f1a0d; }
+html.dark .bg-\[\#fef3c7\]     { background-color: #33270b; }
+html.dark .border-\[\#fde68a\] { border-color: #4a3a10; }
+html.dark .border-\[\#fcd34d\] { border-color: #6b5214; }
+html.dark .text-\[\#92400e\]   { color: #fcd34d; }
+html.dark .text-\[\#15803d\]   { color: #4ade80; }
+html.dark .text-\[\#b91c1c\]   { color: #f87171; }
+html.dark .border-\[\#fecdd3\] { border-color: #7f1d1d; }
 
 /* ── Borders ── */
 html.dark .border-\[\#eaeaea\]  { border-color: #2e2e2e; }
