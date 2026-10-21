@@ -108,6 +108,16 @@ export interface VaultEntryUpdateInput {
 
 export type VaultExternalShareStatus = "active" | "expired" | "revoked" | "used_up";
 
+/** What the recipient did, in order of how far they got. */
+export type VaultShareEventKind = "email_opened" | "link_opened" | "details_viewed";
+
+export interface VaultShareEvent {
+  kind: VaultShareEventKind;
+  at: string;
+  /** "Chrome on Windows", read from the user agent; empty when it says nothing useful. */
+  device: string;
+}
+
 // What the owner sees about a link they sent. Never the token: only its
 // hash is stored, so the link can't be shown again after it's created.
 export interface VaultExternalShareInfo {
@@ -124,6 +134,9 @@ export interface VaultExternalShareInfo {
   createdByName: string;
   revokedAt?: string;
   status: VaultExternalShareStatus;
+  /** Oldest first. */
+  events: VaultShareEvent[];
+  notifyOwner: boolean;
 }
 
 export interface VaultExternalShareInput {
@@ -135,6 +148,8 @@ export interface VaultExternalShareInput {
   /** null = as many times as they like until it expires. */
   maxViews: number | null;
   includeNotes: boolean;
+  /** Email the sender the first time the details are viewed. */
+  notifyOwner: boolean;
   /** The sender's IANA zone, so the email states the expiry in their terms. */
   timeZone?: string;
 }

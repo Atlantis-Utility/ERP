@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ApiAuthError } from "@/lib/api-auth";
 import { requireVaultSession, requireVaultUnlocked, getDisplayName } from "@/lib/vault-auth";
 import { VAULT_TABLE, VAULT_EXTERNAL_SHARES_TABLE, logVaultAudit } from "@/lib/vault-server";
-import { newShareToken, toExternalShareInfo, formatExpiry } from "@/lib/vault-external";
+import { newShareToken, toExternalShareInfo, formatExpiry, VAULT_SHARE_EVENTS_TABLE } from "@/lib/vault-external";
 import { buildVaultExternalShareEmail } from "@/lib/email/vault-external-share-email";
 import { isEmailConfigured, sendEmail } from "@/lib/email/resend";
 import { appOrigin } from "@/lib/app-origin";
@@ -51,8 +51,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       for (const p of profiles ?? []) names.set(p.uid as string, (p.display_name as string) || (p.email as string) || "");
     }
 
+    // Every event for these links in one query, grouped per link. Under the
+    // caller's session: RLS lets the owner (unlocked) or an admin read them.
+    const eventsByShare = new Map<string, Record<string, unknown>[]>();
+    const shareIds = (rows ?? []).map((r) => r.id as string);
+    if (shareIds.length > 0) {
+      const { data: events, error: eventsErr } = await supabase
+        .from(VAULT_SHARE_EVENTS_TABLE)
+        .select("share_id, kind, at, user_agent")
+        .in("share_id", shareIds)
+        .order("at");
+      // Tracking is extra: a missing table (migration not run yet) shows
+      // links without their history rather than no links at all.
+      if (eventsErr) console.error("[vault:external:events]", eventsErr);
+      for (const e of events ?? []) {
+        const list = eventsByShare.get(e.share_id as string) ?? [];
+        list.push(e);
+        eventsByShare.set(e.share_id as string, list);
+      }
+    }
+
     return NextResponse.json({
-      shares: (rows ?? []).map((r) => toExternalShareInfo(r, names.get(r.created_by_uid as string) ?? "")),
+      shares: (rows ?? []).map((r) =>
+        toExternalShareInfo(r, names.get(r.created_by_uid as string) ?? "", eventsByShare.get(r.id as string)),
+      ),
       emailConfigured: isEmailConfigured(),
     });
   } catch (err) {
@@ -99,22 +121,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const message = body.message?.trim().slice(0, 1000) || null;
     const { token, hash } = newShareToken();
 
-    const { data: row, error } = await supabase
+    const base = {
+      entry_id: id,
+      token_hash: hash,
+      recipient_email: recipientEmail,
+      recipient_name: recipientName,
+      message,
+      include_notes: !!body.includeNotes,
+      expires_at: expiresAt.toISOString(),
+      max_views: maxViews,
+      created_by_uid: actor.uid,
+    };
+    let { data: row, error } = await supabase
       .from(VAULT_EXTERNAL_SHARES_TABLE)
-      .insert({
-        entry_id: id,
-        token_hash: hash,
-        recipient_email: recipientEmail,
-        recipient_name: recipientName,
-        message,
-        include_notes: !!body.includeNotes,
-        expires_at: expiresAt.toISOString(),
-        max_views: maxViews,
-        created_by_uid: actor.uid,
-      })
+      .insert({ ...base, notify_owner: body.notifyOwner !== false, sender_time_zone: body.timeZone?.slice(0, 64) ?? null })
       .select("*")
       .single();
-    if (error) throw error;
+    // PGRST204: no such column. The tracking migration hasn't been run yet;
+    // sharing still works, just without the "email me" option.
+    if (error?.code === "PGRST204") {
+      ({ data: row, error } = await supabase.from(VAULT_EXTERNAL_SHARES_TABLE).insert(base).select("*").single());
+    }
+    if (error || !row) throw error ?? new Error("insert returned no row");
 
     const senderName = (await getDisplayName(supabase, actor.uid)) || actor.email;
     const url = `${appOrigin(req)}/shared/${token}`;
@@ -125,6 +153,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       senderEmail: actor.email,
       message,
       url,
+      // Loaded when the email is displayed, which is how "email opened" is
+      // known. Same token as the link: the email already carries it.
+      trackingPixelUrl: `${appOrigin(req)}/api/shared/${token}/open`,
       expiresLabel: formatExpiry(expiresAt.toISOString(), body.timeZone),
       maxViews,
     });

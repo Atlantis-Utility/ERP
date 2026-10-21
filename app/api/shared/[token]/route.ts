@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { decryptSecret } from "@/lib/vault-crypto";
 import { VAULT_TABLE, VAULT_EXTERNAL_SHARES_TABLE, logVaultAudit } from "@/lib/vault-server";
-import { hashShareToken, isPlausibleShareToken, externalShareStatus, viewsLeft } from "@/lib/vault-external";
+import {
+  hashShareToken, isPlausibleShareToken, externalShareStatus, viewsLeft, recordShareEvent, describeDevice, formatMoment,
+} from "@/lib/vault-external";
+import { buildVaultShareViewedEmail } from "@/lib/email/vault-external-share-email";
+import { isEmailConfigured, sendEmail } from "@/lib/email/resend";
+import { appOrigin } from "@/lib/app-origin";
 import type { VaultSharedCredentials, VaultSharedLinkPreview } from "@/lib/vault-types";
 
 export const runtime = "nodejs";
@@ -34,6 +39,51 @@ async function findShare(token: string) {
   return data ? { supabase, share: data } : null;
 }
 
+/**
+ * "They've opened it": an email to whoever sent the link, the first time
+ * the details are shown, if they asked for one when sending. The claim on
+ * owner_notified_at is a compare-and-set, so two quick views send one mail.
+ * Never throws: the recipient's view matters more than the sender's email.
+ */
+async function notifyOwnerOfFirstView(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  share: Record<string, unknown>,
+  entryName: string,
+  req: Request,
+): Promise<void> {
+  try {
+    if (share.notify_owner === false || share.owner_notified_at || !isEmailConfigured()) return;
+    const { data: claimed } = await supabase
+      .from(VAULT_EXTERNAL_SHARES_TABLE)
+      .update({ owner_notified_at: new Date().toISOString() })
+      .eq("id", share.id)
+      .is("owner_notified_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return;
+
+    const { data: owner } = await supabase
+      .from("user_profiles")
+      .select("display_name, email")
+      .eq("uid", share.created_by_uid)
+      .maybeSingle();
+    const to = owner?.email as string | undefined;
+    if (!to) return;
+
+    const { subject, html } = buildVaultShareViewedEmail({
+      entryName,
+      ownerName: (owner?.display_name as string) || null,
+      recipientEmail: share.recipient_email as string,
+      recipientName: (share.recipient_name as string) || null,
+      viewedAtLabel: formatMoment(new Date().toISOString(), (share.sender_time_zone as string) || undefined),
+      device: describeDevice(req.headers.get("user-agent")),
+      vaultUrl: `${appOrigin(req)}/vault`,
+    });
+    await sendEmail({ to, subject, html });
+  } catch (err) {
+    console.error("[shared:notify-owner]", err);
+  }
+}
+
 async function senderNameOf(supabase: ReturnType<typeof createServiceRoleClient>, uid: string): Promise<string> {
   const { data } = await supabase.from("user_profiles").select("display_name, email").eq("uid", uid).maybeSingle();
   return (data?.display_name as string) || (data?.email as string) || "Atlantis Utility";
@@ -44,12 +94,15 @@ async function senderNameOf(supabase: ReturnType<typeof createServiceRoleClient>
  * Gmail's) fetch links before the person ever clicks, so loading the page
  * must not count as a view; only the explicit reveal below does.
  */
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     const { token } = await params;
     const found = await findShare(token);
     if (!found) return json({ error: "not_found" }, 404);
     const { supabase, share } = found;
+    // Recorded whatever the link's state: "they tried it after it expired"
+    // is worth knowing too.
+    await recordShareEvent(supabase, share.id as string, "link_opened", req);
 
     const status = externalShareStatus(share);
     const senderName = await senderNameOf(supabase, share.created_by_uid as string);
@@ -78,7 +131,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
 }
 
 /** Shows the credential, and counts it against the link's view limit. */
-export async function POST(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     const { token } = await params;
     const found = await findShare(token);
@@ -140,6 +193,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ token:
       actorUid: share.created_by_uid as string,
       actorEmail: `${share.recipient_email} (outside link)`,
     });
+    await recordShareEvent(supabase, share.id as string, "details_viewed", req);
+    await notifyOwnerOfFirstView(supabase, share, entry.name as string, req);
 
     return json(body);
   } catch (err) {

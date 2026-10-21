@@ -23,7 +23,12 @@ export function buildVaultExternalShareEmail(opts: {
   /** Already formatted for the sender's zone, e.g. "Thursday, October 23 at 3:00 PM EDT". */
   expiresLabel: string;
   maxViews: number | null;
+  /** A 1x1 image whose loading records that the email was opened. */
+  trackingPixelUrl?: string;
 }): { subject: string; html: string } {
+  const pixel = opts.trackingPixelUrl
+    ? `<img src="${escapeHtml(opts.trackingPixelUrl)}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0;" />`
+    : "";
   const entry = escapeHtml(opts.entryName);
   const to = opts.recipientName?.trim() ? escapeHtml(opts.recipientName.trim().split(/\s+/)[0]) : null;
   const sender = escapeHtml(opts.senderName);
@@ -111,6 +116,98 @@ export function buildVaultExternalShareEmail(opts: {
             </tr>
             <tr>
               <td style="padding:24px 8px 0;font-size:12px;color:#bbb;">Atlantis Utility</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    ${pixel}
+  </body>
+</html>`;
+
+  return { subject, html };
+}
+
+/**
+ * To the person who sent an outside link: the recipient has opened the
+ * login details. Sent once, on the first view, when the sender asked for it.
+ * Says who, which entry, when and on what; the full history is in the vault.
+ */
+export function buildVaultShareViewedEmail(opts: {
+  entryName: string;
+  ownerName: string | null;
+  recipientEmail: string;
+  recipientName: string | null;
+  /** Already formatted in the sender's zone. */
+  viewedAtLabel: string;
+  device: string;
+  vaultUrl: string;
+}): { subject: string; html: string } {
+  const entry = escapeHtml(opts.entryName);
+  const hi = opts.ownerName ? `Hi ${escapeHtml(opts.ownerName.split(/\s+/)[0])},` : "Hello,";
+  const who = opts.recipientName
+    ? `${escapeHtml(opts.recipientName)} (${escapeHtml(opts.recipientEmail)})`
+    : escapeHtml(opts.recipientEmail);
+  const when = escapeHtml(opts.viewedAtLabel);
+  const device = opts.device ? escapeHtml(opts.device) : null;
+  const vaultUrl = escapeHtml(opts.vaultUrl);
+
+  const subject = `${opts.recipientName || opts.recipientEmail} opened the login details for ${opts.entryName}`;
+
+  const row = (label: string, value: string) => `
+                  <tr>
+                    <td style="padding:6px 0;font-size:13px;color:#999;width:90px;vertical-align:top;">${label}</td>
+                    <td style="padding:6px 0;font-size:13px;color:#0a0a0a;">${value}</td>
+                  </tr>`;
+
+  const html = `
+<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#fafafa;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;">
+      <tr>
+        <td align="center" style="padding:40px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0a0a0a;">
+            <tr>
+              <td align="center" style="padding-bottom:24px;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td width="32" height="32" align="center" valign="middle" style="background:#0a0a0a;border-radius:9px;color:#ffffff;font-size:13px;line-height:32px;">&#9650;</td>
+                    <td style="padding-left:10px;font-size:17px;font-weight:600;letter-spacing:-0.2px;color:#0a0a0a;">Atlantis Utility</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#ffffff;border:1px solid #eaeaea;border-radius:16px;padding:32px;">
+                <p style="margin:0 0 6px;font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#17a34a;">&#10003; Opened</p>
+                <h1 style="margin:0 0 20px;font-size:20px;line-height:1.3;font-weight:600;color:#0a0a0a;">Your secure link was opened</h1>
+                <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#333;">${hi}</p>
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.55;color:#333;">
+                  ${who} has viewed the login details for <strong style="color:#0a0a0a;">${entry}</strong> that you shared.
+                </p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;margin:0 0 24px;padding:8px 0;">
+                  ${row("Entry", entry)}
+                  ${row("Viewed by", who)}
+                  ${row("When", when)}
+                  ${device ? row("Device", device) : ""}
+                </table>
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="background:#0a0a0a;border-radius:10px;">
+                      <a href="${vaultUrl}" style="display:inline-block;padding:12px 22px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">Open the vault</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:20px 0 0;font-size:13px;line-height:1.55;color:#666;">
+                  Not expected? Revoke the link from the entry&rsquo;s Manage Access, under Outside the organization, and change the password.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 8px 0;font-size:12px;line-height:1.55;color:#999;">
+                You asked to be told when this link was first opened. You won&rsquo;t get another email for it; every later view is listed in the vault.
+              </td>
             </tr>
           </table>
         </td>

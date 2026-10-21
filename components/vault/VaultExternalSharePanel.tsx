@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Send, Link2, Copy, Check, X, Clock, Eye, Mail, CheckCircle2 } from "lucide-react";
+import { Send, Link2, Copy, Check, X, Clock, Eye, Mail, MailOpen, CheckCircle2, ChevronDown } from "lucide-react";
 import DateTimePicker from "@/components/ui/DateTimePicker";
 import Select from "@/components/ui/Select";
 import { useConfirm } from "@/lib/confirm";
 import { useToast } from "@/lib/toast";
 import { listVaultExternalShares, createVaultExternalShare, revokeVaultExternalShare } from "@/lib/db/vault";
 import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
-import { VAULT_EXTERNAL_MAX_DAYS, type VaultEntryMeta, type VaultExternalShareInfo, type VaultExternalShareStatus } from "@/lib/vault-types";
+import {
+  VAULT_EXTERNAL_MAX_DAYS,
+  type VaultEntryMeta, type VaultExternalShareInfo, type VaultExternalShareStatus, type VaultShareEventKind,
+} from "@/lib/vault-types";
 
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
@@ -103,6 +106,7 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
   const [durationUnit, setDurationUnit] = useState<DurationUnit>("minutes");
   const [maxViews, setMaxViews] = useState<number | null>(null);
   const [includeNotes, setIncludeNotes] = useState(false);
+  const [notifyOwner, setNotifyOwner] = useState(true);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<{ email: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -130,6 +134,18 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.id]);
+
+  // An open shows up while you watch, without reopening the panel. Quiet:
+  // no spinner, and a failed refresh keeps what's on screen.
+  useEffect(() => {
+    const t = setInterval(async () => {
+      try {
+        const res = await listVaultExternalShares(entry.id);
+        setShares(res.shares);
+      } catch {}
+    }, 30_000);
+    return () => clearInterval(t);
   }, [entry.id]);
 
   // Presets and durations count from `at`: the summary line passes the
@@ -175,6 +191,7 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
         expiresAt: at.toISOString(),
         maxViews,
         includeNotes,
+        notifyOwner,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       setShares((prev) => [res.share, ...prev]);
@@ -381,6 +398,21 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
             <p className="text-[10px] text-[#999] mt-2.5">Phone numbers, contacts and tags stay internal.</p>
           </div>
 
+          <label className="flex items-start gap-2 text-xs text-[#444] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={notifyOwner}
+              onChange={(e) => setNotifyOwner(e.target.checked)}
+              className="accent-[#0a0a0a] mt-0.5"
+            />
+            <span>
+              Email me when they open it
+              <span className="block text-[10px] text-[#999] mt-0.5">
+                Once, the first time they view the details. Every open is tracked below either way.
+              </span>
+            </span>
+          </label>
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className={`text-xs ${expiryProblem ? "text-[#f31260]" : "text-[#666]"}`}>
               {expiryProblem ?? (
@@ -425,43 +457,121 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
   );
 }
 
+const EVENT_LABEL: Record<VaultShareEventKind, { label: string; icon: React.ElementType }> = {
+  email_opened: { label: "Email opened", icon: MailOpen },
+  link_opened: { label: "Link opened", icon: Link2 },
+  details_viewed: { label: "Details viewed", icon: Eye },
+};
+const STEPS: VaultShareEventKind[] = ["email_opened", "link_opened", "details_viewed"];
+
+// "10:32 AM" today, "Oct 21, 10:32 AM" otherwise: the time is the point.
+function stamp(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return new Date().toDateString() === d.toDateString()
+    ? time
+    : `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+}
+
 function ShareRow({ share, onRevoke }: { share: VaultExternalShareInfo; onRevoke: () => void }) {
+  const [expanded, setExpanded] = useState(false);
   const who = share.recipientName || share.recipientEmail;
   const c = getAvatarColor(who);
   const status = STATUS[share.status];
-  const views = share.maxViews === null ? `${share.viewCount} view${share.viewCount === 1 ? "" : "s"}` : `${share.viewCount} of ${share.maxViews} views`;
   const when =
     share.status === "active" ? `Expires ${relativeUntil(share.expiresAt)}`
     : share.status === "revoked" && share.revokedAt ? `Revoked ${formatDate(share.revokedAt)}`
     : share.status === "expired" ? `Expired ${formatDate(share.expiresAt)}`
     : "All views used";
 
+  // First time each step happened, and how often.
+  const steps = STEPS.map((kind) => {
+    const hits = share.events.filter((e) => e.kind === kind);
+    return { kind, first: hits[0], last: hits[hits.length - 1], count: hits.length };
+  });
+  const opened = steps.some((s) => s.count > 0);
+
   return (
-    <div className={`flex items-center gap-3 border border-[#eaeaea] rounded-lg px-3 py-2.5 ${share.status === "active" ? "" : "opacity-70"}`}>
-      <div className={`w-7 h-7 rounded-full ${c.bg} ${c.text} flex items-center justify-center shrink-0`}>
-        <span className="text-[10px] font-semibold">{getInitials(who)}</span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <p className="text-sm text-[#0a0a0a] truncate">{who}</p>
-          <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${status.className}`}>{status.label}</span>
+    <div className={`border border-[#eaeaea] rounded-lg ${share.status === "active" ? "" : "opacity-75"}`}>
+      <div className="flex items-center gap-3 px-3 pt-2.5">
+        <div className={`w-7 h-7 rounded-full ${c.bg} ${c.text} flex items-center justify-center shrink-0`}>
+          <span className="text-[10px] font-semibold">{getInitials(who)}</span>
         </div>
-        <p className="text-[10px] text-[#999] truncate flex items-center gap-1">
-          {share.recipientName && <span className="truncate">{share.recipientEmail} ·</span>}
-          <Clock className="w-2.5 h-2.5 shrink-0" /> {when}
-          <span className="shrink-0">·</span>
-          <Eye className="w-2.5 h-2.5 shrink-0" /> {views}
-          {share.createdByName && <span className="truncate">· sent by {share.createdByName} {formatDate(share.createdAt)}</span>}
-        </p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <p className="text-sm text-[#0a0a0a] truncate">{who}</p>
+            <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${status.className}`}>{status.label}</span>
+          </div>
+          <p className="text-[10px] text-[#999] truncate flex items-center gap-1">
+            {share.recipientName && <span className="truncate">{share.recipientEmail} ·</span>}
+            <Send className="w-2.5 h-2.5 shrink-0" /> Sent {stamp(share.createdAt)}
+            {share.createdByName && <span className="truncate">by {share.createdByName}</span>}
+            <span className="shrink-0">·</span>
+            <Clock className="w-2.5 h-2.5 shrink-0" /> {when}
+          </p>
+        </div>
+        {share.status === "active" && (
+          <button
+            onClick={onRevoke}
+            title="Revoke link"
+            className="shrink-0 p-1.5 rounded-md text-[#999] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
-      {share.status === "active" && (
-        <button
-          onClick={onRevoke}
-          title="Revoke link"
-          className="shrink-0 p-1.5 rounded-md text-[#999] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
+
+      {/* Sent → email opened → link opened → details viewed, each with when. */}
+      <div className="grid grid-cols-3 gap-1.5 px-3 pt-2.5 pb-2.5">
+        {steps.map(({ kind, first, last, count }) => {
+          const { label, icon: Icon } = EVENT_LABEL[kind];
+          const done = count > 0;
+          return (
+            <div
+              key={kind}
+              title={done ? `First ${stamp(first!.at)}${count > 1 ? `, last ${stamp(last!.at)}` : ""}` : undefined}
+              className={`rounded-md px-2 py-1.5 border ${done ? "border-[#bbf7d0] bg-[#f0fdf4]" : "border-[#f0f0f0] bg-[#fafafa]"}`}
+            >
+              <p className={`flex items-center gap-1 text-[10px] font-medium ${done ? "text-[#15803d]" : "text-[#999]"}`}>
+                {done ? <Check className="w-3 h-3 shrink-0" /> : <Icon className="w-3 h-3 shrink-0" />}
+                <span className="truncate">{label}</span>
+                {count > 1 && <span className="shrink-0 text-[#15803d]/70">×{count}</span>}
+              </p>
+              <p className={`text-[11px] mt-0.5 truncate ${done ? "text-[#0a0a0a]" : "text-[#bbb]"}`}>
+                {done ? stamp(kind === "details_viewed" ? last!.at : first!.at) : "Not yet"}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {opened && (
+        <div className="border-t border-[#f0f0f0]">
+          <button
+            onClick={() => setExpanded((x) => !x)}
+            className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-medium text-[#666] hover:text-[#0a0a0a] transition-colors"
+          >
+            <span>Activity · {share.events.length} event{share.events.length === 1 ? "" : "s"}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </button>
+          {expanded && (
+            <ol className="px-3 pb-2.5 space-y-1.5">
+              {[...share.events].reverse().map((e, i) => {
+                const { label, icon: Icon } = EVENT_LABEL[e.kind];
+                return (
+                  <li key={i} className="flex items-center gap-2 text-[11px]">
+                    <Icon className="w-3 h-3 text-[#999] shrink-0" />
+                    <span className="text-[#0a0a0a] w-24 shrink-0">{label}</span>
+                    <span className="text-[#666] shrink-0">
+                      {new Date(e.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" })}
+                    </span>
+                    {e.device && <span className="text-[#999] truncate">· {e.device}</span>}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
       )}
     </div>
   );
