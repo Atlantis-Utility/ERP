@@ -136,6 +136,9 @@ html.dark .bg-\[\#111\]        { background-color: #303030; }
 html.dark button.bg-\[\#0a0a0a\]:not([data-toggle])            { background-color: #efefef; color: #111111; }
 html.dark button.bg-\[\#0a0a0a\]:not([data-toggle]):hover:not(:disabled) { background-color: #d5d5d5; }
 html.dark button.bg-\[\#0a0a0a\]:not([data-toggle]):disabled   { background-color: #282828; color: #555555; }
+/* Same for a link styled as the primary action (Quick Access "Call"). */
+html.dark a.bg-\[\#0a0a0a\]       { background-color: #efefef; color: #111111; }
+html.dark a.bg-\[\#0a0a0a\]:hover { background-color: #d5d5d5; }
 
 /* ── Toggle switch track: keep semantic meaning in dark mode ── */
 html.dark button[data-toggle].bg-\[\#0a0a0a\] { background-color: #d4d4d4; }  /* "on"  */
