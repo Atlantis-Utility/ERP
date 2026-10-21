@@ -6,7 +6,13 @@ export function isEmailConfigured(): boolean {
   return Boolean(RESEND_API_KEY && RESEND_FROM_EMAIL);
 }
 
-export async function sendEmail(opts: { to: string | string[]; subject: string; html: string }): Promise<void> {
+export async function sendEmail(opts: {
+  to: string | string[];
+  subject: string;
+  html: string;
+  /** Where a reply goes, when that should be a person rather than the sending address. */
+  replyTo?: string;
+}): Promise<void> {
   if (!isEmailConfigured()) throw new Error("EMAIL_NOT_CONFIGURED");
 
   const res = await fetch(RESEND_API_URL, {
@@ -25,6 +31,7 @@ export async function sendEmail(opts: { to: string | string[]; subject: string; 
       to: Array.isArray(opts.to) ? opts.to : [opts.to],
       subject: opts.subject,
       html: opts.html,
+      ...(opts.replyTo ? { reply_to: opts.replyTo } : {}),
     }),
     cache: "no-store",
   });

@@ -1,6 +1,9 @@
 "use client";
 
-import type { VaultEntryMeta, VaultEntryInput, VaultEntryUpdateInput, VaultShareInfo, VaultPasskeyStatus } from "../vault-types";
+import type {
+  VaultEntryMeta, VaultEntryInput, VaultEntryUpdateInput, VaultShareInfo, VaultPasskeyStatus,
+  VaultExternalShareInfo, VaultExternalShareInput,
+} from "../vault-types";
 
 // All vault reads/writes go through /api/vault (Supabase service running
 // under RLS + app-level auth checks on the server) rather than the Supabase
@@ -89,6 +92,36 @@ export async function grantVaultShare(entryId: string, employeeId: string): Prom
 export async function revokeVaultShare(entryId: string, granteeUid: string): Promise<void> {
   const res = await fetch(`/api/vault/${encodeURIComponent(entryId)}/shares/${encodeURIComponent(granteeUid)}`, { method: "DELETE" });
   if (!res.ok) return parseError(res, "Failed to revoke access");
+}
+
+// ── Sharing outside the organisation ────────────────────────────────────
+
+export async function listVaultExternalShares(entryId: string): Promise<{ shares: VaultExternalShareInfo[]; emailConfigured: boolean }> {
+  const res = await fetch(`/api/vault/${encodeURIComponent(entryId)}/external-shares`);
+  if (!res.ok) return parseError(res, "Failed to load outside links");
+  return res.json();
+}
+
+/** Emails the link; `url` comes back once so the sender can copy it too. */
+export async function createVaultExternalShare(
+  entryId: string,
+  input: VaultExternalShareInput,
+): Promise<{ share: VaultExternalShareInfo; url: string }> {
+  const res = await fetch(`/api/vault/${encodeURIComponent(entryId)}/external-shares`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return parseError(res, "Failed to share outside the organization");
+  return res.json();
+}
+
+export async function revokeVaultExternalShare(entryId: string, shareId: string): Promise<void> {
+  const res = await fetch(
+    `/api/vault/${encodeURIComponent(entryId)}/external-shares/${encodeURIComponent(shareId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) return parseError(res, "Failed to revoke link");
 }
 
 // ── Passkey / unlock ─────────────────────────────────────────────────────

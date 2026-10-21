@@ -76,7 +76,8 @@ function isGuardedPage(request: NextRequest): boolean {
     pathname.startsWith("/set-password") ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/api/") ||
-    pathname.startsWith("/feedback/")
+    pathname.startsWith("/feedback/") ||
+    pathname.startsWith("/shared/")
   ) {
     return false;
   }

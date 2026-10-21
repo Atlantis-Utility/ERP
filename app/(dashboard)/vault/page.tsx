@@ -13,7 +13,7 @@ import type { VaultCategory, VaultEntryMeta } from "@/lib/vault-types";
 import { logActivity } from "@/lib/activity-log";
 import VaultFormDrawer, { type VaultFormValues } from "@/components/vault/VaultFormDrawer";
 import VaultDetailDrawer from "@/components/vault/VaultDetailDrawer";
-import VaultShareDrawer from "@/components/vault/VaultShareDrawer";
+import VaultShareDrawer, { type VaultShareTab } from "@/components/vault/VaultShareDrawer";
 import VaultUnlockGate from "@/components/vault/VaultUnlockGate";
 
 const CATEGORY_STYLES: Record<VaultCategory, { bg: string; text: string }> = {
@@ -44,6 +44,7 @@ export default function VaultPage() {
   const [editingEntry, setEditingEntry] = useState<VaultEntryMeta | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<VaultEntryMeta | null>(null);
   const [sharingEntry, setSharingEntry] = useState<VaultEntryMeta | null>(null);
+  const [sharingTab, setSharingTab] = useState<VaultShareTab>("team");
 
   async function load() {
     setLoading(true);
@@ -294,13 +295,14 @@ export default function VaultPage() {
         onClose={() => setSelectedEntry(null)}
         onEdit={(entry) => { setSelectedEntry(null); setEditingEntry(entry); }}
         onDelete={handleDelete}
-        onManageAccess={(entry) => { setSelectedEntry(null); setSharingEntry(entry); }}
+        onManageAccess={(entry, tab) => { setSelectedEntry(null); setSharingTab(tab ?? "team"); setSharingEntry(entry); }}
       />
 
       <VaultShareDrawer
         open={!!sharingEntry}
         entry={sharingEntry}
         onClose={() => setSharingEntry(null)}
+        initialTab={sharingTab}
       />
     </div>
   );

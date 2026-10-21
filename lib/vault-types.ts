@@ -103,3 +103,66 @@ export interface VaultEntryUpdateInput {
   customerId?: string | null;
   customerName?: string | null;
 }
+
+// ── Sharing outside the organisation ─────────────────────────────────────
+
+export type VaultExternalShareStatus = "active" | "expired" | "revoked" | "used_up";
+
+// What the owner sees about a link they sent. Never the token: only its
+// hash is stored, so the link can't be shown again after it's created.
+export interface VaultExternalShareInfo {
+  id: string;
+  recipientEmail: string;
+  recipientName?: string;
+  message?: string;
+  includeNotes: boolean;
+  expiresAt: string;
+  maxViews: number | null;
+  viewCount: number;
+  lastViewedAt?: string;
+  createdAt: string;
+  createdByName: string;
+  revokedAt?: string;
+  status: VaultExternalShareStatus;
+}
+
+export interface VaultExternalShareInput {
+  recipientEmail: string;
+  recipientName?: string;
+  message?: string;
+  /** ISO timestamp. Between a few minutes and VAULT_EXTERNAL_MAX_DAYS out. */
+  expiresAt: string;
+  /** null = as many times as they like until it expires. */
+  maxViews: number | null;
+  includeNotes: boolean;
+  /** The sender's IANA zone, so the email states the expiry in their terms. */
+  timeZone?: string;
+}
+
+export const VAULT_EXTERNAL_MAX_DAYS = 90;
+
+// What the public page gets before the recipient asks to see anything:
+// enough to say what this is and who sent it, none of the credential.
+export type VaultSharedLinkPreview =
+  | {
+      status: "active";
+      entryName: string;
+      senderName: string;
+      recipientEmail: string;
+      message?: string;
+      expiresAt: string;
+      viewsLeft: number | null;
+    }
+  | { status: Exclude<VaultExternalShareStatus, "active">; senderName: string };
+
+export interface VaultSharedCredentials {
+  entryName: string;
+  accountId?: string;
+  email?: string;
+  website?: string;
+  password: string;
+  pin?: string;
+  notes?: string;
+  expiresAt: string;
+  viewsLeft: number | null;
+}

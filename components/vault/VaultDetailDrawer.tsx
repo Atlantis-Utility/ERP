@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Eye, EyeOff, Copy, Check, ExternalLink, Pencil, Trash2, Mail, Phone, User, Clock, Users, Share2, Building2, Hash } from "lucide-react";
+import { Eye, EyeOff, Copy, Check, ExternalLink, Pencil, Trash2, Mail, Phone, User, Clock, Users, Share2, Building2, Hash, Send } from "lucide-react";
 import VaultModal from "@/components/vault/VaultModal";
 import { VAULT_CATEGORIES } from "@/lib/vault-types";
 import type { VaultEntryMeta } from "@/lib/vault-types";
@@ -18,7 +18,7 @@ interface Props {
   onClose: () => void;
   onEdit: (entry: VaultEntryMeta) => void;
   onDelete: (entry: VaultEntryMeta) => Promise<void>;
-  onManageAccess: (entry: VaultEntryMeta) => void;
+  onManageAccess: (entry: VaultEntryMeta, tab?: "team" | "outside") => void;
 }
 
 function Row({ icon: Icon, label, value, href }: { icon: React.ElementType; label: string; value?: string; href?: string }) {
@@ -283,12 +283,22 @@ export default function VaultDetailDrawer({ open, entry, onClose, onEdit, onDele
             )}
           </div>
           {canManage && (
-            <button
-              onClick={() => onManageAccess(entry)}
-              className="shrink-0 text-xs font-medium text-[#0070f3] hover:underline ml-3"
-            >
-              Manage
-            </button>
+            <div className="shrink-0 flex items-center gap-3 ml-3">
+              <button
+                onClick={() => onManageAccess(entry, "outside")}
+                className="flex items-center gap-1 text-xs font-medium text-[#0070f3] hover:underline"
+                title="Email a secure, expiring link to someone outside the organization"
+              >
+                <Send className="w-3 h-3" />
+                Share outside
+              </button>
+              <button
+                onClick={() => onManageAccess(entry, "team")}
+                className="text-xs font-medium text-[#0070f3] hover:underline"
+              >
+                Manage
+              </button>
+            </div>
           )}
         </div>
 

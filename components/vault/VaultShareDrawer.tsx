@@ -1,21 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X, UserPlus } from "lucide-react";
+import { X, UserPlus, Users, Globe } from "lucide-react";
 import VaultModal from "@/components/vault/VaultModal";
+import VaultExternalSharePanel from "@/components/vault/VaultExternalSharePanel";
 import Select from "@/components/ui/Select";
 import { useEmployees } from "@/lib/db/employees";
 import { listVaultShares, grantVaultShare, revokeVaultShare } from "@/lib/db/vault";
 import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
 import type { VaultEntryMeta, VaultShareInfo } from "@/lib/vault-types";
 
+export type VaultShareTab = "team" | "outside";
+
 interface Props {
   open: boolean;
   entry: VaultEntryMeta | null;
   onClose: () => void;
+  /** Which tab to open on; "outside" is offered to the owner and admins only. */
+  initialTab?: VaultShareTab;
 }
 
-export default function VaultShareDrawer({ open, entry, onClose }: Props) {
+export default function VaultShareDrawer({ open, entry, onClose, initialTab = "team" }: Props) {
   const employees = useEmployees();
   const [shares, setShares] = useState<VaultShareInfo[]>([]);
   const [isOwner, setIsOwner] = useState(false);
@@ -24,6 +29,7 @@ export default function VaultShareDrawer({ open, entry, onClose }: Props) {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [adding, setAdding] = useState(false);
   const [removingUid, setRemovingUid] = useState<string | null>(null);
+  const [tab, setTab] = useState<VaultShareTab>(initialTab);
 
   async function load() {
     if (!entry) return;
@@ -43,6 +49,7 @@ export default function VaultShareDrawer({ open, entry, onClose }: Props) {
   useEffect(() => {
     if (open && entry) load();
     setSelectedEmployeeId("");
+    setTab(initialTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, entry?.id]);
 
@@ -85,8 +92,26 @@ export default function VaultShareDrawer({ open, entry, onClose }: Props) {
 
   if (!entry) return null;
 
+  // Grantees can see who else has it, but only the owner (or an admin) can
+  // hand it to someone outside, same as sharing it inside.
+  const canShareOutside = entry.isOwner || entry.isAdminView;
+  const showOutside = canShareOutside && tab === "outside";
+
   return (
     <VaultModal open={open} onClose={onClose} title="Manage Access" subtitle={entry.name}>
+      {canShareOutside && (
+        <div className="flex gap-1 p-1 bg-[#f5f5f5] rounded-lg mb-5">
+          <TabButton active={tab === "team"} onClick={() => setTab("team")} icon={Users}>
+            People in the organization
+          </TabButton>
+          <TabButton active={tab === "outside"} onClick={() => setTab("outside")} icon={Globe}>
+            Outside the organization
+          </TabButton>
+        </div>
+      )}
+      {showOutside ? (
+        <VaultExternalSharePanel entry={entry} />
+      ) : (
       <div className="space-y-5">
         {error && (
           <div className="border border-[#fecdd3] bg-[#fef2f2] text-[#b91c1c] text-xs rounded-lg px-3 py-2.5">{error}</div>
@@ -159,6 +184,32 @@ export default function VaultShareDrawer({ open, entry, onClose }: Props) {
           )}
         </div>
       </div>
+      )}
     </VaultModal>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ElementType;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium px-3 py-2 rounded-md transition-colors ${
+        active ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
+      }`}
+    >
+      <Icon className="w-3.5 h-3.5 shrink-0" />
+      <span className="truncate">{children}</span>
+    </button>
   );
 }

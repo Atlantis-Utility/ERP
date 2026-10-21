@@ -5,6 +5,7 @@ export const VAULT_TABLE = "vault_entries";
 export const VAULT_AUDIT_TABLE = "vault_audit_log";
 export const VAULT_SHARES_TABLE = "vault_shares";
 export const VAULT_PASSKEYS_TABLE = "vault_passkeys";
+export const VAULT_EXTERNAL_SHARES_TABLE = "vault_external_shares";
 
 // `ownerUid`/`ownerName`/`isOwner`/`isAdminView`/`shareCount` are filled in
 // by the caller (they depend on who's asking and aren't stored per-row in a
@@ -44,6 +45,7 @@ export async function logVaultAudit(
     action:
       | "create" | "update" | "delete" | "reveal"
       | "share_grant" | "share_revoke"
+      | "external_share" | "external_revoke" | "external_view"
       | "unlock" | "unlock_failed"
       | "passkey_set" | "passkey_reset";
     entryId: string;
