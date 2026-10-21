@@ -13,7 +13,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_LIFETIME_MS = 5 * 60_000;
+// A minute, not five: a "5 min" link is timed from the click in the
+// browser, so it lands here a little under five minutes out.
+const MIN_LIFETIME_MS = 60_000;
 
 // Owner (vault unlocked) or admin. Anyone else gets the 404 the entry
 // itself would give them, and grantees in particular can't hand a
@@ -78,7 +80,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const expiresAt = new Date(body.expiresAt ?? "");
     const lifetime = expiresAt.getTime() - Date.now();
     if (Number.isNaN(lifetime) || lifetime < MIN_LIFETIME_MS) {
-      return NextResponse.json({ error: "Pick an expiry at least a few minutes from now" }, { status: 400 });
+      return NextResponse.json({ error: "Pick an expiry at least a minute from now" }, { status: 400 });
     }
     if (lifetime > VAULT_EXTERNAL_MAX_DAYS * 86_400_000 + 60_000) {
       return NextResponse.json({ error: `A link can last at most ${VAULT_EXTERNAL_MAX_DAYS} days` }, { status: 400 });

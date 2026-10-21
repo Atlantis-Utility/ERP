@@ -130,7 +130,7 @@ export interface VaultExternalShareInput {
   recipientEmail: string;
   recipientName?: string;
   message?: string;
-  /** ISO timestamp. Between a few minutes and VAULT_EXTERNAL_MAX_DAYS out. */
+  /** ISO timestamp. Between a minute and VAULT_EXTERNAL_MAX_DAYS out. */
   expiresAt: string;
   /** null = as many times as they like until it expires. */
   maxViews: number | null;

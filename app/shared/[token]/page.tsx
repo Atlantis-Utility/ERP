@@ -115,6 +115,10 @@ function Preview({
   onReveal: () => void;
 }) {
   const expiry = useCountdown(preview.expiresAt);
+  // A short link can run out while the page sits open; say so then rather
+  // than offer a button the server will refuse.
+  if (expiry.expired) return <ClosedFor status="expired" senderName={preview.senderName} />;
+
   return (
     <div className="p-8">
       <div className="w-11 h-11 rounded-xl bg-[#f5f5f5] flex items-center justify-center mb-5">
@@ -169,6 +173,11 @@ function Revealed({ creds, senderName }: { creds: VaultSharedCredentials; sender
   // a second fetch would spend another view on a limited link.
   const [hidden, setHidden] = useState(false);
   const websiteHref = creds.website ? (/^https?:\/\//i.test(creds.website) ? creds.website : `https://${creds.website}`) : undefined;
+
+  // The link's time is up: the details come off the screen too, not just
+  // out of reach of the next visit. Otherwise "expires in 5 minutes" would
+  // mean "readable for as long as this tab stays open".
+  if (expiry.expired) return <ClosedFor status="expired" senderName={senderName} />;
 
   return (
     <>
@@ -329,23 +338,30 @@ function Field({
   );
 }
 
-/** "23 hours" / "4 days", and the exact moment in the viewer's own zone. */
-function useCountdown(iso: string): { relative: string; absolute: string } {
+/**
+ * "23 hours" / "4 days", and the exact moment in the viewer's own zone.
+ * Inside the last ten minutes it counts seconds, because a 5-minute link
+ * is a handover in progress and "4 min" for a whole minute is no use.
+ */
+function useCountdown(iso: string): { relative: string; absolute: string; expired: boolean } {
+  const target = new Date(iso).getTime();
   const [now, setNow] = useState(() => Date.now());
+  const close = target - now < 10 * 60_000;
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
+    const t = setInterval(() => setNow(Date.now()), close ? 1_000 : 15_000);
     return () => clearInterval(t);
-  }, []);
+  }, [close]);
 
-  const ms = new Date(iso).getTime() - now;
+  const ms = target - now;
   const minutes = Math.round(ms / 60_000);
   const relative =
     ms <= 0 ? "now"
-    : minutes < 60 ? `${Math.max(1, minutes)} min`
+    : ms < 10 * 60_000 ? `${Math.floor(ms / 60_000)} min ${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")} sec`
+    : minutes < 60 ? `${minutes} min`
     : minutes < 48 * 60 ? `${Math.round(minutes / 60)} hour${Math.round(minutes / 60) === 1 ? "" : "s"}`
     : `${Math.round(minutes / 1440)} days`;
   const absolute = new Intl.DateTimeFormat(undefined, {
     month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short",
   }).format(new Date(iso));
-  return { relative, absolute };
+  return { relative, absolute, expired: ms <= 0 };
 }

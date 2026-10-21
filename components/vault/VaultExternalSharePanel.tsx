@@ -1,22 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Send, Link2, Copy, Check, X, Clock, Eye, Mail, CheckCircle2 } from "lucide-react";
 import DateTimePicker from "@/components/ui/DateTimePicker";
+import Select from "@/components/ui/Select";
 import { useConfirm } from "@/lib/confirm";
 import { useToast } from "@/lib/toast";
 import { listVaultExternalShares, createVaultExternalShare, revokeVaultExternalShare } from "@/lib/db/vault";
 import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
 import { VAULT_EXTERNAL_MAX_DAYS, type VaultEntryMeta, type VaultExternalShareInfo, type VaultExternalShareStatus } from "@/lib/vault-types";
 
+const MINUTE = 60_000;
 const HOUR = 3_600_000;
 const EXPIRY_PRESETS: { id: string; label: string; ms: number }[] = [
+  { id: "5m", label: "5 min", ms: 5 * MINUTE },
+  { id: "10m", label: "10 min", ms: 10 * MINUTE },
+  { id: "30m", label: "30 min", ms: 30 * MINUTE },
   { id: "1h", label: "1 hour", ms: HOUR },
   { id: "1d", label: "1 day", ms: 24 * HOUR },
   { id: "3d", label: "3 days", ms: 72 * HOUR },
   { id: "7d", label: "7 days", ms: 168 * HOUR },
   { id: "30d", label: "30 days", ms: 720 * HOUR },
 ];
+// "In 45 minutes" for the quick handover on a call; a date and time for the
+// contractor who starts on Monday. Both are a custom expiry.
+type CustomMode = "duration" | "date";
+const DURATION_UNITS = [
+  { value: "minutes", label: "minutes", ms: MINUTE },
+  { value: "hours", label: "hours", ms: HOUR },
+  { value: "days", label: "days", ms: 24 * HOUR },
+] as const;
+type DurationUnit = (typeof DURATION_UNITS)[number]["value"];
+
 const VIEW_PRESETS: { label: string; value: number | null }[] = [
   { label: "Unlimited", value: null },
   { label: "Once", value: 1 },
@@ -37,15 +52,28 @@ function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function formatWhen(d: Date): string {
+// A link that dies later today needs the minute, not the date.
+function formatWhen(d: Date, now: number): string {
+  if (new Date(now).toDateString() === d.toDateString()) {
+    return `today at ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  }
   return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function describeLifetime(ms: number): string {
+  const minutes = Math.round(ms / MINUTE);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.round(ms / HOUR);
+  if (hours < 48) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  return `${Math.round(ms / (24 * HOUR))} days`;
 }
 
 function relativeUntil(iso: string): string {
   const ms = new Date(iso).getTime() - Date.now();
   if (ms <= 0) return "expired";
+  if (ms < MINUTE) return "in under a minute";
   const h = ms / HOUR;
-  if (h < 1) return `in ${Math.max(1, Math.round(ms / 60_000))} min`;
+  if (h < 1) return `in ${Math.round(ms / MINUTE)} min`;
   if (h < 48) return `in ${Math.round(h)} hour${Math.round(h) === 1 ? "" : "s"}`;
   return `in ${Math.round(h / 24)} days`;
 }
@@ -70,6 +98,9 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
   const [message, setMessage] = useState("");
   const [expiryPreset, setExpiryPreset] = useState("1d");
   const [customExpiry, setCustomExpiry] = useState(() => toLocalInput(new Date(Date.now() + 48 * HOUR)));
+  const [customMode, setCustomMode] = useState<CustomMode>("duration");
+  const [durationAmount, setDurationAmount] = useState("45");
+  const [durationUnit, setDurationUnit] = useState<DurationUnit>("minutes");
   const [maxViews, setMaxViews] = useState<number | null>(null);
   const [includeNotes, setIncludeNotes] = useState(false);
   const [sending, setSending] = useState(false);
@@ -79,7 +110,7 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
   // hour" stays true while the form sits open.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
+    const t = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(t);
   }, []);
 
@@ -101,20 +132,32 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.id]);
 
-  const expiresAt = useMemo(() => {
-    if (expiryPreset === "custom") return customExpiry ? new Date(customExpiry) : null;
+  // Presets and durations count from `at`: the summary line passes the
+  // ticking clock, sending passes the moment of the click, so a "5 min" link
+  // sent after a minute spent on the form still gives them five minutes.
+  function resolveExpiry(at: number): Date | null {
+    if (expiryPreset === "custom") {
+      if (customMode === "date") return customExpiry ? new Date(customExpiry) : null;
+      const amount = Number(durationAmount);
+      const unit = DURATION_UNITS.find((u) => u.value === durationUnit)!;
+      return Number.isFinite(amount) && amount > 0 ? new Date(at + amount * unit.ms) : null;
+    }
     const preset = EXPIRY_PRESETS.find((p) => p.id === expiryPreset);
-    return preset ? new Date(now + preset.ms) : null;
-    // Recomputed on send as well; this one is for the summary line.
-  }, [expiryPreset, customExpiry, now]);
+    return preset ? new Date(at + preset.ms) : null;
+  }
 
-  const expiryProblem = useMemo(() => {
-    if (!expiresAt || Number.isNaN(expiresAt.getTime())) return "Pick when the link should expire";
+  const expiresAt = resolveExpiry(now);
+  const expiryProblem = (() => {
+    if (!expiresAt || Number.isNaN(expiresAt.getTime())) {
+      return expiryPreset === "custom" && customMode === "duration"
+        ? "Enter how long the link should last"
+        : "Pick when the link should expire";
+    }
     const ms = expiresAt.getTime() - now;
-    if (ms < 5 * 60_000) return "Pick a time at least a few minutes from now";
+    if (ms < MINUTE) return "Pick a time at least a minute from now";
     if (ms > VAULT_EXTERNAL_MAX_DAYS * 24 * HOUR) return `A link can last at most ${VAULT_EXTERNAL_MAX_DAYS} days`;
     return null;
-  }, [expiresAt, now]);
+  })();
 
   const emailValid = EMAIL_RE.test(recipientEmail.trim());
   const canSend = emailValid && !expiryProblem && !sending && emailConfigured;
@@ -124,8 +167,7 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
     setSending(true);
     setError("");
     try {
-      const preset = EXPIRY_PRESETS.find((p) => p.id === expiryPreset);
-      const at = preset ? new Date(Date.now() + preset.ms) : new Date(customExpiry);
+      const at = resolveExpiry(Date.now())!;
       const res = await createVaultExternalShare(entry.id, {
         recipientEmail: recipientEmail.trim(),
         recipientName: recipientName.trim() || undefined,
@@ -247,8 +289,49 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
               <Chip active={expiryPreset === "custom"} onClick={() => setExpiryPreset("custom")}>Custom…</Chip>
             </div>
             {expiryPreset === "custom" && (
-              <div className="mt-2 max-w-xs">
-                <DateTimePicker value={customExpiry} onChange={setCustomExpiry} />
+              <div className="mt-2.5 border border-[#eaeaea] rounded-xl p-3 bg-[#fafafa]">
+                <div className="inline-flex gap-0.5 p-0.5 bg-[#f0f0f0] rounded-lg mb-2.5">
+                  {([
+                    { id: "duration", label: "After a set time" },
+                    { id: "date", label: "On a date & time" },
+                  ] as const).map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setCustomMode(m.id)}
+                      className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${
+                        customMode === m.id ? "bg-white text-[#0a0a0a] shadow-sm" : "text-[#666] hover:text-[#0a0a0a]"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                {customMode === "duration" ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#666] shrink-0">Expires in</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      value={durationAmount}
+                      onChange={(e) => setDurationAmount(e.target.value)}
+                      aria-label="How long"
+                      className="w-20 border border-[#eaeaea] rounded-lg px-2.5 py-1.5 text-sm text-[#0a0a0a] bg-white focus:outline-none focus:border-[#0a0a0a] transition-colors"
+                    />
+                    <div className="w-32">
+                      <Select
+                        value={durationUnit}
+                        onChange={(v) => setDurationUnit(v as DurationUnit)}
+                        options={DURATION_UNITS.map((u) => ({ value: u.value, label: u.label }))}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="max-w-xs">
+                    <DateTimePicker value={customExpiry} onChange={setCustomExpiry} />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -302,7 +385,8 @@ export default function VaultExternalSharePanel({ entry }: { entry: VaultEntryMe
             <p className={`text-xs ${expiryProblem ? "text-[#f31260]" : "text-[#666]"}`}>
               {expiryProblem ?? (
                 <>
-                  Expires <span className="font-medium text-[#0a0a0a]">{formatWhen(expiresAt!)}</span>
+                  Expires <span className="font-medium text-[#0a0a0a]">{formatWhen(expiresAt!, now)}</span>
+                  <span className="text-[#999]"> ({describeLifetime(expiresAt!.getTime() - now)})</span>
                   {maxViews !== null && <> · opens {maxViews === 1 ? "once" : `${maxViews} times`}</>}
                 </>
               )}
