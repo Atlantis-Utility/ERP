@@ -11,7 +11,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import CopyButton from "@/components/ui/CopyButton";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast";
-import { getAvatarColor, getInitials } from "@/lib/utils";
+import { getAvatarColor, getInitials, formatPhone } from "@/lib/utils";
 import {
   useVendorContactsLive,
   removeVendorContact,
@@ -481,7 +481,7 @@ function VendorDetail({
                       className="flex items-center gap-2 bg-[#0a0a0a] text-white text-[13px] font-medium px-3.5 py-2 rounded-lg hover:bg-[#333] transition-colors"
                     >
                       <Phone className="w-3.5 h-3.5" />
-                      Call {main.phone}
+                      Call {formatPhone(main.phone)}
                     </a>
                   )}
                   {main.email && (
@@ -527,7 +527,7 @@ function VendorDetail({
             <dl className="border border-[#eaeaea] rounded-xl">
               {c.supportPhone && (
                 <InfoRow icon={Phone} label="Phone" copy={c.supportPhone}>
-                  <a href={telHref(c.supportPhone)} className="text-[#0070f3] hover:underline">{c.supportPhone}</a>
+                  <a href={telHref(c.supportPhone)} className="text-[#0070f3] hover:underline">{formatPhone(c.supportPhone)}</a>
                 </InfoRow>
               )}
               {c.supportEmail && (
@@ -571,7 +571,7 @@ function VendorDetail({
                       {p.phone && (
                         <a href={telHref(p.phone)} className="text-[#0070f3] hover:underline flex items-center gap-1">
                           <Phone className="w-3 h-3" />
-                          {p.phone}
+                          {formatPhone(p.phone)}
                         </a>
                       )}
                       {p.email && (

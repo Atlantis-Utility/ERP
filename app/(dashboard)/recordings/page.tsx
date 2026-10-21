@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
 import { Mic, Clock, Building2, BarChart, RefreshCw, AlertCircle } from "lucide-react";
 
+import { formatPhone } from "@/lib/utils";
 interface RLRecording {
   recording?: string;
   domain?: string;
@@ -239,9 +240,9 @@ export default function RecordingsPage() {
                     <td className="px-5 py-3 text-sm text-[#666]">{r.domain || "-"}</td>
                     <td className="px-5 py-3 text-sm font-mono text-[#666]">{r.subscriber || "-"}</td>
                     <td className="px-5 py-3">
-                      <span className="text-sm font-mono text-[#0a0a0a]">{r.orig_from_user || "-"}</span>
+                      <span className="text-sm font-mono text-[#0a0a0a]">{r.orig_from_user ? formatPhone(r.orig_from_user) : "-"}</span>
                       <span className="text-sm text-[#999] mx-1">→</span>
-                      <span className="text-sm font-mono text-[#0a0a0a]">{r.dest_to_user || "-"}</span>
+                      <span className="text-sm font-mono text-[#0a0a0a]">{r.dest_to_user ? formatPhone(r.dest_to_user) : "-"}</span>
                     </td>
                     <td className="px-5 py-3 text-sm text-[#666]">{formatDuration(r.duration)}</td>
                     <td className="px-5 py-3 text-xs text-[#666]">{formatTime(r.start_time)}</td>

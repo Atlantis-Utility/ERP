@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
 import { PhoneCall, PhoneIncoming, PhoneOutgoing, Clock, RefreshCw, AlertCircle } from "lucide-react";
 
+import { formatPhone } from "@/lib/utils";
 interface RLCDR {
   callid?: string;
   domain?: string;
@@ -42,12 +43,10 @@ function formatTime(t: string | undefined) {
   }
 }
 
+// Through the shared formatter, so a call record reads the same as
+// the number on the customer page.
 function formatNumber(n: string | undefined) {
-  if (!n) return "-";
-  const d = n.replace(/\D/g, "");
-  if (d.length === 11 && d.startsWith("1")) return `+1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
-  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-  return n;
+  return n ? formatPhone(n) : "-";
 }
 
 export default function CallRecordsPage() {

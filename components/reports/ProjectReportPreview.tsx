@@ -5,7 +5,7 @@ import { Users, CheckSquare } from "lucide-react";
 import type { Project } from "@/lib/mock-projects";
 import type { KanbanCard } from "@/components/tasks/AddTaskDrawer";
 import { buildProjectReportData } from "@/lib/reports/project-report";
-import { getAvatarColor, getInitials } from "@/lib/utils";
+import { getAvatarColor, getInitials, formatPhone } from "@/lib/utils";
 
 const phaseStatusStyle: Record<string, { bg: string; text: string }> = {
   "Not Started": { bg: "bg-[#f1f1f1]", text: "text-[#999]" },
@@ -117,7 +117,7 @@ export default function ProjectReportPreview({ project, tasks = [] }: { project:
               <div key={i} className="border border-[#eaeaea] rounded-lg p-3">
                 <p className="text-sm font-medium text-[#0a0a0a]">{c.name}</p>
                 <p className="text-xs text-[#999]">{c.role}</p>
-                <p className="text-xs text-[#0070f3] mt-1">{c.email} · {c.phone}</p>
+                <p className="text-xs text-[#0070f3] mt-1">{c.email} · {formatPhone(c.phone)}</p>
               </div>
             ))}
           </div>

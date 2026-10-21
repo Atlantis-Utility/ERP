@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
 import { Users, CheckCircle, Phone, Building2, RefreshCw, AlertCircle } from "lucide-react";
 
+import { formatPhone } from "@/lib/utils";
 interface RLSubscriber {
   subscriber?: string;
   domain?: string;
@@ -221,7 +222,7 @@ export default function SubscribersPage() {
                       <td className="px-5 py-3 text-sm text-[#666]">{displayName(s)}</td>
                       <td className="px-5 py-3 text-sm text-[#666]">{s.domain || "-"}</td>
                       <td className="px-5 py-3 text-sm text-[#666]">{s.email || "-"}</td>
-                      <td className="px-5 py-3 text-sm text-[#666] font-mono">{s.did || "-"}</td>
+                      <td className="px-5 py-3 text-sm text-[#666] font-mono">{s.did ? formatPhone(s.did) : "-"}</td>
                       <td className="px-5 py-3">
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${isEnabled ? "bg-[#e8fdf0] text-[#17c964]" : "bg-[#fff1f2] text-[#f31260]"}`}>
                           {isEnabled ? "Enabled" : (s.status ?? "Disabled")}

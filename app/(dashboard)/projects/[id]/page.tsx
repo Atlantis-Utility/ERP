@@ -9,7 +9,7 @@ import { useEmployees } from "@/lib/db/employees";
 import { useCompanyOptions } from "@/lib/hooks/use-company-options";
 import { updateProject, removeProject } from "@/lib/db/projects";
 import { supabase } from "@/lib/supabase/client";
-import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
+import { getAvatarColor, getInitials, formatDate, formatPhone } from "@/lib/utils";
 import Drawer from "@/components/ui/Drawer";
 import FormField, { inputClass } from "@/components/ui/FormField";
 import Select from "@/components/ui/Select";
@@ -541,7 +541,7 @@ export default function ProjectDetailPage() {
                       <div className="flex items-center gap-2">
                         <Phone className="w-3 h-3 text-[#999] shrink-0" />
                         <a href={`tel:${contact.phone}`} className="text-xs text-[#444] hover:text-[#0070f3] transition-colors">
-                          {contact.phone}
+                          {formatPhone(contact.phone)}
                         </a>
                       </div>
                     )}

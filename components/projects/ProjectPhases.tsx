@@ -11,6 +11,7 @@ import { logActivity } from "@/lib/activity-log";
 import type { Project } from "@/lib/mock-projects";
 import { updateProject } from "@/lib/db/projects";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { formatPhone } from "@/lib/utils";
 import {
   PHASE_DEFS, computeProgress, seedFromProject, emptyPhasesState,
 } from "@/lib/project-phases";
@@ -546,7 +547,7 @@ function AttachmentItem({ attachment: att, onRemove }: { attachment: Attachment;
               )}
               {att.contactPhone && (
                 <a href={`tel:${att.contactPhone}`} className="text-xs text-[#444] hover:text-[#0070f3] transition-colors">
-                  {att.contactPhone}
+                  {formatPhone(att.contactPhone)}
                 </a>
               )}
             </div>

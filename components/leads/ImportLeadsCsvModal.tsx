@@ -8,7 +8,7 @@ import { guessColumnMapping } from "@/lib/csv";
 import { readSpreadsheet, SpreadsheetError, SPREADSHEET_ACCEPT, type SheetData } from "@/lib/spreadsheet";
 import { addLeads, fetchDedupeIndex, fetchLeadsByIds, type Lead } from "@/lib/db/leads";
 import type { ActivityActor } from "@/lib/db/lead-activity";
-import { getErrorMessage } from "@/lib/utils";
+import { getErrorMessage, formatPhone } from "@/lib/utils";
 import {
   addressKey,
   buildCompanyIndex,
@@ -531,7 +531,7 @@ export default function ImportLeadsCsvModal({
                                 rather than after thousands of rows are in. */}
                             {(r.phone || r.email) && (
                               <p className="text-xs text-[#666] mt-0.5 truncate max-w-48">
-                                {[r.phone, r.email].filter(Boolean).join(" · ")}
+                                {[formatPhone(r.phone), r.email].filter(Boolean).join(" · ")}
                               </p>
                             )}
                           </td>

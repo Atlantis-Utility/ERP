@@ -8,7 +8,7 @@ import { VAULT_CATEGORIES } from "@/lib/vault-types";
 import type { VaultEntryMeta } from "@/lib/vault-types";
 import { revealVaultPassword } from "@/lib/db/vault";
 import { copyWithAutoClear } from "@/lib/vault-client-utils";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatPhone } from "@/lib/utils";
 
 const AUTO_HIDE_MS = 20_000;
 
@@ -307,7 +307,7 @@ export default function VaultDetailDrawer({ open, entry, onClose, onEdit, onDele
           <Row icon={Hash} label="ID" value={entry.accountId} />
           <Row icon={Mail} label="Email" value={entry.email} />
           <Row icon={ExternalLink} label="Website" value={entry.website} href={/^https?:\/\//.test(entry.website ?? "") ? entry.website : entry.website ? `https://${entry.website}` : undefined} />
-          <RowList icon={Phone} label="Phone Numbers" values={entry.phoneNumbers} />
+          <RowList icon={Phone} label="Phone Numbers" values={entry.phoneNumbers.map(formatPhone)} />
           <RowList icon={User} label="Points of Contact" values={entry.pointsOfContact} />
           {entry.customerId ? (
             <div className="flex items-start gap-3 py-2.5 border-b border-[#f5f5f5] last:border-0">

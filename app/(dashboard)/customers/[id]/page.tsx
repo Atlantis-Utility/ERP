@@ -17,7 +17,7 @@ import { subscribeProjects } from "@/lib/db/projects";
 import { statusConfig, type Project } from "@/lib/mock-projects";
 import { matchScore, LIKELY_MATCH_THRESHOLD } from "@/lib/name-match";
 import { gdmsDevicesForCustomer } from "@/lib/gdms-match";
-import { withScheme, formatDate } from "@/lib/utils";
+import { withScheme, formatDate, formatPhone } from "@/lib/utils";
 import IspLogo from "@/components/unifi/IspLogo";
 import {
   findBilledIsp, ISP_PROVIDERS, serviceMonthlyTotal, formatSpeed, type BilledIsp,
@@ -418,7 +418,7 @@ function ContactCarousel({ contacts, mainContactId }: { contacts: ContactCardDat
         <div className="space-y-1.5 mt-3">
           <div className="flex items-center gap-1.5 text-xs text-[#666]">
             <Phone className="w-3 h-3 shrink-0" />
-            <span className="truncate">{current.phone || "-"}</span>
+            <span className="truncate">{current.phone ? formatPhone(current.phone) : "-"}</span>
             {current.phone && <CopyButton value={current.phone} label="phone" />}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-[#666]">
@@ -460,16 +460,6 @@ function isOpenStatus(status: string) {
   return status.toLowerCase() === "open";
 }
 
-function formatNumber(n: string) {
-  const d = n.replace(/\D/g, "");
-  if (d.length === 11 && d.startsWith("1")) {
-    return `+1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
-  }
-  if (d.length === 10) {
-    return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-  }
-  return n;
-}
 
 function SectionPending({ status, onRetry }: { status: "loading" | "error"; onRetry: () => void }) {
   if (status === "loading") {
@@ -651,7 +641,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         headers: ["Number", "Description"],
         rows: phoneNumbers.map((p) => {
           const number = numberFromMatchrule(p.matchrule);
-          return [number ? formatNumber(number) : "", p.plan_description ?? ""];
+          return [number ? formatPhone(number) : "", p.plan_description ?? ""];
         }),
       };
     }
@@ -1029,7 +1019,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                     <tr key={i} className="border-b border-[#f7f7f7] last:border-0 hover:bg-[#fafafa] transition-colors">
                       <td className="px-5 py-3 text-sm font-medium text-[#0a0a0a]">
                         <div className="flex items-center gap-1.5">
-                          {number ? formatNumber(number) : "-"}
+                          {number ? formatPhone(number) : "-"}
                           {number && <CopyButton value={number} label="number" />}
                         </div>
                       </td>

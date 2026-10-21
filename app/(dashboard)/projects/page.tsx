@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatPhone } from "@/lib/utils";
 import { getAvatarColor, getInitials } from "@/lib/utils";
 import { Plus, Building2, Mail, Phone } from "lucide-react";
 import AddProjectDrawer, { type Project } from "@/components/projects/AddProjectDrawer";
@@ -202,7 +202,7 @@ export default function ProjectsPage() {
                                     <a
                                       href={`tel:${first.phone}`}
                                       onClick={(e) => e.stopPropagation()}
-                                      title={first.phone}
+                                      title={formatPhone(first.phone)}
                                       className="text-[#0070f3] hover:text-[#0060d0] transition-colors"
                                     >
                                       <Phone className="w-3 h-3" />

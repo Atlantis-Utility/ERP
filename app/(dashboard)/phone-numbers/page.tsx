@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
 import { Phone, PhoneIncoming, PhoneOff, RefreshCw, AlertCircle } from "lucide-react";
 
+import { formatPhone } from "@/lib/utils";
 interface RLDid {
   matchrule?: string;
   domain_owner?: number | string;
@@ -18,16 +19,6 @@ interface PortalCustomerLite {
 
 type ViewState = "loading" | "unconfigured" | "error" | "ok";
 
-function formatNumber(n: string) {
-  const d = n.replace(/\D/g, "");
-  if (d.length === 11 && d.startsWith("1")) {
-    return `+1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
-  }
-  if (d.length === 10) {
-    return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-  }
-  return n;
-}
 
 function isUnassigned(d: RLDid) {
   return /unassigned/i.test(d.plan_description ?? "");
@@ -100,7 +91,7 @@ export default function PhoneNumbersPage() {
       const owner = d.domain_owner != null ? String(d.domain_owner) : "";
       const number = numberFromMatchrule(d.matchrule);
       return [
-        number ? formatNumber(number) : "",
+        number ? formatPhone(number) : "",
         d.plan_description ?? "",
         customerNames[owner] ?? owner,
         isUnassigned(d) ? "Available" : "Assigned",
@@ -242,7 +233,7 @@ export default function PhoneNumbersPage() {
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <Phone className="w-3.5 h-3.5 text-[#999] shrink-0" />
-                        <span className="text-sm font-medium text-[#0a0a0a] font-mono">{number ? formatNumber(number) : "-"}</span>
+                        <span className="text-sm font-medium text-[#0a0a0a] font-mono">{number ? formatPhone(number) : "-"}</span>
                       </div>
                     </td>
                     <td className="px-5 py-3 text-sm text-[#666]">{d.plan_description || "-"}</td>

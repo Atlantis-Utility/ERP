@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getLogs, type ActivityLogEntry } from "@/lib/activity-log";
-import { getAvatarColor, getInitials, formatDate } from "@/lib/utils";
+import { getAvatarColor, getInitials, formatDate, formatPhone } from "@/lib/utils";
 import { ArrowLeft, Mail, Phone, Pencil, Check } from "lucide-react";
 import type { Employee, EmployeeStatus } from "@/lib/mock-data";
 import { NAV_PAGES } from "@/lib/nav-pages";
@@ -300,7 +300,7 @@ export default function EmployeeProfilePage() {
                 </div>
                 <div>
                   <p className="text-xs text-[#999] uppercase tracking-wider mb-0.5">Phone</p>
-                  <p className="text-sm font-medium text-[#0a0a0a]">{employee.phone || "Not provided"}</p>
+                  <p className="text-sm font-medium text-[#0a0a0a]">{employee.phone ? formatPhone(employee.phone) : "Not provided"}</p>
                 </div>
               </div>
             </div>

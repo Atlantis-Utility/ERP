@@ -22,6 +22,7 @@ import {
 } from "@/lib/customer-hours";
 import { ExternalLink } from "lucide-react";
 
+import { formatPhone } from "@/lib/utils";
 interface DefaultContact {
   name: string;
   email: string;
@@ -476,7 +477,7 @@ export default function EditCustomerDetailsDrawer({
               </button>
             </div>
             <p className="text-sm text-[#0a0a0a]">{defaultContact.name || "-"}</p>
-            <p className="text-xs text-[#666]">{defaultContact.email || "-"} · {defaultContact.phone || "-"}</p>
+            <p className="text-xs text-[#666]">{defaultContact.email || "-"} · {defaultContact.phone ? formatPhone(defaultContact.phone) : "-"}</p>
           </div>
 
           {contacts.map((contact) => (

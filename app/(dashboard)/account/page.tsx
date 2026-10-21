@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { updateEmployee } from "@/lib/db/employees";
 import { getLogs, logActivity, type ActivityLogEntry } from "@/lib/activity-log";
-import { getInitials } from "@/lib/utils";
+import { getInitials, formatPhone } from "@/lib/utils";
 import { Pencil, Check, Mail, Shield, Clock, Phone, MapPin, Briefcase, Building2, X, Calendar, Activity } from "lucide-react";
 import Header from "@/components/layout/Header";
 import FormField, { inputClass } from "@/components/ui/FormField";
@@ -192,7 +192,7 @@ export default function AccountPage() {
   if (!authUser) return null;
 
   // Resolved display values (prefer live employee record)
-  const displayPhone    = employee?.phone    ?? extra.phone    ?? "";
+  const displayPhone    = formatPhone(employee?.phone ?? extra.phone ?? "");
   const displayLocation = employee?.location ?? extra.location ?? "";
   const displayRole     = employee?.role     ?? "";
   const displayAccessRole = employee?.accessRole ?? (authUser.isAdmin ? "Administrator" : "Contributor");

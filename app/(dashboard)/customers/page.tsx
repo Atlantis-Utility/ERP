@@ -10,6 +10,7 @@ import { customerStatusKey, balanceAmount, creditLimitAmount, type CustomerStatu
 import { listUnifiLinks } from "@/lib/db/unifi-links";
 import { Building2, RefreshCw, AlertCircle, Search, Wifi, DollarSign } from "lucide-react";
 
+import { formatPhone } from "@/lib/utils";
 interface PortalCustomer {
   id: string;
   parentId: string;
@@ -304,7 +305,7 @@ export default function CustomersPage() {
                     <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap">
                       {c.phone ? (
                         <div className="flex items-center gap-1.5">
-                          {c.phone}
+                          {formatPhone(c.phone)}
                           <CopyButton value={c.phone} label="phone" />
                         </div>
                       ) : "-"}

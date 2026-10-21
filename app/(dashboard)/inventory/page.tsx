@@ -6,6 +6,7 @@ import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import InventoryItemDrawer from "@/components/inventory/InventoryItemDrawer";
+import { formatPhone } from "@/lib/utils";
 import {
   useInventory, isUnused, CATEGORY_LABELS, STATUS_LABELS,
   type InventoryItem, type InventoryCategory, type InventoryStatus,
@@ -215,7 +216,7 @@ export default function InventoryPage() {
                         </div>
                       ) : <span className="text-sm text-[#bbb]">-</span>}
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">{item.phoneNumber || "-"}</td>
+                    <td className="px-4 py-3 text-sm text-[#666] whitespace-nowrap">{item.phoneNumber ? formatPhone(item.phoneNumber) : "-"}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${style.bg} ${style.text}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />

@@ -78,9 +78,10 @@ export function formatNumber(amount: number): string {
 }
 
 /**
- * US numbers as (XXX)-XXX-XXXX, so a list of them lines up instead of showing
- * every format a CSV happened to carry: "(805)948-2830", "805 653-6794" and
- * "8059482830" all read the same way here.
+ * US numbers as +1 XXX-XXX-XXXX, everywhere in the app, so a list of them
+ * lines up instead of showing every format a CSV or a person happened to
+ * type: "(805)948-2830", "805 653-6794", "18059482830" and "8059482830" all
+ * read the same way here.
  *
  * Anything that isn't a plain 10-digit number is returned untouched rather
  * than forced into the shape. An extension, a short code or an international
@@ -93,7 +94,7 @@ export function formatPhone(raw: string | undefined | null): string {
   // Leading country code on an otherwise ordinary US number.
   const local = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
   if (local.length !== 10) return raw.trim();
-  return `(${local.slice(0, 3)})-${local.slice(3, 6)}-${local.slice(6)}`;
+  return `+1 ${local.slice(0, 3)}-${local.slice(3, 6)}-${local.slice(6)}`;
 }
 
 /** Digits only, for a tel: href, where punctuation is noise. */

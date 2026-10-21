@@ -6,7 +6,7 @@ import { addLead, fetchExistingLeadIds, type Lead } from "@/lib/db/leads";
 import type { ActivityActor } from "@/lib/db/lead-activity";
 import type { PlaceResult } from "@/lib/azure-maps";
 import { formatAddress } from "@/lib/leads-constants";
-import { getErrorMessage, withScheme } from "@/lib/utils";
+import { getErrorMessage, withScheme, formatPhone } from "@/lib/utils";
 
 type SearchState = "idle" | "loading" | "unconfigured" | "error" | "ok";
 
@@ -145,7 +145,7 @@ export default function DiscoverPanel({ actor, onSaved }: { actor: ActivityActor
                       <p className="text-sm font-medium text-[#0a0a0a] truncate">{p.name}</p>
                       <p className="text-xs text-[#999] truncate">{formatAddress(p)}</p>
                       <div className="flex items-center gap-3 mt-0.5">
-                        {p.phone && <span className="text-xs text-[#666] font-mono">{p.phone}</span>}
+                        {p.phone && <span className="text-xs text-[#666] font-mono">{formatPhone(p.phone)}</span>}
                         {withScheme(p.website) && (
                           <a
                             href={withScheme(p.website)}

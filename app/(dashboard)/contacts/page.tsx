@@ -8,6 +8,7 @@ import ExportMenu from "@/components/ui/ExportMenu";
 import Select from "@/components/ui/Select";
 import { BookUser, Mail, Smartphone, Phone, RefreshCw, AlertCircle, Plus, X, Trash2 } from "lucide-react";
 
+import { formatPhone } from "@/lib/utils";
 interface Contact {
   domain: string;
   user: string;
@@ -331,9 +332,9 @@ export default function ContactsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-[#666]">{c.company || "-"}</td>
-                    <td className="px-4 py-3 text-sm text-[#666] font-mono">{c.work_phone || "-"}</td>
-                    <td className="px-4 py-3 text-sm text-[#666] font-mono">{c.cell_phone || "-"}</td>
-                    <td className="px-4 py-3 text-sm text-[#666] font-mono">{c.home_phone || "-"}</td>
+                    <td className="px-4 py-3 text-sm text-[#666] font-mono">{c.work_phone ? formatPhone(c.work_phone) : "-"}</td>
+                    <td className="px-4 py-3 text-sm text-[#666] font-mono">{c.cell_phone ? formatPhone(c.cell_phone) : "-"}</td>
+                    <td className="px-4 py-3 text-sm text-[#666] font-mono">{c.home_phone ? formatPhone(c.home_phone) : "-"}</td>
                     <td className="px-4 py-3 text-sm text-[#666]">{c.email || "-"}</td>
                     <td className="px-4 py-3">
                       {c.tags ? (
