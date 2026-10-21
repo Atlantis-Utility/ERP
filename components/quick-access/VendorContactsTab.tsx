@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Plus, Pencil, Trash2, Phone, Mail, ExternalLink, LifeBuoy, Search, Building2, Download, Star,
   ChevronLeft, Globe, StickyNote, UserRound,
@@ -27,6 +27,47 @@ import {
 } from "@/lib/db/vendor-contacts";
 
 const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`;
+
+// The panes still scroll with a wheel, trackpad or finger; they just don't
+// draw a bar to say so.
+const NO_SCROLLBAR = "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+
+// The page's scroll area (DashboardShell) pads its bottom by this much.
+const SHELL_BOTTOM_PADDING = 32;
+const MD_BREAKPOINT = 768;
+
+/**
+ * The address book sized to whatever is left of the window below it, so
+ * the page itself never scrolls and only the two panes do. Measured rather
+ * than written as a calc(): the header, tabs and padding above it differ
+ * by screen, and a guess either leaves a gap or pushes the page into a
+ * scrollbar. Phones keep the natural height, one pane at a time.
+ */
+function useFitToScreen(): [(el: HTMLDivElement | null) => void, number | null] {
+  const [height, setHeight] = useState<number | null>(null);
+  const detach = useRef<(() => void) | null>(null);
+
+  // A callback ref rather than an effect: the panel only mounts once the
+  // vendors have loaded, and this measures whenever it appears.
+  const ref = useCallback((el: HTMLDivElement | null) => {
+    detach.current?.();
+    detach.current = null;
+    if (!el) return;
+    function measure() {
+      if (window.innerWidth < MD_BREAKPOINT) return setHeight(null);
+      // From the top of its scroll container, so it's right even if that
+      // container happens to be scrolled.
+      const scroller = el!.parentElement?.closest(".overflow-y-auto") as HTMLElement | null;
+      const top = el!.getBoundingClientRect().top + (scroller?.scrollTop ?? 0);
+      setHeight(Math.max(420, Math.floor(window.innerHeight - top - SHELL_BOTTOM_PADDING)));
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    detach.current = () => window.removeEventListener("resize", measure);
+  }, []);
+
+  return [ref, height];
+}
 
 function Logo({ vendor, size }: { vendor: VendorContact; size: number }) {
   return (
@@ -80,6 +121,7 @@ export default function VendorContactsTab() {
   const [deleting, setDeleting] = useState<VendorContact | null>(null);
   const [busy, setBusy] = useState(false);
   const { success, error: notifyError } = useToast();
+  const [fitRef, fitHeight] = useFitToScreen();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -206,7 +248,11 @@ export default function VendorContactsTab() {
           )}
         </div>
       ) : (
-        <div className="bg-white border border-[#eaeaea] rounded-xl overflow-hidden grid md:grid-cols-[300px_minmax(0,1fr)] md:h-[calc(100dvh-15rem)] md:min-h-[520px]">
+        <div
+          ref={fitRef}
+          style={fitHeight ? { height: fitHeight } : undefined}
+          className="bg-white border border-[#eaeaea] rounded-xl overflow-hidden grid md:grid-cols-[300px_minmax(0,1fr)]"
+        >
           {/* ── Vendor list ── */}
           <div className={`${mobileDetail ? "hidden md:flex" : "flex"} flex-col min-h-0 md:border-r border-[#eaeaea]`}>
             <div className="p-3 border-b border-[#eaeaea] space-y-2">
@@ -243,7 +289,7 @@ export default function VendorContactsTab() {
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className={`flex-1 overflow-y-auto ${NO_SCROLLBAR}`}>
               {groups.length === 0 ? (
                 <p className="text-xs text-[#999] text-center py-10 px-4">Nothing matches “{query}”.</p>
               ) : (
@@ -291,7 +337,7 @@ export default function VendorContactsTab() {
           </div>
 
           {/* ── Detail ── */}
-          <div className={`${mobileDetail ? "block" : "hidden md:block"} min-h-0 overflow-y-auto`}>
+          <div className={`${mobileDetail ? "block" : "hidden md:block"} min-h-0 overflow-y-auto ${NO_SCROLLBAR}`}>
             {selected ? (
               <VendorDetail
                 vendor={selected}
