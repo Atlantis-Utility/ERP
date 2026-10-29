@@ -25,6 +25,8 @@ import {
   type VendorContact,
   type VendorPerson,
 } from "@/lib/db/vendor-contacts";
+import Link from "next/link";
+import { useIspAccounts, accountsFor } from "@/lib/db/isp-accounts";
 
 const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`;
 
@@ -398,6 +400,9 @@ function VendorDetail({
   onMakeMain: (p: VendorPerson) => void;
 }) {
   const people = vendorPeople(c);
+  // Our customers on this provider, matched on the reduced name.
+  const { rows: ispRows } = useIspAccounts();
+  const accounts = accountsFor(ispRows, c.company);
   const main = mainVendorPerson(c);
   const others = people.filter((p) => p.id !== main?.id);
   const website = c.website?.trim();
@@ -594,6 +599,42 @@ function VendorDetail({
                   )}
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Who this provider actually carries. The reason you open Lytwave
+            is usually one of these, and it was the one thing the address
+            book couldn't tell you. */}
+        {(accounts.primary.length > 0 || accounts.backup.length > 0) && (
+          <section>
+            <SectionTitle>
+              Our accounts
+              <span className="ml-2 font-normal normal-case tracking-normal text-[#999]">
+                {accounts.primary.length > 0 && `${accounts.primary.length} on this ISP`}
+                {accounts.primary.length > 0 && accounts.backup.length > 0 && " · "}
+                {accounts.backup.length > 0 && `${accounts.backup.length} as backup`}
+              </span>
+            </SectionTitle>
+            <div className="flex flex-wrap gap-1.5">
+              {[...accounts.primary, ...accounts.backup].map((a) => {
+                const isBackup = accounts.backup.some((b) => b.customerId === a.customerId);
+                return (
+                  <Link
+                    key={`${a.customerId}-${isBackup ? "b" : "p"}`}
+                    href={`/customers/${a.customerId}`}
+                    title={`${a.company} — ${isBackup ? "backup circuit" : "primary circuit"}, recorded as "${a.asWritten}"`}
+                    className={`inline-flex items-center gap-1 text-[12px] font-medium px-2.5 py-1.5 rounded-lg border transition-colors max-w-full ${
+                      isBackup
+                        ? "border-dashed border-[#eaeaea] text-[#999] hover:bg-[#fafafa]"
+                        : "border-[#eaeaea] text-[#444] hover:bg-[#fafafa] hover:border-[#d4d4d4]"
+                    }`}
+                  >
+                    <Building2 className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{a.company}</span>
+                  </Link>
+                );
+              })}
             </div>
           </section>
         )}
