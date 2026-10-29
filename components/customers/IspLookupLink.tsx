@@ -31,18 +31,23 @@ export default function IspLookupLink({
   const { success, error } = useToast();
 
   async function open() {
-    const trimmed = address.trim();
-    if (trimmed) {
-      try {
-        await navigator.clipboard.writeText(trimmed);
-        success("Address copied — paste it into the lookup.");
-      } catch {
-        // A browser that won't give us the clipboard is no reason not to
-        // open the thing they asked for.
-        error("Couldn't copy the address, but the lookup is open.");
-      }
-    }
+    // Opened first, and synchronously. Awaiting the clipboard before this
+    // breaks the chain back to the click, and a browser that is strict
+    // about popups (Safari, Firefox) then blocks the tab - leaving a copied
+    // address and nothing to paste it into.
     window.open(ISP_LOOKUP_URL, "_blank", "noopener,noreferrer");
+
+    const trimmed = address.trim();
+    if (!trimmed) return;
+    try {
+      await navigator.clipboard.writeText(trimmed);
+      success("Address copied — paste it into the lookup.");
+    } catch {
+      // Not every browser hands over the clipboard. The lookup is already
+      // open either way, so this says what didn't happen rather than
+      // pretending it did.
+      error("Couldn't copy the address — you'll have to paste it by hand.");
+    }
   }
 
   return (
