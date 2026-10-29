@@ -21,6 +21,7 @@ import {
   type CustomerHours,
 } from "@/lib/customer-hours";
 import { ExternalLink } from "lucide-react";
+import IspLookupLink from "@/components/customers/IspLookupLink";
 
 import { formatPhone } from "@/lib/utils";
 interface DefaultContact {
@@ -327,9 +328,11 @@ export default function EditCustomerDetailsDrawer({
           </div>
         </div>
 
-        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-3 pt-2 border-t border-[#f7f7f7]">
-          Internet Service
-        </p>
+        <div className="flex items-center justify-between gap-3 mb-3 pt-2 border-t border-[#f7f7f7]">
+          <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest">Internet Service</p>
+          {/* The question you have open while filling these in. */}
+          <IspLookupLink address={address} label="Who serves this address?" />
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Internet Service Provider">

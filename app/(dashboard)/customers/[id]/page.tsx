@@ -8,6 +8,7 @@ import CopyButton from "@/components/ui/CopyButton";
 import CustomerUnifiPanel from "@/components/customers/CustomerUnifiPanel";
 import EditCustomerDetailsDrawer from "@/components/customers/EditCustomerDetailsDrawer";
 import CustomerFiles from "@/components/customers/CustomerFiles";
+import IspLookupLink from "@/components/customers/IspLookupLink";
 import OfficeHours from "@/components/customers/OfficeHours";
 import { emptyHours } from "@/lib/customer-hours";
 import { useCustomerFileSummary, formatFileSize } from "@/lib/db/customer-files";
@@ -889,11 +890,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               value={overlay?.isp || billedPrimary?.name || ""}
               hint={!overlay?.isp && billedPrimary ? `From invoice #${billedPrimary.invoice.number}` : undefined}
             />
-            <Field
-              label="Backup Internet Service Provider"
-              value={overlay?.backupIsp || billedBackup?.name || ""}
-              hint={!overlay?.backupIsp && billedBackup ? `From invoice #${billedBackup.invoice.number}` : undefined}
-            />
+            <div className="min-w-0">
+              <Field
+                label="Backup Internet Service Provider"
+                value={overlay?.backupIsp || billedBackup?.name || ""}
+                hint={!overlay?.backupIsp && billedBackup ? `From invoice #${billedBackup.invoice.number}` : undefined}
+              />
+              <IspLookupLink address={overlay?.address ?? ""} className="mt-1.5" />
+            </div>
             {/* Where they are and their own site. Blank when we don't know,
                 which is most of the point: the researched list said things
                 like "not confirmed", and a field that says that is worse
