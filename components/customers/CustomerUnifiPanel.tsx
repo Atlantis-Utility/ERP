@@ -184,6 +184,7 @@ export default function CustomerUnifiPanel({ customerId, companyName, bare }: { 
         mainContactId: existing?.mainContactId ?? DEFAULT_CONTACT_ID,
         staticIps: existing?.staticIps ?? [], // pass through — this is a full-row upsert
         hours: existing?.hours ?? emptyHours(), // likewise
+        ispAccounts: existing?.ispAccounts ?? [], // likewise
         address: existing?.address ?? "",
         website: existing?.website ?? "",
       }, authUser?.email);

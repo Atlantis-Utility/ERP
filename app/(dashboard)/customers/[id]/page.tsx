@@ -898,6 +898,34 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               />
               <IspLookupLink address={overlay?.address ?? ""} className="mt-1.5" />
             </div>
+
+            {/* What the circuits are billed under: the number you quote when
+                you ring the provider about this customer. */}
+            {(overlay?.ispAccounts ?? []).length > 0 && (
+              <div className="min-w-0 sm:col-span-2">
+                <p className="text-[10px] font-semibold text-[#999] uppercase tracking-wider mb-1">
+                  Provider {(overlay?.ispAccounts ?? []).length === 1 ? "account" : "accounts"}
+                </p>
+                <div className="space-y-1.5">
+                  {(overlay?.ispAccounts ?? []).map((a) => (
+                    <div key={a.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+                      {a.provider && (
+                        <span className="text-[11px] font-medium text-[#666] bg-[#f5f5f5] rounded px-1.5 py-0.5 shrink-0">
+                          {a.provider}
+                        </span>
+                      )}
+                      <span className="text-sm font-medium text-[#0a0a0a] tabular-nums">{a.accountNumber}</span>
+                      {a.accountNumber && <CopyButton value={a.accountNumber} label="Account number" />}
+                      {(a.serviceAddress || a.notes) && (
+                        <span className="text-[11px] text-[#999] truncate" title={[a.serviceAddress, a.notes].filter(Boolean).join(" · ")}>
+                          {[a.serviceAddress, a.notes].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Where they are and their own site. Blank when we don't know,
                 which is most of the point: the researched list said things
                 like "not confirmed", and a field that says that is worse

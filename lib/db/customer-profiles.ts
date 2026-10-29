@@ -33,6 +33,43 @@ export interface StaticIpConfig {
   notes: string;
 }
 
+/**
+ * An account a provider bills a customer's circuit under.
+ *
+ * The number you quote when you ring them. Kept as a list because one
+ * customer can hold several - Harborwalk has two Spectrum accounts at the
+ * same address, and a primary and a backup circuit are billed separately.
+ */
+export interface IspAccount {
+  id: string;
+  /** "Spectrum", "Frontier" - matched to a Quick Access vendor by name. */
+  provider: string;
+  accountNumber: string;
+  /**
+   * The address as the provider bills it, kept only when it differs from
+   * the customer's own. Their bills carry company names that are not the
+   * customer's, and the address is what proves the match.
+   */
+  serviceAddress: string;
+  notes: string;
+}
+
+export function newIspAccount(overrides: Partial<IspAccount> = {}): IspAccount {
+  return {
+    id: `isp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    provider: "",
+    accountNumber: "",
+    serviceAddress: "",
+    notes: "",
+    ...overrides,
+  };
+}
+
+/** True once anything beyond the generated id has been filled in. */
+export function hasIspAccountDetail(a: IspAccount): boolean {
+  return Boolean(a.provider.trim() || a.accountNumber.trim() || a.serviceAddress.trim() || a.notes.trim());
+}
+
 export interface CustomerProfileOverlay {
   customerId: string;
   isp: string;
@@ -49,6 +86,8 @@ export interface CustomerProfileOverlay {
   contacts: CustomerContact[]; // custom contacts only — the RingLogix-sourced default contact isn't stored here
   mainContactId: string; // DEFAULT_CONTACT_ID or a contact's id
   staticIps: StaticIpConfig[];
+  /** What each provider bills this customer's circuits under. */
+  ispAccounts: IspAccount[];
   /**
    * When they're open, typed in by hand. Nothing fills these automatically:
    * see lib/customer-hours.ts. Requires supabase/migration-customer-hours.sql.
@@ -87,6 +126,7 @@ function fromRow(row: Record<string, unknown>): CustomerProfileOverlay {
     contacts: (row.contacts as CustomerContact[]) ?? [],
     mainContactId: (row.main_contact_id as string) ?? DEFAULT_CONTACT_ID,
     staticIps: (row.static_ips as StaticIpConfig[]) ?? [],
+    ispAccounts: (row.isp_accounts as IspAccount[]) ?? [],
     hours: normalizeHours(row.hours),
     updatedAt: row.updated_at as string,
     updatedBy: (row.updated_by as string) ?? undefined,
@@ -116,6 +156,8 @@ export async function setCustomerProfile(
     // forgets it would silently wipe the customer's saved static IPs.
     staticIps: StaticIpConfig[];
     /** Required for the same reason. */
+    ispAccounts: IspAccount[];
+    /** Required for the same reason. */
     hours: CustomerHours;
   },
   updatedBy?: string,
@@ -129,6 +171,7 @@ export async function setCustomerProfile(
     contacts: overlay.contacts,
     main_contact_id: overlay.mainContactId,
     static_ips: overlay.staticIps,
+    isp_accounts: overlay.ispAccounts ?? [],
     hours: overlay.hours ?? emptyHours(),
     updated_at: new Date().toISOString(),
     updated_by: updatedBy ?? null,

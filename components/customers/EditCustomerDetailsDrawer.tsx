@@ -9,6 +9,9 @@ import {
   setCustomerProfile,
   newStaticIp,
   hasStaticIpDetail,
+  newIspAccount,
+  hasIspAccountDetail,
+  type IspAccount,
   type CustomerContact,
   type CustomerProfileOverlay,
   type StaticIpConfig,
@@ -61,6 +64,7 @@ export default function EditCustomerDetailsDrawer({
   const [contacts, setContacts] = useState<CustomerContact[]>([]);
   const [mainContactId, setMainContactId] = useState(DEFAULT_CONTACT_ID);
   const [staticIps, setStaticIps] = useState<StaticIpConfig[]>([]);
+  const [ispAccounts, setIspAccounts] = useState<IspAccount[]>([]);
   const [hours, setHours] = useState<CustomerHours>(emptyHours());
   const [saving, setSaving] = useState(false);
 
@@ -73,6 +77,7 @@ export default function EditCustomerDetailsDrawer({
     setContacts(overlay?.contacts ?? []);
     setMainContactId(overlay?.mainContactId ?? DEFAULT_CONTACT_ID);
     setHours(overlay?.hours ?? emptyHours());
+    setIspAccounts(overlay?.ispAccounts ?? []);
 
     // Nothing saved yet: open one blank row per static IP the invoice bills
     // for, pre-filling the address from the linked site's WAN where we have
@@ -127,6 +132,10 @@ export default function EditCustomerDetailsDrawer({
     }));
   }
 
+  function updateIspAccount(id: string, field: keyof IspAccount, value: string) {
+    setIspAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
+  }
+
   function updateStaticIp(id: string, field: keyof StaticIpConfig, value: string) {
     setStaticIps((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
   }
@@ -160,6 +169,16 @@ export default function EditCustomerDetailsDrawer({
         contacts: filtered,
         mainContactId: validMainId,
         staticIps: filledIps,
+        // Same rule as the IPs: a row nobody filled in is a prompt, not data.
+        ispAccounts: ispAccounts
+          .map((a) => ({
+            ...a,
+            provider: a.provider.trim(),
+            accountNumber: a.accountNumber.trim(),
+            serviceAddress: a.serviceAddress.trim(),
+            notes: a.notes.trim(),
+          }))
+          .filter(hasIspAccountDetail),
         // A day that was ticked open and left blank is not open: the same
         // rule normalizeHours applies on the way in, applied on the way out
         // so nothing half-written is stored.
@@ -351,6 +370,76 @@ export default function EditCustomerDetailsDrawer({
               onChange={(e) => setBackupIsp(e.target.value)}
             />
           </FormField>
+        </div>
+
+        <div className="border-t border-[#f7f7f7] pt-4">
+          <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-1">
+            Provider accounts
+          </p>
+          <p className="text-[10px] text-[#bbb] mb-3">
+            What the circuit is billed under — the number you quote when you ring them. One customer
+            can hold several. Blank rows aren&apos;t saved.
+          </p>
+
+          <div className="space-y-3">
+            {ispAccounts.map((a, i) => (
+              <div key={a.id} className="border border-[#eaeaea] rounded-lg p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-[#444]">Account {i + 1}</p>
+                  <button
+                    type="button"
+                    onClick={() => setIspAccounts((prev) => prev.filter((x) => x.id !== a.id))}
+                    className="text-[11px] font-medium text-[#999] hover:text-[#f31260] transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <FormField label="Provider">
+                    <input
+                      className={inputClass}
+                      placeholder="Spectrum"
+                      value={a.provider}
+                      onChange={(e) => updateIspAccount(a.id, "provider", e.target.value)}
+                    />
+                  </FormField>
+                  <FormField label="Account number">
+                    <input
+                      className={inputClass}
+                      placeholder="8448200301323092"
+                      value={a.accountNumber}
+                      onChange={(e) => updateIspAccount(a.id, "accountNumber", e.target.value)}
+                    />
+                  </FormField>
+                </div>
+                <FormField
+                  label="Service address"
+                  hint="Only if the bill shows a different address or company name"
+                >
+                  <input
+                    className={inputClass}
+                    value={a.serviceAddress}
+                    onChange={(e) => updateIspAccount(a.id, "serviceAddress", e.target.value)}
+                  />
+                </FormField>
+                <FormField label="Note">
+                  <input
+                    className={inputClass}
+                    placeholder="Billed as PURSUIT BOATS SERVICES LLC"
+                    value={a.notes}
+                    onChange={(e) => updateIspAccount(a.id, "notes", e.target.value)}
+                  />
+                </FormField>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setIspAccounts((prev) => [...prev, newIspAccount({ provider: isp.trim() })])}
+              className="w-full border border-dashed border-[#d4d4d4] rounded-lg py-2 text-[12px] font-medium text-[#0070f3] hover:bg-[#fafafa] transition-colors"
+            >
+              + Add a provider account
+            </button>
+          </div>
         </div>
 
         <div className="border-t border-[#f7f7f7] pt-4">
