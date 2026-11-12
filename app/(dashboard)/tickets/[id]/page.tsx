@@ -13,6 +13,8 @@ import { subscribeEmployees } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { markTicketRead } from "@/lib/notifications";
 import type { Employee } from "@/lib/mock-data";
+import { useToast } from "@/lib/toast";
+import { notifyTicketAssigned } from "@/lib/notify-ticket-assignment";
 import Link from "next/link";
 
 interface FullEmail {
@@ -119,6 +121,7 @@ export default function TicketDetailPage() {
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
   const [feedbackTarget, setFeedbackTarget] = useState<ReviewRequestTarget | null>(null);
+  const { success, error: notifyError } = useToast();
 
   const meta = metaMap[id];
 
@@ -170,6 +173,9 @@ export default function TicketDetailPage() {
     // Captured before the write, since metaMap only catches up via its
     // subscription — this is what makes it a transition rather than a re-save.
     const justClosed = status === "closed" && meta?.status !== "closed";
+    // Likewise captured before the write: a hand-over to somebody new, as
+    // opposed to re-saving a ticket that was already theirs.
+    const handedOver = assigneeId && assigneeId !== meta?.assigneeId ? assigneeId : null;
     const assignee = employees.find((e) => e.id === assigneeId);
     const patch: Partial<Omit<TicketMeta, "id">> = {
       status,
@@ -179,6 +185,26 @@ export default function TicketDetailPage() {
       notes: notes || undefined,
     };
     await upsertTicket(id, patch);
+
+    if (handedOver) {
+      // Not awaited: the assignment is saved either way, and the Save button
+      // shouldn't sit spinning on an outbound mail.
+      void notifyTicketAssigned({
+        toEmployeeId: handedOver,
+        toName: assignee?.name,
+        ticketId: id,
+        source: "email",
+        subject: email?.subject ?? "",
+        customerName: email?.fromName ?? "",
+        priority,
+        previousAssigneeName: meta?.assigneeName,
+      }).then((line) => {
+        if (!line) return;
+        if (line.startsWith("Emailed")) success(line);
+        else notifyError(line);
+      });
+    }
+
     logActivity({
       category: "access",
       action: "Ticket updated",

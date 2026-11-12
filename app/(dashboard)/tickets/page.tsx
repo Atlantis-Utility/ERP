@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search, RefreshCw, TicketCheck, X, Plus, Mail, Phone, Globe, Pencil } from "lucide-react";
 import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
@@ -15,6 +15,8 @@ import { logActivity } from "@/lib/activity-log";
 import { isTicketUnread, markLegacyTicketNotificationsRead } from "@/lib/notifications";
 import type { Employee } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast";
+import { notifyTicketAssigned } from "@/lib/notify-ticket-assignment";
 
 interface EmailTicket {
   id: string;
@@ -389,6 +391,22 @@ export default function TicketsPage() {
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | "all">("all");
   const [assignModal, setAssignModal]     = useState<UnifiedTicket | null>(null);
   const [feedbackTarget, setFeedbackTarget] = useState<ReviewRequestTarget | null>(null);
+  const { success: notifySuccess, error: notifyError } = useToast();
+
+  /**
+   * ?ticket=<id> opens that ticket's panel, which is what the "Open the
+   * ticket" button in an assignment email points at for a manual ticket -
+   * those have no detail route of their own, only this panel. It resolves
+   * against what this page has loaded, which is every manual ticket but only
+   * a page of the email threads; an email ticket is linked to /tickets/[id]
+   * instead, where there is no such limit.
+   *
+   * Derived rather than pushed into state by an effect: the id in the URL
+   * and the id of the row somebody clicked are the same question, and
+   * setting state from the URL would fight the render.
+   */
+  const linkedTicketId = useSearchParams().get("ticket");
+  const openTicketId = assignModal?.id ?? linkedTicketId;
 
   const applyResponse = useCallback((data: { tickets: EmailTicket[]; total?: number; nextPageToken?: string | null }) => {
     setNotConfigured(false);
@@ -571,6 +589,20 @@ export default function TicketsPage() {
       detail: `Manual ticket "${data.subject}" created via ${data.source} for ${data.customerName}`,
     });
 
+    // Created with somebody already on it: that is an assignment too, and
+    // the person it lands on has no other way of knowing it exists.
+    if (data.assigneeId) {
+      void tellAssignee({
+        toEmployeeId: data.assigneeId,
+        toName: data.assigneeName,
+        ticketId: id,
+        source: data.source,
+        subject: data.subject,
+        customerName: data.customerName,
+        priority: data.priority,
+      });
+    }
+
     if (data.status === "closed") {
       setFeedbackTarget({
         id,
@@ -582,15 +614,47 @@ export default function TicketsPage() {
     }
   }
 
+  /**
+   * Sends the heads-up and says what happened. Fire-and-forget on purpose:
+   * the assignment is already saved, so the mail must not hold up the panel
+   * closing, and a mailer that is down is a line of feedback rather than a
+   * failed save.
+   */
+  async function tellAssignee(opts: Parameters<typeof notifyTicketAssigned>[0]) {
+    const line = await notifyTicketAssigned(opts);
+    if (!line) return;
+    if (line.startsWith("Emailed")) notifySuccess(line);
+    else notifyError(line);
+  }
+
   async function handleSave(ticket: UnifiedTicket, patch: Partial<TicketMeta>) {
     const isManual = ticket.source !== "email";
     const { id, subject } = ticket;
     const justClosed = patch.status === "closed" && ticket.status !== "closed";
+    // Captured before the write, like justClosed: whether this save is a
+    // hand-over rather than somebody re-saving a ticket that was already
+    // theirs. Clearing the assignee is not something to email about.
+    const newAssigneeId =
+      patch.assigneeId && patch.assigneeId !== ticket.assigneeId ? patch.assigneeId : null;
     if (isManual) {
       await upsertManualTicket(id, patch);
     } else {
       await upsertTicket(id, patch);
     }
+
+    if (newAssigneeId) {
+      void tellAssignee({
+        toEmployeeId: newAssigneeId,
+        toName: patch.assigneeName,
+        ticketId: id,
+        source: ticket.source,
+        subject,
+        customerName: ticket.fromName,
+        priority: patch.priority ?? ticket.priority,
+        previousAssigneeName: ticket.assigneeName,
+      });
+    }
+
     logActivity({
       category: "access",
       action: "Ticket updated",
@@ -608,7 +672,14 @@ export default function TicketsPage() {
     }
   }
 
-  const modalTicket = assignModal ? unified.find((t) => t.id === assignModal.id) ?? null : null;
+  const modalTicket = openTicketId ? unified.find((t) => t.id === openTicketId) ?? null : null;
+
+  function closeAssignModal() {
+    setAssignModal(null);
+    // Drop the deep link too, or closing the panel reopens it on the next
+    // render and the thing can't be dismissed.
+    if (linkedTicketId) router.replace("/tickets");
+  }
 
   // Only block on loading when there is genuinely no data yet (no cache, first visit)
   if (loading && emailTickets.length === 0 && manualTickets.length === 0) {
@@ -854,7 +925,7 @@ export default function TicketsPage() {
           ticket={modalTicket}
           employees={employees}
           onSave={(patch) => handleSave(modalTicket, patch)}
-          onClose={() => setAssignModal(null)}
+          onClose={closeAssignModal}
         />
       )}
 
