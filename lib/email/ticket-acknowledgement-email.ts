@@ -27,7 +27,7 @@ export function buildTicketAcknowledgementEmail(opts: {
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;color:#0a0a0a;font-size:15px;line-height:1.6;">
       <p>${greeting}</p>
       <p>We've received your request and opened a ticket for it. One of our representatives will be in touch shortly.</p>
-      <p>Thanks,<br/>Atlantis Utility Support</p>
+      <p>Thanks,<br/>Support Team<br/>Atlantis Utility</p>
     </div>
   `;
 
