@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCDRs, isConfigured } from "@/lib/ringlogix";
+import { ringlogixFailure } from "@/lib/ringlogix-response";
 
 export async function GET(req: NextRequest) {
   if (!isConfigured()) {
@@ -15,7 +16,6 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json(data);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return ringlogixFailure(err);
   }
 }

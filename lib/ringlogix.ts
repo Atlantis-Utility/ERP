@@ -85,6 +85,39 @@ async function getToken(): Promise<{ token: string; type: string }> {
   return { token: cachedToken.value, type: cachedToken.type };
 }
 
+/**
+ * A refusal from the RingLogix API, with the reason it actually gave.
+ *
+ * `denied` separates "we are not allowed to ask this" from "the request
+ * went wrong". It is the difference between a Retry button that might work
+ * and one that cannot: an account whose scope has been changed will answer
+ * 401 "Invalid Scope [APP001]" to every object, for as long as it takes
+ * somebody to put the scope back in the RingLogix portal.
+ *
+ * 401 and 403 both mean permissions here, despite what the numbers usually
+ * say. The token is fine - it is issued, it just carries whatever scope the
+ * API user holds - and 403 is how a single object is blocked for an account
+ * that otherwise works.
+ */
+export class RingLogixError extends Error {
+  readonly object: string;
+  readonly action: string;
+  readonly status: number;
+  /** What the Warning header said, e.g. "Invalid Scope [APP001]". */
+  readonly reason: string;
+  readonly denied: boolean;
+
+  constructor(object: string, action: string, status: number, reason: string) {
+    super(`RingLogix ${object}/${action} ${status}: ${reason || "no reason given"}`);
+    this.name = "RingLogixError";
+    this.object = object;
+    this.action = action;
+    this.status = status;
+    this.reason = reason;
+    this.denied = status === 401 || status === 403;
+  }
+}
+
 const READ_ACTIONS = new Set(["read", "list"]);
 const RL_TTL = 3 * 60_000; // 3 minutes for read-only data
 
@@ -112,7 +145,12 @@ async function pbxApiRaw(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`RingLogix ${object}/${action} ${res.status}: ${text.slice(0, 300)}`);
+    // Same trick as the token endpoint: the body is empty and the reason is
+    // in a "Warning" header. Without reading it, every refusal arrives as a
+    // bare "401: " and the next person has no idea the API user's scope was
+    // changed out from under them.
+    const reason = res.headers.get("warning") ?? text.slice(0, 300);
+    throw new RingLogixError(object, action, res.status, reason);
   }
 
   return res.json();

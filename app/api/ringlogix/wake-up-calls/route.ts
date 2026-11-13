@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCallRequests, addWakeUpCall, deleteWakeUpCall, isConfigured } from "@/lib/ringlogix";
+import { ringlogixFailure } from "@/lib/ringlogix-response";
 
 export async function GET(req: NextRequest) {
   if (!isConfigured()) return NextResponse.json({ error: "not_configured" }, { status: 503 });
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return ringlogixFailure(err);
   }
 }
 
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return ringlogixFailure(err);
   }
 }
 
@@ -36,6 +37,6 @@ export async function DELETE(req: NextRequest) {
     const data = await deleteWakeUpCall(body.uid, body.requestId);
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return ringlogixFailure(err);
   }
 }

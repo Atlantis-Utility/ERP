@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPortalCustomers, isPortalConfigured } from "@/lib/ringlogix-portal";
 import { listCachedCustomers } from "@/lib/db/ringlogix-customers";
 import { createClient } from "@/lib/supabase/server";
+import { ringlogixFailure } from "@/lib/ringlogix-response";
 
 export async function GET() {
   // Primary source: the DB cache kept fresh by the cron sync every 3 hours —
@@ -21,7 +22,6 @@ export async function GET() {
     const data = await getPortalCustomers();
     return NextResponse.json(data);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return ringlogixFailure(err);
   }
 }

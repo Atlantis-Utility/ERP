@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDialRules, createDialRule, isConfigured } from "@/lib/ringlogix";
+import { ringlogixFailure } from "@/lib/ringlogix-response";
 
 export async function GET(req: NextRequest) {
   if (!isConfigured()) return NextResponse.json({ error: "not_configured" }, { status: 503 });
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
     const data = await getDialRules(domain, dialplan);
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return ringlogixFailure(err);
   }
 }
 
@@ -21,6 +22,6 @@ export async function POST(req: NextRequest) {
     const data = await createDialRule(body.domain, body.dialplan, body.matchrule, body.to_user);
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return ringlogixFailure(err);
   }
 }

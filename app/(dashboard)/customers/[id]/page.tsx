@@ -140,10 +140,17 @@ interface CustomerDetail {
   customer: PortalCustomer;
 }
 
-type ResourceStatus = "loading" | "ok" | "error";
+/**
+ * "denied" is separate from "error" on purpose: RingLogix refusing this
+ * account is not a failed request, and offering a Retry for it sends
+ * somebody clicking at a problem only the RingLogix portal can fix.
+ */
+type ResourceStatus = "loading" | "ok" | "error" | "denied";
 interface ResourceState<T> {
   status: ResourceStatus;
   items: T[];
+  /** What the provider said, shown when status is "denied". */
+  detail?: string;
 }
 
 function emptyResource<T>(): ResourceState<T> {
@@ -155,6 +162,13 @@ async function fetchResource<T>(url: string): Promise<ResourceState<T>> {
     const res = await fetch(url);
     // Not configured — same as the old server-side fallback, treat as empty rather than an error.
     if (res.status === 503) return { status: "ok", items: [] };
+    if (res.status === 403) {
+      const why = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
+      if (why?.error === "no_api_access") {
+        return { status: "denied", items: [], detail: why.message };
+      }
+      return { status: "error", items: [] };
+    }
     if (!res.ok) return { status: "error", items: [] };
     const json = await res.json();
     // NetSapiens returns bare `null` (not `[]`) for some list actions when
@@ -462,12 +476,35 @@ function isOpenStatus(status: string) {
 }
 
 
-function SectionPending({ status, onRetry }: { status: "loading" | "error"; onRetry: () => void }) {
+function SectionPending({
+  status,
+  detail,
+  onRetry,
+}: {
+  status: "loading" | "error" | "denied";
+  detail?: string;
+  onRetry: () => void;
+}) {
   if (status === "loading") {
     return (
       <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#999]">
         <RefreshCw className="w-4 h-4 animate-spin" />
         Loading…
+      </div>
+    );
+  }
+  // No Retry here: the answer will be the same until the API user's scope
+  // is put back, and a button that cannot work is worse than none.
+  if (status === "denied") {
+    return (
+      <div className="py-10 text-center px-6">
+        <AlertCircle className="w-5 h-5 text-[#f5a524] mx-auto mb-2" />
+        <p className="text-sm font-medium text-[#0a0a0a] mb-1">RingLogix won&apos;t let us read this</p>
+        <p className="text-xs text-[#999] max-w-sm mx-auto leading-relaxed">
+          {detail ?? "The API user's permissions were refused."}{" "}
+          Nothing here is wrong with the customer — the API user&apos;s scope has to be fixed in
+          the RingLogix portal.
+        </p>
       </div>
     );
   }
@@ -785,7 +822,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   // RingLogix while its Grandstream and UniFi kit load fine.
   const hardwareSources = [inventoryRes, gdmsRes, unifiDevicesRes];
   const hardwareLoading = hardwareSources.some((r) => r.status === "loading");
-  const hardwareFailed = hardwareSources.every((r) => r.status === "error");
+  // A refused source is a missing source as far as this tab is concerned:
+  // it still shows whatever did arrive, and says below which one is absent.
+  const hardwareMissing = hardwareSources.filter((r) => r.status === "error" || r.status === "denied");
+  const hardwareFailed = hardwareMissing.length === hardwareSources.length;
+  // Shown instead of "couldn't reach", since reaching it was never the
+  // problem and a Retry won't change the answer.
+  const hardwareDenied = hardwareSources.find((r) => r.status === "denied")?.detail;
   const subscribers = subscribersRes.items;
   const queues = queuesRes.items;
 
@@ -1032,7 +1075,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
         {activeTab === "numbers" && (
           phoneNumbersRes.status !== "ok" ? (
-            <SectionPending status={phoneNumbersRes.status === "error" ? "error" : "loading"} onRetry={loadSections} />
+            <SectionPending
+              status={phoneNumbersRes.status}
+              detail={phoneNumbersRes.detail}
+              onRetry={loadSections}
+            />
           ) : phoneNumbers.length === 0 ? (
             <p className="text-sm text-[#999] px-5 py-6 text-center">No phone numbers assigned.</p>
           ) : (
@@ -1067,7 +1114,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
         {activeTab === "extensions" && (
           subscribersRes.status !== "ok" ? (
-            <SectionPending status={subscribersRes.status === "error" ? "error" : "loading"} onRetry={loadSections} />
+            <SectionPending
+              status={subscribersRes.status}
+              detail={subscribersRes.detail}
+              onRetry={loadSections}
+            />
           ) : subscribers.length === 0 ? (
             <p className="text-sm text-[#999] px-5 py-6 text-center">No extensions found.</p>
           ) : (
@@ -1102,7 +1153,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
         {activeTab === "queues" && (
           queuesRes.status !== "ok" ? (
-            <SectionPending status={queuesRes.status === "error" ? "error" : "loading"} onRetry={loadSections} />
+            <SectionPending
+              status={queuesRes.status}
+              detail={queuesRes.detail}
+              onRetry={loadSections}
+            />
           ) : (
             <GenericTable rows={queues} emptyLabel="No call queues configured." />
           )
@@ -1110,7 +1165,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
         {activeTab === "devices" && (
           hardwareFailed || (hardwareCount === 0 && hardwareLoading) ? (
-            <SectionPending status={hardwareFailed ? "error" : "loading"} onRetry={loadSections} />
+            <SectionPending
+              status={hardwareFailed ? (hardwareDenied ? "denied" : "error") : "loading"}
+              detail={hardwareDenied}
+              onRetry={loadSections}
+            />
           ) : hardwareCount === 0 ? (
             <p className="text-sm text-[#999] px-5 py-6 text-center">
               No devices on file for this customer, in RingLogix, GDMS or UniFi.
@@ -1305,7 +1364,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                 </>
               )}
-              {(hardwareLoading || hardwareSources.some((r) => r.status === "error")) && (
+              {(hardwareLoading || hardwareMissing.length > 0) && (
                 <p className="text-[11px] text-[#999] px-5 py-3 border-t border-[#f4f4f4] flex items-center gap-2">
                   {hardwareLoading ? (
                     <>
@@ -1318,12 +1377,23 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                     </>
                   ) : (
                     <>
-                      Couldn&apos;t reach {[
-                        inventoryRes.status === "error" && "RingLogix",
-                        gdmsRes.status === "error" && "GDMS",
-                        unifiDevicesRes.status === "error" && "UniFi",
-                      ].filter(Boolean).join(", ")}, so there may be more hardware than this.
-                      <button onClick={loadSections} className="text-[#0070f3] hover:underline">Retry</button>
+                      {inventoryRes.status === "denied" ? (
+                        <>
+                          RingLogix won&apos;t let us read this account&apos;s phones
+                          {[gdmsRes, unifiDevicesRes].some((r) => r.status === "error")
+                            ? ", and GDMS or UniFi didn't answer"
+                            : ""}, so there may be more hardware than this.
+                        </>
+                      ) : (
+                        <>
+                          Couldn&apos;t reach {[
+                            inventoryRes.status === "error" && "RingLogix",
+                            gdmsRes.status === "error" && "GDMS",
+                            unifiDevicesRes.status === "error" && "UniFi",
+                          ].filter(Boolean).join(", ")}, so there may be more hardware than this.
+                          <button onClick={loadSections} className="text-[#0070f3] hover:underline">Retry</button>
+                        </>
+                      )}
                     </>
                   )}
                 </p>
