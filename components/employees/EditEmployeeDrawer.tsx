@@ -9,6 +9,7 @@ import Select from "@/components/ui/Select";
 import { updateEmployee, updateEmployeeAccess, removeEmployee } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { NAV_PAGES } from "@/lib/nav-pages";
+import { optionsForPage, PAGE_OPTIONS } from "@/lib/page-options";
 import { availableWidgets, defaultDashboardWidgets, isGrantOnly } from "@/lib/dashboard-widgets";
 import { Check, Lock, Mail } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -41,6 +42,8 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
   });
   const [access, setAccess] = useState<string[]>([]);
   const [dashboard, setDashboard] = useState<string[]>([]);
+  // Grants inside a page they hold - see lib/page-options.ts.
+  const [pageOptions, setPageOptions] = useState<string[]>([]);
   const [errors, setErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
   const [saving, setSaving]           = useState(false);
   const [saveError, setSaveError]     = useState("");
@@ -82,6 +85,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     setErrors({});
     setAccess(employee.access ?? []);
     setDashboard(employee.dashboard ?? defaultDashboardWidgets(employee.access));
+    setPageOptions(employee.pageOptions ?? []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employee.id]);
 
@@ -158,7 +162,17 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
       // Access role and page access are permission grants: only admins can
       // change them, enforced server-side too (see updateEmployeeAccess).
       if (isAdmin) {
-        await updateEmployeeAccess(employee.id, { access, accessRole: form.accessRole, dashboard });
+        await updateEmployeeAccess(employee.id, {
+          access,
+          accessRole: form.accessRole,
+          dashboard,
+          // Dropping a page drops what was granted inside it, so revoking
+          // Customers can't leave a billing grant behind to come back to
+          // life the next time somebody re-grants the page.
+          pageOptions: pageOptions.filter((key) =>
+            PAGE_OPTIONS.some((o) => o.key === key && access.includes(o.page)),
+          ),
+        });
       }
     } catch (err) {
       console.error("[EditEmployeeDrawer] Failed to update:", JSON.stringify(err, Object.getOwnPropertyNames(err ?? {})), err);
@@ -402,6 +416,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
           {PAGE_SECTIONS.map((section) => {
             const pages = NAV_PAGES.filter((p) => p.section === section);
             const hrefs = pages.map((p) => p.href);
+            const sectionOptions = pages.flatMap((p) => optionsForPage(p.href));
             const allGranted = hrefs.every((h) => access.includes(h));
             return (
               <div key={section}>
@@ -477,6 +492,53 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
                     );
                   })}
                 </div>
+
+                {/* Grants that sit inside a page rather than opening one.
+                    They hang under the page they belong to, because on
+                    their own they mean nothing: the Customers page is what
+                    shows the balance. */}
+                {sectionOptions.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {sectionOptions.map((opt) => {
+                      const pageLabel = NAV_PAGES.find((p) => p.href === opt.page)?.label ?? opt.page;
+                      const pageGranted = access.includes(opt.page);
+                      // "Administrator: Full access" means it here too, so
+                      // the box is ticked and fixed rather than pretending
+                      // an admin can be shut out of the money.
+                      const fixed = form.accessRole === "Administrator";
+                      const on = fixed || (pageGranted && pageOptions.includes(opt.key));
+                      const locked = !isAdmin || fixed || !pageGranted;
+                      return (
+                        <label
+                          key={opt.key}
+                          className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border transition-colors ${
+                            locked ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:bg-[#fafafa]"
+                          } ${on ? "border-[#0a0a0a] bg-[#fafafa]" : "border-[#eaeaea]"}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={locked}
+                            onChange={() =>
+                              setPageOptions((prev) =>
+                                prev.includes(opt.key)
+                                  ? prev.filter((k) => k !== opt.key)
+                                  : [...prev, opt.key],
+                              )
+                            }
+                            className="mt-0.5 w-3.5 h-3.5 accent-[#0a0a0a] cursor-pointer"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-[13px] font-medium text-[#0a0a0a]">{opt.label}</span>
+                            <span className="block text-[11px] text-[#999]">
+                              {pageGranted ? opt.hint : `Grant ${pageLabel} above first.`}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}

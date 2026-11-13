@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { requireAdmin, ApiAuthError } from "@/lib/api-auth";
+import { isPageOption } from "@/lib/page-options";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     await requireAdmin();
     const { id } = await params;
-    const body = (await req.json()) as { access?: string[]; accessRole?: string; dashboard?: string[] };
+    const body = (await req.json()) as {
+      access?: string[];
+      accessRole?: string;
+      dashboard?: string[];
+      pageOptions?: string[];
+    };
 
     const supabase = createServiceRoleClient();
     const { data: existing, error: fetchErr } = await supabase
@@ -31,6 +37,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // Which dashboard panels they see; the same kind of grant as a page,
       // so it goes through the same admin-only route.
       ...(body.dashboard !== undefined ? { dashboard: body.dashboard } : {}),
+      // Grants inside a page (lib/page-options.ts), e.g. whether Customers
+      // shows money. Filtered to keys we actually define: this list is read
+      // back as a permission, so a typo or an invented key stored here would
+      // sit in the row forever looking like a grant.
+      ...(body.pageOptions !== undefined
+        ? { pageOptions: body.pageOptions.filter(isPageOption) }
+        : {}),
     };
 
     const { error } = await supabase.from("employees").update({ data: merged }).eq("id", id);

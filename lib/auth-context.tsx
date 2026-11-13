@@ -30,6 +30,14 @@ export interface AuthUser {
   /** Allowed page hrefs — undefined means unrestricted (Administrator, or no employee record). */
   access: string[] | undefined;
   /**
+   * Grants that sit inside a page rather than deciding whether you reach
+   * it — today only whether Customers shows balances and what we pay for
+   * a circuit (lib/page-options.ts). A plain list, never undefined: an
+   * option absent means not granted, and an administrator holds them all
+   * through `isUnrestricted` instead. Read it with hasPageOption().
+   */
+  pageOptions: string[];
+  /**
    * Which dashboard panels this person sees. undefined means all of them,
    * which is now only a login with no employee record behind it; otherwise
    * the granted list, which defaults to their own day until somebody
@@ -177,7 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const employeeName = employeeRow?.name ?? null;
       const employeeExtra = employeeRow?.data as
-        | { role?: string; accessRole?: string; access?: string[]; dashboard?: string[] }
+        | { role?: string; accessRole?: string; access?: string[]; dashboard?: string[]; pageOptions?: string[] }
         | undefined;
 
       const displayName = user.user_metadata?.display_name || employeeName || user.email?.split("@")[0] || "User";
@@ -226,6 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Employees page they'd need to grant themselves anything. Anyone
         // non-admin still defaults to [], i.e. nothing until granted.
         access:             employeeExtra?.access ?? (unrestricted ? undefined : []),
+        pageOptions:        employeeExtra?.pageOptions ?? [],
         // Same shape as `access`: a list means those panels, undefined
         // means all of them. Someone with an employee record and no list
         // yet gets the default rather than everything, since the panels
@@ -309,7 +318,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         { event: "UPDATE", schema: "public", table: "employees", filter: `id=eq.${accessEmployeeId}` },
         (payload) => {
           const row = payload.new as
-            | { data?: { access?: string[]; role?: string; accessRole?: string; dashboard?: string[] } }
+            | { data?: { access?: string[]; role?: string; accessRole?: string; dashboard?: string[]; pageOptions?: string[] } }
             | undefined;
           if (!row) return;
           setAuthUser((prev) =>
@@ -322,6 +331,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // everyone, and only its absence means unrestricted.
               access:
                 row.data?.access ?? (row.data?.accessRole === "Administrator" ? undefined : []),
+              // Revoking billing has to take effect while they're looking
+              // at it, like every other grant on this row.
+              pageOptions:        row.data?.pageOptions ?? [],
               dashboardWidgets:
                 row.data?.accessRole === "Administrator"
                   ? adminDashboardWidgets(row.data?.dashboard)

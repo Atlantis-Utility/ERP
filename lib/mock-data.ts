@@ -21,6 +21,12 @@ export interface Employee {
    * means the default: their own day, and nothing about the business.
    */
   dashboard?: string[];
+  /**
+   * Grants that sit inside a page they already hold - today only whether
+   * the Customers page shows them money (lib/page-options.ts). Absent
+   * means none of them.
+   */
+  pageOptions?: string[];
   salary: number;
   department?: string;
   manager?: string;

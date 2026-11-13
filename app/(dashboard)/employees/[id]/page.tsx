@@ -9,6 +9,7 @@ import { getAvatarColor, getInitials, formatDate, formatPhone } from "@/lib/util
 import { ArrowLeft, Mail, Phone, Pencil, Check } from "lucide-react";
 import type { Employee, EmployeeStatus } from "@/lib/mock-data";
 import { NAV_PAGES } from "@/lib/nav-pages";
+import { PAGE_OPTIONS } from "@/lib/page-options";
 import { adminDashboardWidgets, availableWidgets, defaultDashboardWidgets, isGrantOnly } from "@/lib/dashboard-widgets";
 import EditEmployeeDrawer from "@/components/employees/EditEmployeeDrawer";
 
@@ -76,6 +77,14 @@ export default function EmployeeProfilePage() {
     : (employee?.dashboard ?? defaultDashboardWidgets(employee?.access));
   // The panels an administrator holds only because somebody said so, and
   // the ones they haven't been given.
+  // Grants inside a page they hold (lib/page-options.ts). Listed separately
+  // from the page chips because they aren't pages: "Customers" and "the
+  // money on the Customers page" are two different answers.
+  const heldOptions = PAGE_OPTIONS.filter(
+    (o) =>
+      access.includes(o.page) &&
+      (isAdministrator || (employee?.pageOptions ?? []).includes(o.key)),
+  );
   const grantedToAdmin = offerablePanels.filter((w) => isGrantOnly(w.key) && panels.includes(w.key));
   const withheldFromAdmin = offerablePanels.filter((w) => isGrantOnly(w.key) && !panels.includes(w.key));
 
@@ -273,6 +282,20 @@ export default function EmployeeProfilePage() {
                   >
                     <Check className="w-3 h-3 shrink-0" />
                     {page.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {heldOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {heldOptions.map((o) => (
+                  <span
+                    key={o.key}
+                    title={o.hint}
+                    className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-[#fffbeb] text-[#b45309]"
+                  >
+                    <Check className="w-3 h-3 shrink-0" />
+                    {NAV_PAGES.find((p) => p.href === o.page)?.label ?? o.page}: {o.label}
                   </span>
                 ))}
               </div>

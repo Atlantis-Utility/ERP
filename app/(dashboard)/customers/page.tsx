@@ -8,6 +8,8 @@ import Select from "@/components/ui/Select";
 import ExportMenu from "@/components/ui/ExportMenu";
 import { customerStatusKey, balanceAmount, creditLimitAmount, type CustomerStatusKey } from "@/lib/customer-status";
 import { listUnifiLinks } from "@/lib/db/unifi-links";
+import { useAuth } from "@/lib/auth-context";
+import { CUSTOMER_BILLING, hasPageOption } from "@/lib/page-options";
 import { Building2, RefreshCw, AlertCircle, Search, Wifi, DollarSign } from "lucide-react";
 
 import { formatPhone } from "@/lib/utils";
@@ -36,6 +38,10 @@ const STATUS_CONFIG: Record<CustomerStatusKey, { label: string; bg: string; text
   other:       { label: "Unknown",     bg: "bg-[#f1f1f1]", text: "text-[#999]" },
 };
 
+// Sorting by what somebody owes is a way of reading the balance column
+// even with the column gone, so these two go with it (lib/page-options.ts).
+const BILLING_SORTS: SortKey[] = ["balance-desc", "balance-asc", "credit-desc", "credit-asc"];
+
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "balance-desc", label: "Balance Owed: High to Low" },
   { value: "balance-asc",  label: "Balance Owed: Low to High" },
@@ -46,6 +52,12 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ];
 
 export default function CustomersPage() {
+  const { authUser } = useAuth();
+  // Whether this person is allowed to see money here at all: balances,
+  // credit limits, and the filters and sorts that read them back out.
+  // Administrators always are; anyone else needs it granted on their
+  // employee record. See lib/page-options.ts.
+  const canSeeBilling = hasPageOption(CUSTOMER_BILLING, authUser);
   const [state, setState] = useState<ViewState>("loading");
   const [customers, setCustomers] = useState<PortalCustomer[]>([]);
   const [error, setError] = useState("");
@@ -100,9 +112,16 @@ export default function CustomersPage() {
     return matchesSearch && matchesStatus && matchesUnifi && matchesPayment;
   });
 
+  // Not state: the grant can be revoked mid-session (auth-context keeps
+  // it live), and setting state from that in an effect is what the React
+  // Compiler rule forbids. Falling back to A-Z leaves the list in a sane
+  // order rather than an arbitrary one.
+  const effectiveSort: SortKey =
+    canSeeBilling || !BILLING_SORTS.includes(sortKey) ? sortKey : "company-asc";
+
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
-      switch (sortKey) {
+      switch (effectiveSort) {
         case "balance-desc": return balanceAmount(b.balance) - balanceAmount(a.balance);
         case "balance-asc":  return balanceAmount(a.balance) - balanceAmount(b.balance);
         case "credit-desc":  return creditLimitAmount(b.creditLimit) - creditLimitAmount(a.creditLimit);
@@ -112,7 +131,7 @@ export default function CustomersPage() {
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, sortKey]);
+  }, [filtered, effectiveSort]);
 
   const openCount = customers.filter((c) => customerStatusKey(c.status) === "open").length;
   const terminatedCount = customers.filter((c) => customerStatusKey(c.status) === "terminated").length;
@@ -121,10 +140,17 @@ export default function CustomersPage() {
   const exportData = () => ({
     filename: "customers",
     title: "Customers",
-    headers: ["Company", "Contact", "Email", "Phone", "Balance", "Credit Limit", "Status"],
+    // The export is the same table: a column withheld on screen cannot
+    // come back as a spreadsheet.
+    headers: [
+      "Company", "Contact", "Email", "Phone",
+      ...(canSeeBilling ? ["Balance", "Credit Limit"] : []),
+      "Status",
+    ],
     rows: sorted.map((c) => [
       c.company || "-", c.contact || "-", c.email || "-", c.phone || "-",
-      c.balance || "-", c.creditLimit || "-", c.status || "-",
+      ...(canSeeBilling ? [c.balance || "-", c.creditLimit || "-"] : []),
+      c.status || "-",
     ]),
   });
 
@@ -143,7 +169,9 @@ export default function CustomersPage() {
           { label: "Total Customers", value: state === "ok" ? customers.length : "-" },
           { label: "Open", value: state === "ok" ? openCount : "-" },
           { label: "Terminated", value: state === "ok" ? terminatedCount : "-" },
-          { label: "Balance Owed", value: state === "ok" ? `$${totalOwed.toFixed(2)}` : "-" },
+          ...(canSeeBilling
+            ? [{ label: "Balance Owed", value: state === "ok" ? `$${totalOwed.toFixed(2)}` : "-" }]
+            : []),
         ].map((k) => (
           <div key={k.label} className="bg-white px-4 py-4 md:flex-1 md:px-5 md:py-5">
             <p className="text-2xl font-bold tabular-nums leading-none text-[#0a0a0a] truncate">{k.value}</p>
@@ -207,24 +235,26 @@ export default function CustomersPage() {
           ))}
         </div>
 
-        <button
-          onClick={() => setPaymentFilter(paymentFilter === "unpaid" ? "all" : "unpaid")}
-          title="Balance owed > 0: RingLogix only exposes a running balance, not per-invoice payment dates, so this can't be scoped to a specific month"
-          className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-            paymentFilter === "unpaid"
-              ? "bg-[#fdeaea] text-[#f31260] border-[#f9c9c9]"
-              : "bg-white text-[#666] border-[#eaeaea] hover:border-[#ccc]"
-          }`}
-        >
-          <DollarSign className="w-3 h-3" />
-          Unpaid Balance
-        </button>
+        {canSeeBilling && (
+          <button
+            onClick={() => setPaymentFilter(paymentFilter === "unpaid" ? "all" : "unpaid")}
+            title="Balance owed > 0: RingLogix only exposes a running balance, not per-invoice payment dates, so this can't be scoped to a specific month"
+            className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+              paymentFilter === "unpaid"
+                ? "bg-[#fdeaea] text-[#f31260] border-[#f9c9c9]"
+                : "bg-white text-[#666] border-[#eaeaea] hover:border-[#ccc]"
+            }`}
+          >
+            <DollarSign className="w-3 h-3" />
+            Unpaid Balance
+          </button>
+        )}
 
         <div className="w-full sm:w-56">
           <Select
-            value={sortKey}
+            value={effectiveSort}
             onChange={(v) => setSortKey(v as SortKey)}
-            options={SORT_OPTIONS}
+            options={canSeeBilling ? SORT_OPTIONS : SORT_OPTIONS.filter((o) => !BILLING_SORTS.includes(o.value))}
           />
         </div>
       </div>
@@ -270,8 +300,12 @@ export default function CustomersPage() {
                 <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3 whitespace-nowrap">Contact</th>
                 <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3 whitespace-nowrap">Email</th>
                 <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3 whitespace-nowrap">Phone</th>
-                <th className="text-right text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3 whitespace-nowrap">Balance</th>
-                <th className="text-right text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3 whitespace-nowrap">Credit Limit</th>
+                {canSeeBilling && (
+                  <>
+                    <th className="text-right text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3 whitespace-nowrap">Balance</th>
+                    <th className="text-right text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3 whitespace-nowrap">Credit Limit</th>
+                  </>
+                )}
                 <th className="text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider px-5 py-3 whitespace-nowrap">Status</th>
               </tr>
             </thead>
@@ -310,8 +344,12 @@ export default function CustomersPage() {
                         </div>
                       ) : "-"}
                     </td>
-                    <td className="px-5 py-3 text-sm text-[#0a0a0a] font-medium whitespace-nowrap text-right">{c.balance || "-"}</td>
-                    <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap text-right">{c.creditLimit || "-"}</td>
+                    {canSeeBilling && (
+                      <>
+                        <td className="px-5 py-3 text-sm text-[#0a0a0a] font-medium whitespace-nowrap text-right">{c.balance || "-"}</td>
+                        <td className="px-5 py-3 text-sm text-[#666] whitespace-nowrap text-right">{c.creditLimit || "-"}</td>
+                      </>
+                    )}
                     <td className="px-5 py-3 whitespace-nowrap">
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${cfg.bg} ${cfg.text}`}>
                         {c.status || cfg.label}

@@ -85,7 +85,7 @@ export async function updateEmployee(id: string, patch: Partial<Employee>): Prom
 // see app/api/employees/[id]/access/route.ts for why.
 export async function updateEmployeeAccess(
   id: string,
-  patch: { access?: string[]; accessRole?: AccessRole; dashboard?: string[] },
+  patch: { access?: string[]; accessRole?: AccessRole; dashboard?: string[]; pageOptions?: string[] },
 ): Promise<void> {
   const res = await fetch(`/api/employees/${id}/access`, {
     method: "POST",

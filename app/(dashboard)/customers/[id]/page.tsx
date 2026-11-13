@@ -19,6 +19,8 @@ import { statusConfig, type Project } from "@/lib/mock-projects";
 import { matchScore, LIKELY_MATCH_THRESHOLD } from "@/lib/name-match";
 import { gdmsDevicesForCustomer } from "@/lib/gdms-match";
 import { withScheme, formatDate, formatPhone } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { CUSTOMER_BILLING, hasPageOption } from "@/lib/page-options";
 import IspLogo from "@/components/unifi/IspLogo";
 import {
   findBilledIsp, ISP_PROVIDERS, serviceMonthlyTotal, formatSpeed, type BilledIsp,
@@ -549,6 +551,12 @@ function GenericTable({ rows, emptyLabel }: { rows: GenericRow[]; emptyLabel: st
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { authUser } = useAuth();
+  // What the account owes, its credit limit, and what Atlantis pays
+  // upstream for the circuits: granted per person on top of the page
+  // itself, so somebody can work a customer without seeing their money.
+  // See lib/page-options.ts.
+  const canSeeBilling = hasPageOption(CUSTOMER_BILLING, authUser);
   const [state, setState] = useState<ViewState>("loading");
   const [data, setData] = useState<CustomerDetail | null>(null);
   // The customers list page's cache: this customer, so the overview can
@@ -931,13 +939,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <Field
               label="Internet Service Provider"
               value={overlay?.isp || billedPrimary?.name || ""}
-              hint={!overlay?.isp && billedPrimary ? `From invoice #${billedPrimary.invoice.number}` : undefined}
+              hint={canSeeBilling && !overlay?.isp && billedPrimary ? `From invoice #${billedPrimary.invoice.number}` : undefined}
             />
             <div className="min-w-0">
               <Field
                 label="Backup Internet Service Provider"
                 value={overlay?.backupIsp || billedBackup?.name || ""}
-                hint={!overlay?.backupIsp && billedBackup ? `From invoice #${billedBackup.invoice.number}` : undefined}
+                hint={canSeeBilling && !overlay?.backupIsp && billedBackup ? `From invoice #${billedBackup.invoice.number}` : undefined}
               />
               <IspLookupLink address={overlay?.address ?? ""} className="mt-1.5" />
             </div>
@@ -984,8 +992,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               value={overlay?.website ?? ""}
               href={withScheme(overlay?.website)}
             />
-            <Field label="Balance" value={customer.balance} />
-            <Field label="Credit Limit" value={customer.creditLimit} />
+            {canSeeBilling && (
+              <>
+                <Field label="Balance" value={customer.balance} />
+                <Field label="Credit Limit" value={customer.creditLimit} />
+              </>
+            )}
             {/* Beside the address, because it answers the same question:
                 where they are and whether anyone is there. */}
             <OfficeHours
@@ -1025,7 +1037,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {billed && <BilledIspCard billed={billed} />}
+      {canSeeBilling && billed && <BilledIspCard billed={billed} />}
 
       {(savedStaticIps.length > 0 || billedStaticIps > 0) && (
         <StaticIpCard ips={savedStaticIps} billedCount={billedStaticIps} />
