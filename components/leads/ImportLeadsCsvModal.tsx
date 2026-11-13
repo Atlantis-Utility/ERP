@@ -619,7 +619,7 @@ export default function ImportLeadsCsvModal({
                                     ? "border-[#0070f3] bg-[#e8f2ff] text-[#0a0a0a]"
                                     : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
                                 }`}
-                                title={c.existingValue}
+                                data-tip={c.existingValue}
                               >
                                 Keep: {c.existingValue}
                               </button>
@@ -630,7 +630,7 @@ export default function ImportLeadsCsvModal({
                                     ? "border-[#0070f3] bg-[#e8f2ff] text-[#0a0a0a]"
                                     : "border-[#eaeaea] text-[#666] hover:bg-[#fafafa]"
                                 }`}
-                                title={c.newValue}
+                                data-tip={c.newValue}
                               >
                                 Use new: {c.newValue}
                               </button>

@@ -220,7 +220,7 @@ export default function CampaignsPanel({
                     <button
                       onClick={() => setAccessFor(c)}
                       className="flex items-center gap-1.5 text-xs font-medium text-[#666] hover:text-[#0a0a0a] px-2.5 py-2 rounded-md hover:bg-[#f0f0f0] transition-colors"
-                      title="Manage who works this campaign"
+                      data-tip="Manage who works this campaign"
                     >
                       <Users className="w-3.5 h-3.5" />
                       <span className="hidden sm:inline">Access</span>

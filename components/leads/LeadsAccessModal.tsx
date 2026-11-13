@@ -178,7 +178,7 @@ export default function LeadsAccessModal({ actor, onClose }: { actor: ActivityAc
                       onClick={() => revoke(g)}
                       disabled={busy}
                       className="p-1.5 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fef2f2] transition-colors shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
-                      title={`Remove ${name}'s access`}
+                      data-tip={`Remove ${name}'s access`}
                       aria-label={`Remove ${name}'s access`}
                     >
                       {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}

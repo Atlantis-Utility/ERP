@@ -3,19 +3,15 @@
 import type { ReactNode } from "react";
 
 /**
- * A hover label, for the places where a `title` attribute isn't enough.
+ * A hover label on something that can't carry one itself.
  *
- * The native one waits about a second before appearing and can't be styled,
- * which is fine for an icon button but not for something whose whole purpose
- * is to be read, like the faces on a campaign row: pointing at one should say
- * who it is straight away.
+ * Most of the app writes `data-tip="…"` straight onto the element — it is
+ * one attribute, it replaces `title`, and TooltipLayer draws it. This is for
+ * when there is nothing to put it on: a bare `{children}`, a component whose
+ * props you don't control, or a run of text that needs wrapping first.
  *
- * CSS only, on purpose. No state, no positioning library, nothing to mount:
- * it costs nothing to put one on every avatar in a list.
- *
- * The group is named `tooltip` because the rows these sit in already use the
- * unnamed `group` for their own hover states, and an unnamed nested group
- * would answer to that one too.
+ * It renders a wrapper carrying the same attribute, so there is still only
+ * one tooltip in the app and it looks the same everywhere.
  */
 export default function Tooltip({
   label,
@@ -30,24 +26,16 @@ export default function Tooltip({
   /** Applied to the wrapper, which is inline-flex. */
   className?: string;
 }) {
-  const lines = Array.isArray(label) ? label.filter(Boolean) : [label];
+  const lines = (Array.isArray(label) ? label : [label]).filter(Boolean);
   if (lines.length === 0) return <>{children}</>;
 
   return (
-    <span className={`group/tooltip relative inline-flex ${className}`}>
+    <span
+      data-tip={lines.join("\n")}
+      data-tip-side={side === "bottom" ? "bottom" : undefined}
+      className={`inline-flex ${className}`}
+    >
       {children}
-      <span
-        role="tooltip"
-        className={`pointer-events-none absolute left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#0a0a0a] px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-100 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 ${
-          side === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"
-        }`}
-      >
-        {lines.map((line) => (
-          <span key={line} className="block">
-            {line}
-          </span>
-        ))}
-      </span>
     </span>
   );
 }

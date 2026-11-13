@@ -251,7 +251,7 @@ export default function CustomerFiles({
                   <button
                     onClick={() => setViewing(file.id)}
                     className="block w-full aspect-[4/3] bg-[#f4f4f4] overflow-hidden"
-                    title={file.title || file.name}
+                    data-tip={file.title || file.name}
                   >
                     {file.kind === "image" ? (
                       // object-contain, not cover: a diagram cropped to fill
@@ -273,7 +273,7 @@ export default function CustomerFiles({
                   </button>
 
                   <figcaption className="px-3 py-2.5 border-t border-[#eaeaea] bg-white">
-                    <p className="text-[13px] font-medium text-[#0a0a0a] truncate" title={file.title || file.name}>
+                    <p className="text-[13px] font-medium text-[#0a0a0a] truncate" data-tip={file.title || file.name}>
                       {file.title || file.name}
                     </p>
                     <p className="text-[11px] text-[#999] truncate">{byline(file)}</p>
@@ -436,13 +436,13 @@ function IconAction({
   }`;
   if (href) {
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" title={label} aria-label={label} className={className}>
+      <a href={href} target="_blank" rel="noopener noreferrer" data-tip={label} aria-label={label} className={className}>
         {children}
       </a>
     );
   }
   return (
-    <button onClick={onClick} title={label} aria-label={label} className={className}>
+    <button onClick={onClick} data-tip={label} aria-label={label} className={className}>
       {children}
     </button>
   );
@@ -452,7 +452,7 @@ function GhostAction({ label, onClick, children }: { label: string; onClick: () 
   return (
     <button
       onClick={onClick}
-      title={label}
+      data-tip={label}
       aria-label={label}
       className="p-2 rounded-md text-white/70 hover:text-white hover:bg-white/10 transition-colors"
     >

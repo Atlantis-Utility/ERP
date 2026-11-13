@@ -196,7 +196,7 @@ export default function SheetColumnsModal({
                           setColors((prev) => prev.map((c) => (c.id === color.id ? { ...c, swatch: swatch.id } : c)))
                         }
                         aria-label={swatch.label}
-                        title={swatch.label}
+                        data-tip={swatch.label}
                         className={`w-4 h-4 rounded-full ${swatch.dot} transition-transform ${
                           color.swatch === swatch.id ? "ring-2 ring-offset-1 ring-[#0a0a0a] scale-110" : "hover:scale-110"
                         }`}
@@ -216,7 +216,7 @@ export default function SheetColumnsModal({
                     onClick={() => setColors((prev) => prev.filter((c) => c.id !== color.id))}
                     className="p-1.5 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"
                     aria-label={`Remove ${color.name || "this colour"}`}
-                    title="Remove this colour"
+                    data-tip="Remove this colour"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -256,7 +256,7 @@ export default function SheetColumnsModal({
                     onClick={() => setExtra((prev) => prev.filter((c) => c.id !== col.id))}
                     className="p-1.5 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"
                     aria-label={`Remove ${col.label || "this column"}`}
-                    title="Remove this column"
+                    data-tip="Remove this column"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -281,7 +281,7 @@ export default function SheetColumnsModal({
               const pinned = ALWAYS_SHOWN.has(col.key);
               return (
                 <div key={col.key} className={`flex items-center gap-2 ${off ? "opacity-45" : ""}`}>
-                  <span className="w-32 shrink-0 text-[12px] text-[#666] truncate" title={col.label}>
+                  <span className="w-32 shrink-0 text-[12px] text-[#666] truncate" data-tip={col.label}>
                     {col.label}
                   </span>
                   <input
@@ -296,7 +296,7 @@ export default function SheetColumnsModal({
                     disabled={!renamed || off}
                     className="p-1.5 rounded-md text-[#bbb] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] transition-colors disabled:opacity-30"
                     aria-label={`Reset ${col.label}`}
-                    title="Back to the original heading"
+                    data-tip="Back to the original heading"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                   </button>
@@ -307,7 +307,7 @@ export default function SheetColumnsModal({
                     disabled={pinned}
                     className="p-1.5 rounded-md text-[#bbb] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] transition-colors disabled:opacity-20"
                     aria-label={off ? `Show ${col.label}` : `Hide ${col.label}`}
-                    title={pinned ? "This one always shows" : off ? "Show this column" : "Hide this column"}
+                    data-tip={pinned ? "This one always shows" : off ? "Show this column" : "Hide this column"}
                   >
                     {off ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>

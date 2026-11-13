@@ -192,7 +192,7 @@ export default function ProjectsPage() {
                                     <a
                                       href={`mailto:${first.email}`}
                                       onClick={(e) => e.stopPropagation()}
-                                      title={first.email}
+                                      data-tip={first.email}
                                       className="text-[#0070f3] hover:text-[#0060d0] transition-colors"
                                     >
                                       <Mail className="w-3 h-3" />
@@ -202,7 +202,7 @@ export default function ProjectsPage() {
                                     <a
                                       href={`tel:${first.phone}`}
                                       onClick={(e) => e.stopPropagation()}
-                                      title={formatPhone(first.phone)}
+                                      data-tip={formatPhone(first.phone)}
                                       className="text-[#0070f3] hover:text-[#0060d0] transition-colors"
                                     >
                                       <Phone className="w-3 h-3" />
@@ -266,7 +266,7 @@ export default function ProjectsPage() {
                           return (
                             <div
                               key={name}
-                              title={name}
+                              data-tip={name}
                               className={`w-6 h-6 rounded-full ${c.bg} ${c.text} flex items-center justify-center border-2 border-white text-[9px] font-semibold`}
                             >
                               {getInitials(name)}

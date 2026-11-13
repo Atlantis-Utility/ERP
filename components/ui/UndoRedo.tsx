@@ -17,7 +17,7 @@ export default function UndoRedo({ stack }: { stack: UndoStack }) {
       <button
         onClick={stack.undo}
         disabled={!stack.undoLabel || stack.busy}
-        title={stack.undoLabel ? `Undo: ${stack.undoLabel}` : "Nothing to undo"}
+        data-tip={stack.undoLabel ? `Undo: ${stack.undoLabel}` : "Nothing to undo"}
         aria-label={stack.undoLabel ? `Undo: ${stack.undoLabel}` : "Nothing to undo"}
         className={base}
       >
@@ -26,7 +26,7 @@ export default function UndoRedo({ stack }: { stack: UndoStack }) {
       <button
         onClick={stack.redo}
         disabled={!stack.redoLabel || stack.busy}
-        title={stack.redoLabel ? `Redo: ${stack.redoLabel}` : "Nothing to redo"}
+        data-tip={stack.redoLabel ? `Redo: ${stack.redoLabel}` : "Nothing to redo"}
         aria-label={stack.redoLabel ? `Redo: ${stack.redoLabel}` : "Nothing to redo"}
         className={base}
       >

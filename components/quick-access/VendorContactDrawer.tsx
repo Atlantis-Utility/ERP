@@ -242,7 +242,7 @@ export default function VendorContactDrawer({ contact, onClose, onSaved }: Props
                       type="button"
                       onClick={() => toggleMain(person.id)}
                       aria-pressed={!!person.primary}
-                      title={person.primary ? "Main contact. Click to untag." : "Make this the main contact"}
+                      data-tip={person.primary ? "Main contact. Click to untag." : "Make this the main contact"}
                       className={`flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
                         person.primary
                           ? "border-[#fcd34d] bg-[#fef3c7] text-[#92400e]"

@@ -246,7 +246,7 @@ export default function EmployeeProfilePage() {
                   .map((w) => (
                     <span
                       key={w.key}
-                      title={w.hint}
+                      data-tip={w.hint}
                       className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-[#f5f5f5] text-[#666]"
                     >
                       <Check className="w-3 h-3 shrink-0" />
@@ -291,7 +291,7 @@ export default function EmployeeProfilePage() {
                 {heldOptions.map((o) => (
                   <span
                     key={o.key}
-                    title={o.hint}
+                    data-tip={o.hint}
                     className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-[#fffbeb] text-[#b45309]"
                   >
                     <Check className="w-3 h-3 shrink-0" />

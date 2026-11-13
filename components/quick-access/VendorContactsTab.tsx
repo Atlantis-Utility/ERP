@@ -280,7 +280,7 @@ export default function VendorContactsTab() {
                     <button
                       onClick={runSeed}
                       disabled={busy}
-                      title={`Add the ${missingSeed.length} providers we use that aren't listed yet`}
+                      data-tip={`Add the ${missingSeed.length} providers we use that aren't listed yet`}
                       className="flex items-center justify-center gap-1.5 border border-[#eaeaea] bg-white text-[12px] font-medium text-[#0a0a0a] px-3 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
                     >
                       <Download className="w-3.5 h-3.5" />
@@ -590,7 +590,7 @@ function VendorDetail({
                   {isAdmin && (
                     <button
                       onClick={() => onMakeMain(p)}
-                      title="Make this the main contact"
+                      data-tip="Make this the main contact"
                       className="shrink-0 flex items-center gap-1 text-[11px] font-medium text-[#666] border border-[#eaeaea] bg-white px-2 py-1 rounded-md hover:text-[#0a0a0a] hover:border-[#d4d4d4] transition-colors"
                     >
                       <Star className="w-3 h-3" />

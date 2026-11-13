@@ -267,7 +267,7 @@ export default function TimeClockPage() {
                             <button
                               onClick={() => closeShift(s)}
                               disabled={busyId === s.id}
-                              title="Clock them out now"
+                              data-tip="Clock them out now"
                               className="p-1.5 rounded-md text-[#999] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] transition-colors disabled:opacity-40"
                             >
                               {busyId === s.id ? (
@@ -280,7 +280,7 @@ export default function TimeClockPage() {
                           <button
                             onClick={() => drop(s)}
                             disabled={busyId === s.id}
-                            title="Remove this shift"
+                            data-tip="Remove this shift"
                             className="p-1.5 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors disabled:opacity-40"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

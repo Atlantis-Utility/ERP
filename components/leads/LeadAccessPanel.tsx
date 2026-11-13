@@ -171,7 +171,7 @@ export default function LeadAccessPanel({
                     onClick={() => revoke(g)}
                     disabled={busy}
                     className="p-1 rounded-md text-[#bbb] hover:text-[#f31260] hover:bg-[#fef2f2] transition-colors shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
-                    title={`Remove ${name}'s access`}
+                    data-tip={`Remove ${name}'s access`}
                     aria-label={`Remove ${name}'s access`}
                   >
                     {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}

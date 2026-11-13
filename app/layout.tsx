@@ -5,6 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import TooltipLayer from "@/components/ui/TooltipLayer";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -26,6 +27,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             <ToastProvider>
               <ConfirmProvider>{children}</ConfirmProvider>
+              {/* Draws every data-tip in the app. Outside the pages on
+                  purpose: one bubble, positioned against the window, so a
+                  label can't be clipped by whatever scrolls around it. */}
+              <TooltipLayer />
             </ToastProvider>
           </AuthProvider>
         </ThemeProvider>

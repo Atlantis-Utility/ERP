@@ -266,7 +266,7 @@ export default function ReviewChangesModal({
               onClick={() => run("approve", null)}
               disabled={busy}
               className="text-xs font-medium text-[#666] px-2.5 py-1.5 rounded-md hover:bg-[#fafafa] transition-colors disabled:opacity-50"
-              title="Approve every correction in this queue, including any not shown"
+              data-tip="Approve every correction in this queue, including any not shown"
             >
               Approve all {Math.max(totalPending, requests.length).toLocaleString()}
             </button>

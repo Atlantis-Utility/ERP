@@ -513,7 +513,7 @@ function ShareRow({ share, onRevoke }: { share: VaultExternalShareInfo; onRevoke
         {share.status === "active" && (
           <button
             onClick={onRevoke}
-            title="Revoke link"
+            data-tip="Revoke link"
             className="shrink-0 p-1.5 rounded-md text-[#999] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors"
           >
             <X className="w-3.5 h-3.5" />
@@ -529,7 +529,7 @@ function ShareRow({ share, onRevoke }: { share: VaultExternalShareInfo; onRevoke
           return (
             <div
               key={kind}
-              title={done ? `First ${stamp(first!.at)}${count > 1 ? `, last ${stamp(last!.at)}` : ""}` : undefined}
+              data-tip={done ? `First ${stamp(first!.at)}${count > 1 ? `, last ${stamp(last!.at)}` : ""}` : undefined}
               className={`rounded-md px-2 py-1.5 border ${done ? "border-[#bbf7d0] bg-[#f0fdf4]" : "border-[#f0f0f0] bg-[#fafafa]"}`}
             >
               <p className={`flex items-center gap-1 text-[10px] font-medium ${done ? "text-[#15803d]" : "text-[#999]"}`}>

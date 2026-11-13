@@ -148,7 +148,7 @@ function Fact({
   return (
     <span
       className={`${className} ${pending ? "text-[#946c00]" : ""}`}
-      title={pending ? `Proposed from a campaign sheet, waiting for approval. On file: ${value?.trim() || "empty"}` : undefined}
+      data-tip={pending ? `Proposed from a campaign sheet, waiting for approval. On file: ${value?.trim() || "empty"}` : undefined}
     >
       {text || empty}
     </span>
@@ -626,7 +626,7 @@ export default function LeadsPage() {
             {access.isAdmin && pending.count > 0 && (
               <button
                 onClick={() => setShowReview(true)}
-                title="Changes to company details, waiting on you"
+                data-tip="Changes to company details, waiting on you"
                 className="flex items-center gap-2 border border-[#f5a524] bg-[#fff8e6] text-sm font-medium text-[#946c00] px-3 py-2 rounded-lg hover:bg-[#fff2d4] transition-colors"
               >
                 <ClipboardCheck className="w-4 h-4" />
@@ -1178,7 +1178,7 @@ export default function LeadsPage() {
                                   className={`text-xs hover:underline truncate max-w-44 ${
                                     proposed("email") ? "text-[#946c00]" : "text-[#0070f3]"
                                   }`}
-                                  title={
+                                  data-tip={
                                     proposed("email")
                                       ? `Proposed from a campaign sheet, waiting for approval. On file: ${l.email?.trim() || "empty"}`
                                       : undefined
@@ -1232,7 +1232,7 @@ export default function LeadsPage() {
                                 {onCampaigns.length > 1 && (
                                   <span
                                     className="text-[10px] font-medium text-[#999] shrink-0"
-                                    title={onCampaigns.map((c) => c.name).join(", ")}
+                                    data-tip={onCampaigns.map((c) => c.name).join(", ")}
                                   >
                                     +{onCampaigns.length - 1}
                                   </span>
@@ -1290,7 +1290,7 @@ export default function LeadsPage() {
                               <button
                                 onClick={() => deleteOne(l)}
                                 className="p-1.5 rounded-lg text-[#999] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"
-                                title="Delete lead"
+                                data-tip="Delete lead"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

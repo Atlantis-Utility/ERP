@@ -75,7 +75,7 @@ function MultiTextField({
             <button
               type="button"
               onClick={() => removeAt(i)}
-              title="Remove"
+              data-tip="Remove"
               className="shrink-0 p-2 rounded-lg border border-[#eaeaea] text-[#999] hover:bg-[#fafafa] hover:text-[#666] transition-colors"
             >
               <X className="w-3.5 h-3.5" />
@@ -277,7 +277,7 @@ export default function VaultFormDrawer({ open, onClose, entry, onSave }: Props)
               <button
                 type="button"
                 onClick={() => { set("password", generateStrongPassword()); setShowPassword(true); }}
-                title="Generate a strong password"
+                data-tip="Generate a strong password"
                 className="shrink-0 flex items-center gap-1.5 border border-[#eaeaea] rounded-lg px-3 text-xs font-medium text-[#444] hover:bg-[#fafafa] transition-colors"
               >
                 <Wand2 className="w-3.5 h-3.5" />

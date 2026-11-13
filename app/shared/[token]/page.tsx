@@ -262,7 +262,7 @@ function Fact({ icon: Icon, label, value, detail }: { icon: React.ElementType; l
         <p className="text-[10px] font-medium text-[#999] uppercase tracking-wider">{label}</p>
       </div>
       <p className="text-sm font-medium text-[#0a0a0a] mt-1 truncate">{value}</p>
-      <p className="text-[11px] text-[#999] truncate" title={detail}>{detail}</p>
+      <p className="text-[11px] text-[#999] truncate" data-tip={detail}>{detail}</p>
     </div>
   );
 }
@@ -318,7 +318,7 @@ function Field({
         {secret && (
           <button
             onClick={() => setShown((s) => !s)}
-            title={shown ? "Hide" : "Show"}
+            data-tip={shown ? "Hide" : "Show"}
             aria-label={shown ? `Hide ${label}` : `Show ${label}`}
             className="shrink-0 p-1.5 rounded-md text-[#666] hover:bg-[#f5f5f5] hover:text-[#0a0a0a] transition-colors"
           >
@@ -327,7 +327,7 @@ function Field({
         )}
         <button
           onClick={copy}
-          title={secret ? "Copy (clipboard clears in 20s)" : "Copy"}
+          data-tip={secret ? "Copy (clipboard clears in 20s)" : "Copy"}
           aria-label={`Copy ${label}`}
           className="shrink-0 p-1.5 rounded-md text-[#666] hover:bg-[#f5f5f5] hover:text-[#0a0a0a] transition-colors"
         >

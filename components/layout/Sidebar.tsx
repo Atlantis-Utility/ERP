@@ -172,7 +172,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
       <button
         onClick={onToggle}
         className="hidden md:flex absolute -right-3 top-5 w-6 h-6 rounded-full bg-white border border-[#d4d4d4] items-center justify-center shadow-md hover:shadow-lg hover:border-[#aaa] transition-all z-50"
-        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        data-tip={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
         {collapsed
           ? <ChevronRight className="w-3 h-3 text-[#444]" />
@@ -188,7 +188,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
           {collapsed ? (
             // The full name doesn't fit the 64px rail, so it shortens to
             // initials rather than falling back to the mark.
-            <p className="mx-auto text-base font-semibold text-[#0a0a0a] leading-none" title="Atlantis Utility">AU</p>
+            <p className="mx-auto text-base font-semibold text-[#0a0a0a] leading-none" data-tip="Atlantis Utility">AU</p>
           ) : (
             <div className="flex items-center justify-between w-full">
               <p className="text-base font-semibold text-[#0a0a0a] leading-none whitespace-nowrap">Atlantis Utility</p>

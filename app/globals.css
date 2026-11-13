@@ -168,6 +168,45 @@ html.dark textarea:focus {
 html.dark .bg-\[\#f5f5f5\].border.rounded-lg { background-color: #2a2a2a; color: #f0f0f0; }
 html.dark .shadow-xl { box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
 
+/* ── Tooltip (components/ui/TooltipLayer.tsx) ───────────────────────────────
+   One bubble for the whole app, moved and filled imperatively. Only the bits
+   that can't be Tailwind classes live here: the fixed positioning it is
+   placed with, the fade, and an arrow that flips with the bubble.
+   The #111 background is in the dark-mode list above, so it lifts to #303030
+   against a dark body instead of disappearing into it.
+   ─────────────────────────────────────────────────────────────────────────── */
+.tooltip-bubble {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity .12s ease, transform .12s ease;
+  /* Hidden from hit-testing and from screen readers until it says something,
+     so an empty bubble is never announced. */
+  visibility: hidden;
+}
+
+.tooltip-bubble[data-open="true"] {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.tooltip-arrow {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  transform: rotate(45deg);
+  border-radius: 1px;
+}
+
+.tooltip-bubble[data-side="top"] .tooltip-arrow    { bottom: -3px; }
+.tooltip-bubble[data-side="bottom"] .tooltip-arrow { top: -3px; }
+
 /* The toast's entrance (lib/toast.tsx). A short slide from the right rather
    than a fade, so something arriving at the edge of vision registers as
    arriving. */

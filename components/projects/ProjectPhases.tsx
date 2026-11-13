@@ -247,7 +247,7 @@ export default function ProjectPhases({ projectId, initialProject, onProgressCha
               return (
                 <div
                   key={d.id}
-                  title={`${d.label}: ${phaseSC[s].label}`}
+                  data-tip={`${d.label}: ${phaseSC[s].label}`}
                   className="w-2 h-2 rounded-full transition-colors"
                   style={{
                     backgroundColor:
@@ -496,7 +496,7 @@ function StoredFileItem({ att, onRemove }: { att: Attachment; onRemove: () => vo
               download={att.fileName || att.label}
               onClick={(e) => e.stopPropagation()}
               className="shrink-0 text-[#0070f3] hover:text-[#0060d0] transition-colors"
-              title="Download"
+              data-tip="Download"
             >
               <Download className="w-3 h-3" />
             </a>

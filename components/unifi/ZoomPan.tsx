@@ -105,18 +105,18 @@ export default function ZoomPan({ children }: { children: React.ReactNode }) {
         <button
           onClick={() => setScale((s) => Math.min(s + 0.15, MAX_SCALE))}
           className="p-1.5 hover:bg-[#f5f5f5] rounded text-[#666]"
-          title="Zoom in"
+          data-tip="Zoom in"
         >
           <ZoomIn className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={() => setScale((s) => Math.max(s - 0.15, MIN_SCALE))}
           className="p-1.5 hover:bg-[#f5f5f5] rounded text-[#666]"
-          title="Zoom out"
+          data-tip="Zoom out"
         >
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
-        <button onClick={fitToView} className="p-1.5 hover:bg-[#f5f5f5] rounded text-[#666]" title="Fit to view">
+        <button onClick={fitToView} className="p-1.5 hover:bg-[#f5f5f5] rounded text-[#666]" data-tip="Fit to view">
           <Maximize2 className="w-3.5 h-3.5" />
         </button>
       </div>

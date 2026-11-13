@@ -171,7 +171,7 @@ export default function VaultShareDrawer({ open, entry, onClose, initialTab = "t
                       <button
                         onClick={() => handleRevoke(s.granteeUid)}
                         disabled={removingUid === s.granteeUid}
-                        title="Revoke access"
+                        data-tip="Revoke access"
                         className="shrink-0 p-1.5 rounded-md text-[#999] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors disabled:opacity-40"
                       >
                         <X className="w-3.5 h-3.5" />

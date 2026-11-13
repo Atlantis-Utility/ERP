@@ -679,7 +679,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
                   {overdue && (
                     <span
                       className="flex items-center gap-1 text-[10px] font-medium text-[#f31260] shrink-0"
-                      title="Follow-up date has passed"
+                      data-tip="Follow-up date has passed"
                     >
                       <AlertTriangle className="w-3 h-3" /> Overdue
                     </span>
@@ -817,7 +817,7 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
                             return (
                               <div
                                 key={e.id}
-                                title={e.name}
+                                data-tip={e.name}
                                 className={`w-4.5 h-4.5 rounded-full ${c.bg} ${c.text} border border-white flex items-center justify-center`}
                               >
                                 <span className="text-[7px] font-semibold">{getInitials(e.name)}</span>
@@ -829,14 +829,14 @@ export default function LeadDetailDrawer({ leadId, onClose }: { leadId: string; 
                       <button
                         onClick={() => setShareOpenFor(shareOpenFor === n.id ? null : n.id)}
                         className="p-1 rounded hover:bg-[#f5f5f5] text-[#999] hover:text-[#0070f3] transition-colors"
-                        title="Share with teammates"
+                        data-tip="Share with teammates"
                       >
                         <Send className="w-3 h-3" />
                       </button>
                       <button
                         onClick={() => handleDeleteNote(n)}
                         className="p-1 rounded hover:bg-[#fff0f3] text-[#999] hover:text-[#f31260] transition-colors"
-                        title="Delete note"
+                        data-tip="Delete note"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>

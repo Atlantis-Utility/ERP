@@ -209,7 +209,7 @@ export default function VaultDetailDrawer({ open, entry, onClose, onEdit, onDele
             <button
               onClick={handleTogglePassword}
               disabled={revealing}
-              title={revealedPassword ? "Hide" : "Show"}
+              data-tip={revealedPassword ? "Hide" : "Show"}
               className="p-1.5 rounded-md text-[#666] hover:bg-[#eee] hover:text-[#0a0a0a] transition-colors disabled:opacity-40"
             >
               {revealedPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -217,7 +217,7 @@ export default function VaultDetailDrawer({ open, entry, onClose, onEdit, onDele
             <button
               onClick={() => handleCopy("password")}
               disabled={revealing}
-              title="Copy (auto-clears in 20s)"
+              data-tip="Copy (auto-clears in 20s)"
               className="p-1.5 rounded-md text-[#666] hover:bg-[#eee] hover:text-[#0a0a0a] transition-colors disabled:opacity-40"
             >
               {copied === "password" ? <Check className="w-3.5 h-3.5 text-[#17c964]" /> : <Copy className="w-3.5 h-3.5" />}
@@ -241,7 +241,7 @@ export default function VaultDetailDrawer({ open, entry, onClose, onEdit, onDele
               <button
                 onClick={handleTogglePin}
                 disabled={revealing}
-                title={revealedPin ? "Hide" : "Show"}
+                data-tip={revealedPin ? "Hide" : "Show"}
                 className="p-1.5 rounded-md text-[#666] hover:bg-[#eee] hover:text-[#0a0a0a] transition-colors disabled:opacity-40"
               >
                 {revealedPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -249,7 +249,7 @@ export default function VaultDetailDrawer({ open, entry, onClose, onEdit, onDele
               <button
                 onClick={() => handleCopy("pin")}
                 disabled={revealing}
-                title="Copy (auto-clears in 20s)"
+                data-tip="Copy (auto-clears in 20s)"
                 className="p-1.5 rounded-md text-[#666] hover:bg-[#eee] hover:text-[#0a0a0a] transition-colors disabled:opacity-40"
               >
                 {copied === "pin" ? <Check className="w-3.5 h-3.5 text-[#17c964]" /> : <Copy className="w-3.5 h-3.5" />}
@@ -287,7 +287,7 @@ export default function VaultDetailDrawer({ open, entry, onClose, onEdit, onDele
               <button
                 onClick={() => onManageAccess(entry, "outside")}
                 className="flex items-center gap-1 text-xs font-medium text-[#0070f3] hover:underline"
-                title="Email a secure, expiring link to someone outside the organization"
+                data-tip="Email a secure, expiring link to someone outside the organization"
               >
                 <Send className="w-3 h-3" />
                 Share outside

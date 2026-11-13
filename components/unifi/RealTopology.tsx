@@ -86,7 +86,7 @@ function ClientLeaf({ client }: { client: UiConnectorClient }) {
   return (
     <div className="flex flex-col items-center gap-1.5 min-w-24 max-w-36">
       <ClientIcon name={client.name || client.macAddress} size={52} />
-      <p className="text-[11px] font-medium text-[#333] text-center truncate max-w-36" title={client.name}>
+      <p className="text-[11px] font-medium text-[#333] text-center truncate max-w-36" data-tip={client.name}>
         {client.name || client.macAddress}
       </p>
     </div>

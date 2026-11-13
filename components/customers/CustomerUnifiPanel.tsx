@@ -241,7 +241,7 @@ export default function CustomerUnifiPanel({ customerId, companyName, bare }: { 
               onClick={handleUnlink}
               disabled={saving}
               className="flex items-center gap-1.5 text-xs text-[#999] hover:text-[#dc2626] transition-colors disabled:opacity-40"
-              title="Unlink this UniFi site"
+              data-tip="Unlink this UniFi site"
             >
               <Unlink className="w-3.5 h-3.5" />
             </button>

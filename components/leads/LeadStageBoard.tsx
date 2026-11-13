@@ -130,7 +130,7 @@ export default function LeadStageBoard({
                         ) : (
                           // attribute doesn't produce one, only a <title>
                           // child element would.
-                          <span title="Read-only, you can view this lead but not change it" className="shrink-0 mt-0.5">
+                          <span data-tip="Read-only, you can view this lead but not change it" className="shrink-0 mt-0.5">
                             <Lock className="w-3 h-3 text-[#ccc]" />
                           </span>
                         )}

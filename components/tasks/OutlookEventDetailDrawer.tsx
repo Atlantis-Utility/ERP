@@ -354,14 +354,14 @@ export default function OutlookEventDetailDrawer({
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title="Open in Maps"
+                  data-tip="Open in Maps"
                   className="text-[#999] hover:text-[#0070f3] transition-colors shrink-0"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
                 <button
                   onClick={copyLocation}
-                  title={locationCopied ? "Copied" : "Copy location"}
+                  data-tip={locationCopied ? "Copied" : "Copy location"}
                   className="text-[#999] hover:text-[#0a0a0a] transition-colors shrink-0"
                 >
                   {locationCopied ? <Check className="w-3.5 h-3.5 text-[#16a34a]" /> : <Copy className="w-3.5 h-3.5" />}

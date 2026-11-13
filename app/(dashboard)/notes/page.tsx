@@ -35,7 +35,7 @@ function Avatar({ name, size = "sm", ring = false }: { name: string; size?: "sm"
   const text = size === "md" ? "text-[9px]" : "text-[8px]";
   return (
     <div
-      title={name}
+      data-tip={name}
       className={`${box} rounded-full ${c.bg} ${c.text} flex items-center justify-center shrink-0 ${ring ? "ring-2 ring-white" : ""}`}
     >
       <span className={`${text} font-semibold`}>{getInitials(name)}</span>
@@ -491,7 +491,7 @@ export default function NotesPage() {
                     <button
                       onClick={() => setConfirmDelete(true)}
                       className="p-1.5 rounded-lg text-[#999] hover:bg-[#fef2f2] hover:text-[#f31260] transition-colors"
-                      title="Delete note"
+                      data-tip="Delete note"
                       aria-label="Delete note"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

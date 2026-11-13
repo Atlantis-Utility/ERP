@@ -140,14 +140,14 @@ export default function ReportsPage() {
                   <button
                     onClick={(e) => { e.stopPropagation(); router.push(`/reports/project/${project.id}`); }}
                     className="flex items-center gap-1 text-xs font-medium text-[#666] px-2 py-1.5 rounded-lg hover:bg-[#f1f1f1] transition-colors"
-                    title="View Report"
+                    data-tip="View Report"
                   >
                     <Eye className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); exportProjectReportPdf(project, tasks); }}
                     className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
-                    title="Download PDF"
+                    data-tip="Download PDF"
                   >
                     <Download className="w-3.5 h-3.5" />
                     PDF
@@ -155,7 +155,7 @@ export default function ReportsPage() {
                   <button
                     onClick={(e) => { e.stopPropagation(); exportProjectReportDocx(project, tasks); }}
                     className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
-                    title="Download Word"
+                    data-tip="Download Word"
                   >
                     <FileType className="w-3.5 h-3.5" />
                     Word
@@ -190,14 +190,14 @@ export default function ReportsPage() {
               <button
                 onClick={(e) => { e.stopPropagation(); router.push("/reports/tasks"); }}
                 className="flex items-center gap-1 text-xs font-medium text-[#666] px-2 py-1.5 rounded-lg hover:bg-[#f1f1f1] transition-colors"
-                title="View Report"
+                data-tip="View Report"
               >
                 <Eye className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); exportTasksReportPdf(tasks, projects); }}
                 className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
-                title="Download PDF"
+                data-tip="Download PDF"
               >
                 <Download className="w-3.5 h-3.5" />
                 PDF
@@ -205,7 +205,7 @@ export default function ReportsPage() {
               <button
                 onClick={(e) => { e.stopPropagation(); exportTasksReportDocx(tasks, projects); }}
                 className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
-                title="Download Word"
+                data-tip="Download Word"
               >
                 <FileType className="w-3.5 h-3.5" />
                 Word
@@ -230,14 +230,14 @@ export default function ReportsPage() {
               <button
                 onClick={(e) => { e.stopPropagation(); router.push("/reports/tickets"); }}
                 className="flex items-center gap-1 text-xs font-medium text-[#666] px-2 py-1.5 rounded-lg hover:bg-[#f1f1f1] transition-colors"
-                title="View Report"
+                data-tip="View Report"
               >
                 <Eye className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); exportTicketsReportPdf(tickets); }}
                 className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
-                title="Download PDF"
+                data-tip="Download PDF"
               >
                 <Download className="w-3.5 h-3.5" />
                 PDF
@@ -245,7 +245,7 @@ export default function ReportsPage() {
               <button
                 onClick={(e) => { e.stopPropagation(); exportTicketsReportDocx(tickets); }}
                 className="flex items-center gap-1 border border-[#eaeaea] bg-white text-xs font-medium text-[#0a0a0a] px-2 py-1.5 rounded-lg hover:bg-[#fafafa] transition-colors"
-                title="Download Word"
+                data-tip="Download Word"
               >
                 <FileType className="w-3.5 h-3.5" />
                 Word

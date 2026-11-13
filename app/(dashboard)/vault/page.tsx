@@ -152,7 +152,7 @@ export default function VaultPage() {
             <button
               onClick={handleLock}
               className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-sm font-medium text-[#444] px-3 py-2 rounded-lg hover:bg-[#fafafa] transition-colors"
-              title="Lock your vault for this session"
+              data-tip="Lock your vault for this session"
             >
               <Lock className="w-3.5 h-3.5" />
               Lock

@@ -158,7 +158,7 @@ export default function DeviceLogo({ model, shortname, name, size = 24, classNam
       className={`object-contain shrink-0 ${className}`}
       style={{ width: size, height: size }}
       onError={() => setIdx((i) => i + 1)}
-      title={name || model}
+      data-tip={name || model}
     />
   );
 }

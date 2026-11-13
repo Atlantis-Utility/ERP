@@ -450,7 +450,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
                       return (
                         <span
                           key={page.href}
-                          title="Everyone has the dashboard. The panels on it are granted above."
+                          data-tip="Everyone has the dashboard. The panels on it are granted above."
                           className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border bg-[#f5f5f5] text-[#666] border-[#eaeaea]"
                         >
                           <Check className="w-3 h-3 shrink-0" />

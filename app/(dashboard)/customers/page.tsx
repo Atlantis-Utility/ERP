@@ -238,7 +238,7 @@ export default function CustomersPage() {
         {canSeeBilling && (
           <button
             onClick={() => setPaymentFilter(paymentFilter === "unpaid" ? "all" : "unpaid")}
-            title="Balance owed > 0: RingLogix only exposes a running balance, not per-invoice payment dates, so this can't be scoped to a specific month"
+            data-tip="Balance owed > 0: RingLogix only exposes a running balance, not per-invoice payment dates, so this can't be scoped to a specific month"
             className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
               paymentFilter === "unpaid"
                 ? "bg-[#fdeaea] text-[#f31260] border-[#f9c9c9]"
@@ -321,7 +321,7 @@ export default function CustomersPage() {
                         </div>
                         <span className="text-sm font-medium text-[#0a0a0a] group-hover:text-[#0070f3] group-hover:underline">{c.company || "-"}</span>
                         {linkedIds.has(c.id) && (
-                          <span title="UniFi site linked">
+                          <span data-tip="UniFi site linked">
                             <Wifi className="w-3.5 h-3.5 text-[#16a34a] shrink-0" />
                           </span>
                         )}

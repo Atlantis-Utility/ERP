@@ -60,7 +60,7 @@ export default function CopyButton({
     <button
       type="button"
       onClick={handleCopy}
-      title={copied ? "Copied" : label ? `Copy ${label}` : "Copy"}
+      data-tip={copied ? "Copied" : label ? `Copy ${label}` : "Copy"}
       aria-label={copied ? "Copied" : label ? `Copy ${label}` : "Copy"}
       className={`inline-flex items-center justify-center w-5 h-5 rounded-md text-[#999] hover:text-[#0070f3] hover:bg-[#f1f5f9] transition-colors shrink-0 ${
         revealOnHover ? "opacity-0 group-hover:opacity-100 focus:opacity-100" : ""

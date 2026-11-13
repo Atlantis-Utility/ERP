@@ -507,7 +507,7 @@ export default function CampaignSheetPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
             }}
-            title={cell.pending ? `Waiting on an administrator: ${cell.value}` : cell.value}
+            data-tip={cell.pending ? `Waiting on an administrator: ${cell.value}` : cell.value}
             className={`${INPUT} min-w-0 flex-1 ${cell.pending ? "text-[#946c00]" : ""}`}
           />
           {extra?.(cell.value)}
@@ -839,7 +839,7 @@ export default function CampaignSheetPage() {
                   onClick={renumber}
                   disabled={busy || total === 0}
                   className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#444] px-3 py-2 rounded-md hover:bg-[#fafafa] transition-colors disabled:opacity-40"
-                  title="Close gaps in the No. column"
+                  data-tip="Close gaps in the No. column"
                 >
                   <ListOrdered className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Renumber</span>
@@ -857,7 +857,7 @@ export default function CampaignSheetPage() {
               <button
                 onClick={() => setShowColumns(true)}
                 className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[13px] font-medium text-[#444] px-3 py-2 rounded-md hover:bg-[#fafafa] transition-colors"
-                title="Rename this campaign, rename a heading, or add a column"
+                data-tip="Rename this campaign, rename a heading, or add a column"
               >
                 <Columns3 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Columns</span>
@@ -994,7 +994,7 @@ export default function CampaignSheetPage() {
           {lastEdit && (
             <button
               onClick={goToLastEdit}
-              title={`Go to row ${lastEdit.rowNo} on page ${lastEdit.page + 1} - ${lastEdit.mine ? "your last edit" : `last touched by ${lastEdit.byName ?? "somebody"}`}, ${formatDate(lastEdit.updatedAt)}`}
+              data-tip={`Go to row ${lastEdit.rowNo} on page ${lastEdit.page + 1} - ${lastEdit.mine ? "your last edit" : `last touched by ${lastEdit.byName ?? "somebody"}`}, ${formatDate(lastEdit.updatedAt)}`}
               className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[#eaeaea] text-[#0070f3] hover:bg-[#fafafa] transition-colors"
             >
               <History className="w-3.5 h-3.5" />
@@ -1154,7 +1154,7 @@ export default function CampaignSheetPage() {
                       // widening it, and "Caller Feedback / Prospect's Stated
                       // Problem" is wider than any sane column. The full text
                       // is on hover.
-                      title={col.label}
+                      data-tip={col.label}
                       className="bg-[#fafafa] border-r border-b border-[#eaeaea] px-2 h-9 text-left text-[10px] font-semibold text-[#999] uppercase tracking-wider truncate"
                     >
                       {col.label}
@@ -1224,7 +1224,7 @@ export default function CampaignSheetPage() {
                           {state === "saving" && <Loader2 className="w-3 h-3 animate-spin text-[#bbb] shrink-0" />}
                           {state === "saved" && <Check className="w-3 h-3 text-[#17c964] shrink-0" />}
                           {state === "error" && (
-                            <span title="Not saved. Check the error above" className="shrink-0">
+                            <span data-tip="Not saved. Check the error above" className="shrink-0">
                               <AlertTriangle className="w-3 h-3 text-[#f31260]" />
                             </span>
                           )}
@@ -1234,7 +1234,7 @@ export default function CampaignSheetPage() {
                           {row.doNotCall && canEdit && (
                             <button
                               onClick={() => unlockRow(row)}
-                              title="Do not call. Click to turn that off and edit this row."
+                              data-tip="Do not call. Click to turn that off and edit this row."
                               aria-label={`Turn off do not call for row ${row.position}`}
                               className="shrink-0 p-0.5 rounded text-[#f31260] hover:bg-[#fde8e8] transition-colors"
                             >
@@ -1259,7 +1259,7 @@ export default function CampaignSheetPage() {
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
                             }}
-                            title={company.value}
+                            data-tip={company.value}
                             className={`${INPUT} min-w-0 font-medium ${company.pending ? "text-[#946c00]" : ""}`}
                           />
                           {/* The row tag lives on the frozen column so it
@@ -1267,7 +1267,7 @@ export default function CampaignSheetPage() {
                               scrolled sideways. */}
                           {rowHasPending(row) && (
                             <span
-                              title="Waiting on an administrator"
+                              data-tip="Waiting on an administrator"
                               className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#946c00] bg-[#fefce8] border border-[#f7e6a8] rounded px-1 py-0.5"
                             >
                               Updated
@@ -1303,7 +1303,7 @@ export default function CampaignSheetPage() {
                           v ? (
                             <a
                               href={telHref(v)}
-                              title={`Call ${formatPhone(v)}`}
+                              data-tip={`Call ${formatPhone(v)}`}
                               className="shrink-0 p-0.5 rounded text-[#0070f3] hover:bg-[#eff6ff] transition-colors"
                             >
                               <Phone className="w-3 h-3" />
@@ -1316,7 +1316,7 @@ export default function CampaignSheetPage() {
                           emailAddress(v) ? (
                             <a
                               href={`mailto:${v}`}
-                              title={`Email ${v}`}
+                              data-tip={`Email ${v}`}
                               className="shrink-0 p-0.5 rounded text-[#0070f3] hover:bg-[#eff6ff] transition-colors"
                             >
                               <Mail className="w-3 h-3" />
@@ -1545,7 +1545,7 @@ export default function CampaignSheetPage() {
                             key={`x-${row.rowId}-${col.id}-${row.extra[col.id] ?? ""}`}
                             disabled={!canEdit || row.doNotCall}
                             placeholder={canEdit ? col.label : ""}
-                            title={row.extra[col.id] ?? ""}
+                            data-tip={row.extra[col.id] ?? ""}
                             onBlur={(e) =>
                               commit(row, { extra: { ...row.extra, [col.id]: e.target.value.trim() } })
                             }
@@ -1678,7 +1678,7 @@ export default function CampaignSheetPage() {
                       key={swatch.id}
                       onClick={() => setNewColor({ ...newColor, swatch: swatch.id })}
                       aria-label={swatch.label}
-                      title={swatch.label}
+                      data-tip={swatch.label}
                       className={`w-4 h-4 rounded-full ${swatch.dot} transition-transform ${
                         newColor.swatch === swatch.id ? "ring-2 ring-offset-1 ring-[#0a0a0a] scale-110" : "hover:scale-110"
                       }`}

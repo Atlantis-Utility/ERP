@@ -319,7 +319,7 @@ export default function WakeUpCallsPage() {
                         <button
                           onClick={() => deleteCall(c)}
                           className="p-1.5 rounded-lg text-[#999] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"
-                          title="Delete call"
+                          data-tip="Delete call"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

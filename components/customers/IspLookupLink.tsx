@@ -54,7 +54,7 @@ export default function IspLookupLink({
     <button
       type="button"
       onClick={open}
-      title={
+      data-tip={
         address.trim()
           ? `Copy "${address.trim()}" and open ispreports.org`
           : "Open ispreports.org (no address on file to copy)"

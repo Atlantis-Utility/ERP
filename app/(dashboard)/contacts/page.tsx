@@ -347,7 +347,7 @@ export default function ContactsPage() {
                       <button
                         onClick={() => deleteContact(c)}
                         className="p-1.5 rounded-lg text-[#999] hover:text-[#f31260] hover:bg-[#fff0f3] transition-colors"
-                        title="Delete contact"
+                        data-tip="Delete contact"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

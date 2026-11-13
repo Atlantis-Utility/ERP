@@ -214,7 +214,7 @@ function Field({
         ) : (
           // A long address is truncated to keep the grid aligned, so the
           // whole thing has to be readable on hover.
-          <p className="text-sm font-medium text-[#0a0a0a] truncate" title={value || undefined}>
+          <p className="text-sm font-medium text-[#0a0a0a] truncate" data-tip={value || undefined}>
             {value || "-"}
           </p>
         )}
@@ -968,7 +968,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                       <span className="text-sm font-medium text-[#0a0a0a] tabular-nums">{a.accountNumber}</span>
                       {a.accountNumber && <CopyButton value={a.accountNumber} label="Account number" />}
                       {(a.serviceAddress || a.notes) && (
-                        <span className="text-[11px] text-[#999] truncate" title={[a.serviceAddress, a.notes].filter(Boolean).join(" · ")}>
+                        <span className="text-[11px] text-[#999] truncate" data-tip={[a.serviceAddress, a.notes].filter(Boolean).join(" · ")}>
                           {[a.serviceAddress, a.notes].filter(Boolean).join(" · ")}
                         </span>
                       )}

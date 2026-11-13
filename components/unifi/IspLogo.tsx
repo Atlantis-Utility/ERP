@@ -144,7 +144,7 @@ export default function IspLogo({ ispName, size = 20, className = "" }: IspLogoP
       <span
         className={`inline-flex items-center justify-center shrink-0 ${className}`}
         style={{ width: size, height: size }}
-        title={ispName}
+        data-tip={ispName}
       >
         <svg
           viewBox="0 0 24 24"
@@ -173,7 +173,7 @@ export default function IspLogo({ ispName, size = 20, className = "" }: IspLogoP
       className={`rounded object-contain shrink-0 ${className}`}
       style={{ width: displaySize, height: displaySize }}
       onError={advance}
-      title={ispName}
+      data-tip={ispName}
     />
   );
 }

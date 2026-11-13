@@ -192,7 +192,7 @@ function Card({
         </div>
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[card.priority]}`}
-          title={`${card.priority} priority`}
+          data-tip={`${card.priority} priority`}
         />
       </div>
 
@@ -912,7 +912,7 @@ export default function TasksPage() {
                       setTaskDrawerOpen(true);
                     }}
                     className="p-1 rounded-md hover:bg-[#f5f5f5] transition-colors"
-                    title="Add task"
+                    data-tip="Add task"
                   >
                     <Plus className="w-3.5 h-3.5 text-[#999]" />
                   </button>

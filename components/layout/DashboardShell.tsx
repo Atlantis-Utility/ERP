@@ -130,7 +130,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             <button
               onClick={handleLogout}
               className="p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors"
-              title="Sign out"
+              data-tip="Sign out"
             >
               <LogOut className="w-4 h-4 text-[#666]" />
             </button>

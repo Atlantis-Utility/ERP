@@ -396,7 +396,7 @@ export default function SiteDetailPage() {
                           {w.ipType !== "unknown" && (
                             <div className="flex justify-end mt-1">
                               <span
-                                title={
+                                data-tip={
                                   w.ipTypeHostname
                                     ? `Estimated from reverse DNS: ${w.ipTypeHostname}`
                                     : "Estimated from reverse DNS"

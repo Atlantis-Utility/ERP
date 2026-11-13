@@ -129,7 +129,7 @@ export default function TimeClock() {
               <button
                 onClick={toggle}
                 disabled={busy || !me}
-                title={me ? undefined : "Your sign-in isn't linked to an employee record"}
+                data-tip={me ? undefined : "Your sign-in isn't linked to an employee record"}
                 className={`mt-4 w-full flex items-center justify-center gap-2 text-sm font-medium py-2.5 rounded-lg transition-colors disabled:opacity-40 ${
                   current
                     ? "bg-[#fef2f2] text-[#f31260] hover:bg-[#fde8e8]"

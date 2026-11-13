@@ -297,7 +297,7 @@ export default function AddLeadsToSheetModal({
           </p>
           <div className="flex items-center gap-2 shrink-0">
             {error && (
-              <p className="text-[12px] text-[#f31260] max-w-56 truncate" title={error}>
+              <p className="text-[12px] text-[#f31260] max-w-56 truncate" data-tip={error}>
                 {error}
               </p>
             )}
