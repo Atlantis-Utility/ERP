@@ -531,7 +531,14 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
                           <span className="min-w-0">
                             <span className="block text-[13px] font-medium text-[#0a0a0a]">{opt.label}</span>
                             <span className="block text-[11px] text-[#999]">
-                              {pageGranted ? opt.hint : `Grant ${pageLabel} above first.`}
+                              {/* A ticked box nobody can untick has to say
+                                  why, or the answer to "how do I stop them
+                                  seeing this" is a greyed-out checkbox. */}
+                              {fixed
+                                ? `An administrator always sees this. Change their access role to withhold it.`
+                                : pageGranted
+                                  ? opt.hint
+                                  : `Grant ${pageLabel} above first.`}
                             </span>
                           </span>
                         </label>
