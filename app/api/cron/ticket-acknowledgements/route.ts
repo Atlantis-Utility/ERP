@@ -10,10 +10,21 @@ export const maxDuration = 60;
 /**
  * Sends the "we have your request" reply to tickets that have just come in.
  *
- * Scheduled, because a ticket is an email arriving in a shared mailbox and
- * nothing tells the app when that happens. The schedule is what decides how
- * fast a customer hears back, and the lookback window has to cover the gap
- * between runs or a ticket falls through it — see vercel.json.
+ * A ticket is an email arriving in a shared mailbox and nothing tells the
+ * app when that happens, so something has to come looking. Two things do:
+ * opening the Tickets page sweeps for new ones (app/api/tickets/route.ts),
+ * which covers the working day within minutes, and this route can be called
+ * on a schedule for the hours when nobody is looking.
+ *
+ * It is deliberately NOT in vercel.json: a Vercel Hobby project rejects any
+ * cron more frequent than once a day, and a deploy that fails takes
+ * everything else with it. Add it there once the plan allows - with a
+ * lookback that covers the gap between runs, e.g.
+ * `/api/cron/ticket-acknowledgements?lookback=1440` for a daily sweep - or
+ * point any external scheduler at it with the CRON_SECRET as a bearer token.
+ *
+ * The lookback window has to cover the gap between runs or a ticket falls
+ * through it.
  *
  * Re-running is harmless: a thread anyone here has sent into is skipped, and
  * our own acknowledgement counts (lib/tickets/acknowledge.ts).

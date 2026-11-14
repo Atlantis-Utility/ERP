@@ -3,10 +3,6 @@
     {
       "path": "/api/cron/ringlogix-sync",
       "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/cron/ticket-acknowledgements",
-      "schedule": "*/15 * * * *"
     }
   ]
 }

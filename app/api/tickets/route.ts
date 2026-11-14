@@ -1,8 +1,45 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getGraphToken, TICKET_MAILBOX_ENCODED } from "./_ms-auth";
+import { acknowledgeNewTickets } from "@/lib/tickets/acknowledge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The acknowledgement sweep below runs after the response, inside this
+// route's budget: a handful of Graph calls, more if several tickets came in
+// at once.
+export const maxDuration = 60;
+
+/**
+ * Acknowledge new tickets off the back of somebody opening the list.
+ *
+ * The scheduled run (vercel.json) is daily, because that is all a Vercel
+ * Hobby project is allowed - and a customer who emails at nine in the
+ * morning should not hear back at five the next. The ticket list is fetched
+ * every time anyone here opens Tickets, which during the working day is
+ * constantly, so that fetch doubles as the trigger.
+ *
+ * `after` runs it once the response has gone, so nobody waits for it. It is
+ * throttled per instance, and in any case re-running is harmless: a thread
+ * we have already answered is skipped (lib/tickets/acknowledge.ts).
+ */
+const ACK_THROTTLE_MS = 5 * 60_000;
+let lastAckSweep = 0;
+
+function sweepAcknowledgements() {
+  if (Date.now() - lastAckSweep < ACK_THROTTLE_MS) return;
+  lastAckSweep = Date.now();
+  after(async () => {
+    try {
+      const result = await acknowledgeNewTickets();
+      if (result.acknowledged.length > 0) {
+        console.log(`[ticket-ack] ${result.acknowledged.length} acknowledged after a tickets fetch`);
+      }
+    } catch (err) {
+      // Never the list's problem: somebody is looking at their tickets.
+      console.warn("[ticket-ack] sweep failed:", err instanceof Error ? err.message : err);
+    }
+  });
+}
 
 interface GraphMessage {
   id: string;
@@ -118,6 +155,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const pageToken = searchParams.get("pageToken") ?? undefined;
     const offset = Number(pageToken ?? 0) || 0;
+
+    // Opening the list, not paging through it.
+    if (!pageToken) sweepAcknowledgements();
 
     // Cached as the whole grouped list, not per page: the grouping needs
     // every message to be right, so slicing a cached list beats fetching
