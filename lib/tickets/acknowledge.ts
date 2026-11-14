@@ -45,6 +45,8 @@ interface GraphMessage {
   subject?: string;
   from?: { emailAddress?: { address?: string; name?: string } };
   receivedDateTime?: string;
+  /** Which folder the copy lives in - Sent Items is how we recognise our own. */
+  parentFolderId?: string;
 }
 
 export interface AcknowledgementCandidate {
@@ -83,22 +85,78 @@ async function graph<T>(token: string, path: string, init?: RequestInit): Promis
   return (text ? JSON.parse(text) : {}) as T;
 }
 
-const isOurs = (address: string) => address.toLowerCase().endsWith(`@${OUR_DOMAIN}`);
+/**
+ * Is this message one of ours?
+ *
+ * Three ways it can be, and all three matter:
+ *
+ *  - an SMTP address at our domain - a colleague answering from their own
+ *    account, which is how this desk actually replies;
+ *  - a message sitting in the mailbox's Sent Items - our own reply, by
+ *    where it is rather than who it says it's from;
+ *  - a sender in Exchange's X500 form (`/o=ExchangeLabs/ou=.../cn=...`),
+ *    which is what Graph returns for our own sent copy instead of
+ *    ticket@atlantisutility.com. Only a sender inside this tenant is
+ *    written that way, and a sender inside this tenant is us.
+ *
+ * The X500 case is the one that bites: without it the acknowledgement we
+ * sent is invisible to this check, and every reply from the customer earns
+ * them another one.
+ */
+export function isOurMessage(
+  address: string,
+  parentFolderId?: string | null,
+  sentFolderId?: string | null,
+): boolean {
+  const a = address.toLowerCase();
+  if (a.endsWith(`@${OUR_DOMAIN}`)) return true;
+  if (a.startsWith("/o=")) return true;
+  return Boolean(sentFolderId && parentFolderId === sentFolderId);
+}
+
+const isOurs = (address: string) => isOurMessage(address);
+
+/** The mailbox's Sent Items, looked up once per run and remembered. */
+let sentFolderCache: { id: string; at: number } | null = null;
+
+async function sentItemsFolderId(token: string): Promise<string | null> {
+  if (sentFolderCache && Date.now() - sentFolderCache.at < 3_600_000) return sentFolderCache.id;
+  try {
+    const folder = await graph<{ id: string }>(
+      token,
+      `/users/${TICKET_MAILBOX_ENCODED}/mailFolders/sentitems?$select=id`,
+    );
+    sentFolderCache = { id: folder.id, at: Date.now() };
+    return folder.id;
+  } catch (err) {
+    // Not fatal: the sender test still catches our domain and the X500
+    // form. Worth knowing about, though - this is the precise check.
+    console.warn("[ticket-ack] couldn't resolve Sent Items:", err);
+    return null;
+  }
+}
 
 /**
- * Everything in the conversation, across folders — their messages, ours,
- * and anything sent from a colleague's own account. Staff here answer from
- * their personal addresses with the shared mailbox on the thread, so "have
- * we replied" cannot be "is there a message from the ticket mailbox".
+ * Everything in the conversation, across every folder — their messages,
+ * our replies in Sent Items, and anything a colleague sent from their own
+ * account. Staff here answer from their personal addresses with the shared
+ * mailbox on the thread, so "have we replied" cannot be "is there a message
+ * from the ticket mailbox".
  */
-async function conversationSenders(token: string, conversationId: string): Promise<string[]> {
+async function conversationMessages(
+  token: string,
+  conversationId: string,
+): Promise<Array<{ address: string; folder: string }>> {
   // Single quotes inside an OData string literal are escaped by doubling.
   const literal = encodeURIComponent(conversationId.replace(/'/g, "''"));
   const data = await graph<{ value?: GraphMessage[] }>(
     token,
-    `/users/${TICKET_MAILBOX_ENCODED}/messages?$filter=conversationId eq '${literal}'&$select=from,receivedDateTime&$top=100`,
+    `/users/${TICKET_MAILBOX_ENCODED}/messages?$filter=conversationId eq '${literal}'&$select=from,receivedDateTime,parentFolderId&$top=100`,
   );
-  return (data.value ?? []).map((m) => m.from?.emailAddress?.address ?? "").filter(Boolean);
+  return (data.value ?? []).map((m) => ({
+    address: m.from?.emailAddress?.address ?? "",
+    folder: m.parentFolderId ?? "",
+  }));
 }
 
 /** The reply itself: a draft in their thread, filled in, then sent. */
@@ -146,6 +204,7 @@ export async function acknowledgeNewTickets(opts?: {
     (a.receivedDateTime ?? "").localeCompare(b.receivedDateTime ?? ""),
   );
 
+  const sentFolder = await sentItemsFolderId(token);
   const handled = new Set<string>();
   for (const m of messages) {
     const from = m.from?.emailAddress?.address ?? "";
@@ -161,13 +220,18 @@ export async function acknowledgeNewTickets(opts?: {
     if (AUTO_SUBJECT_PATTERN.test(subject)) { skip("automatic reply"); continue; }
 
     // The one rule that matters, and the reason this is safe to re-run:
-    // if anybody here has sent into this thread, it is answered. Our own
-    // acknowledgement comes from the ticket mailbox, so it is caught by the
-    // same check - a thread cannot be acknowledged twice.
-    const senders = await conversationSenders(token, m.conversationId);
-    const ours = senders.filter(isOurs).map((a) => a.toLowerCase());
+    // if anybody here has sent into this thread, it is answered - including
+    // us, so a customer replying to their own ticket four times gets one
+    // acknowledgement, not four.
+    const thread = await conversationMessages(token, m.conversationId);
+    const ours = thread.filter((x) => isOurMessage(x.address, x.folder, sentFolder));
     if (ours.length > 0) {
-      skip(ours.every((a) => a === MAILBOX) ? "already acknowledged" : "already answered by a person");
+      // Ours and nobody else's means the only thing in there is the
+      // acknowledgement; a colleague's reply is worth saying differently.
+      const onlyTheRobot = ours.every(
+        (x) => x.folder === sentFolder || x.address.toLowerCase() === MAILBOX || x.address.startsWith("/o="),
+      );
+      skip(onlyTheRobot ? "already acknowledged" : "already answered by a person");
       continue;
     }
 
