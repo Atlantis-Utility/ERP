@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from "r
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase/client";
 import { adminDashboardWidgets, defaultDashboardWidgets } from "./dashboard-widgets";
+import { defaultPageOptions } from "./page-options";
 
 export interface AuthUser {
   user: User;
@@ -33,8 +34,8 @@ export interface AuthUser {
    * Grants that sit inside a page rather than deciding whether you reach
    * it — today only whether Customers shows balances and what we pay for
    * a circuit (lib/page-options.ts). A plain list, never undefined: an
-   * option absent means not granted, and an administrator holds them all
-   * through `isUnrestricted` instead. Read it with hasPageOption().
+   * option absent from it means not granted, for an administrator as much
+   * as anyone else. Read it with hasPageOption().
    */
   pageOptions: string[];
   /**
@@ -234,7 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Employees page they'd need to grant themselves anything. Anyone
         // non-admin still defaults to [], i.e. nothing until granted.
         access:             employeeExtra?.access ?? (unrestricted ? undefined : []),
-        pageOptions:        employeeExtra?.pageOptions ?? [],
+        pageOptions:        employeeExtra?.pageOptions ?? defaultPageOptions(unrestricted),
         // Same shape as `access`: a list means those panels, undefined
         // means all of them. Someone with an employee record and no list
         // yet gets the default rather than everything, since the panels
@@ -333,7 +334,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 row.data?.access ?? (row.data?.accessRole === "Administrator" ? undefined : []),
               // Revoking billing has to take effect while they're looking
               // at it, like every other grant on this row.
-              pageOptions:        row.data?.pageOptions ?? [],
+              pageOptions:
+                row.data?.pageOptions ??
+                defaultPageOptions(row.data?.accessRole === "Administrator"),
               dashboardWidgets:
                 row.data?.accessRole === "Administrator"
                   ? adminDashboardWidgets(row.data?.dashboard)

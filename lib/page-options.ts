@@ -47,19 +47,33 @@ export function isPageOption(key: string): boolean {
   return PAGE_OPTIONS.some((o) => o.key === key);
 }
 
+export const ALL_PAGE_OPTIONS: string[] = PAGE_OPTIONS.map((o) => o.key);
+
 /**
- * Whether this person holds an option.
+ * What somebody holds when nothing has been recorded for them.
  *
- * `unrestricted` is auth-context's `isUnrestricted` — Administrator, or a
- * login with no employee record behind it. Everyone else needs the grant
- * spelled out: absent means no, so a page option is never something you get
- * by accident.
+ * An administrator holds everything, so nobody loses sight of the money the
+ * day this ships. Anyone else holds nothing, because a grant you were never
+ * given is not a grant.
+ *
+ * It is only a *default*. Once there is a list on the record, the list
+ * decides - for administrators too. That is the same rule page access
+ * already follows (see lib/auth-context.tsx): being an administrator settles
+ * which records you can see, not which switches someone may turn off. An
+ * administrator who ticks their own billing off should stop seeing billing,
+ * which is also the only way to check what everyone else sees.
+ */
+export function defaultPageOptions(unrestricted: boolean): string[] {
+  return unrestricted ? [...ALL_PAGE_OPTIONS] : [];
+}
+
+/**
+ * Whether this person holds an option. The list is the whole answer: see
+ * defaultPageOptions for what fills it in when the record is silent.
  */
 export function hasPageOption(
   key: string,
-  who: { isUnrestricted?: boolean; pageOptions?: string[] } | null | undefined,
+  who: { pageOptions?: string[] } | null | undefined,
 ): boolean {
-  if (!who) return false;
-  if (who.isUnrestricted) return true;
-  return (who.pageOptions ?? []).includes(key);
+  return Boolean(who?.pageOptions?.includes(key));
 }

@@ -1,5 +1,5 @@
 import { createClient, createServiceRoleClient } from "./supabase/server";
-import { hasPageOption } from "./page-options";
+import { defaultPageOptions, hasPageOption } from "./page-options";
 
 /**
  * Does the caller hold this page option? (lib/page-options.ts)
@@ -13,6 +13,11 @@ import { hasPageOption } from "./page-options";
  * falling back to user_profiles only for a login with no employee record at
  * all. Read with the service key, because the answer must not depend on what
  * the caller is allowed to see.
+ *
+ * An administrator holds every option until somebody records otherwise on
+ * their row - and then the row wins, so an administrator who turned their
+ * own billing off is served the same data as the people they turned it off
+ * for. A permission you can't test on yourself isn't one you can trust.
  *
  * Fails closed. No session, no employee, a table that won't answer — all of
  * them mean "not granted", because the cost of being wrong here is handing
@@ -35,8 +40,7 @@ export async function callerHasPageOption(key: string): Promise<boolean> {
     if (employee) {
       const row = employee.data as { accessRole?: string; pageOptions?: string[] } | null;
       return hasPageOption(key, {
-        isUnrestricted: row?.accessRole === "Administrator",
-        pageOptions: row?.pageOptions,
+        pageOptions: row?.pageOptions ?? defaultPageOptions(row?.accessRole === "Administrator"),
       });
     }
 

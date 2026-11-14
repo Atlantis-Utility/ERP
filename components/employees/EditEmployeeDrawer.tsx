@@ -9,7 +9,7 @@ import Select from "@/components/ui/Select";
 import { updateEmployee, updateEmployeeAccess, removeEmployee } from "@/lib/db/employees";
 import { logActivity } from "@/lib/activity-log";
 import { NAV_PAGES } from "@/lib/nav-pages";
-import { optionsForPage, PAGE_OPTIONS } from "@/lib/page-options";
+import { defaultPageOptions, optionsForPage, PAGE_OPTIONS } from "@/lib/page-options";
 import { availableWidgets, defaultDashboardWidgets, isGrantOnly } from "@/lib/dashboard-widgets";
 import { Check, Lock, Mail } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -85,7 +85,9 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
     setErrors({});
     setAccess(employee.access ?? []);
     setDashboard(employee.dashboard ?? defaultDashboardWidgets(employee.access));
-    setPageOptions(employee.pageOptions ?? []);
+    setPageOptions(
+      employee.pageOptions ?? defaultPageOptions(employee.accessRole === "Administrator"),
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employee.id]);
 
@@ -502,12 +504,12 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
                     {sectionOptions.map((opt) => {
                       const pageLabel = NAV_PAGES.find((p) => p.href === opt.page)?.label ?? opt.page;
                       const pageGranted = access.includes(opt.page);
-                      // "Administrator: Full access" means it here too, so
-                      // the box is ticked and fixed rather than pretending
-                      // an admin can be shut out of the money.
-                      const fixed = form.accessRole === "Administrator";
-                      const on = fixed || (pageGranted && pageOptions.includes(opt.key));
-                      const locked = !isAdmin || fixed || !pageGranted;
+                      // Not fixed for administrators. They start with it,
+                      // but the box is theirs to untick - on their own
+                      // record as much as anyone's, which is the only way
+                      // to see what the people they withhold it from see.
+                      const on = pageGranted && pageOptions.includes(opt.key);
+                      const locked = !isAdmin || !pageGranted;
                       return (
                         <label
                           key={opt.key}
@@ -531,14 +533,7 @@ export default function EditEmployeeDrawer({ open, onClose, employee }: Props) {
                           <span className="min-w-0">
                             <span className="block text-[13px] font-medium text-[#0a0a0a]">{opt.label}</span>
                             <span className="block text-[11px] text-[#999]">
-                              {/* A ticked box nobody can untick has to say
-                                  why, or the answer to "how do I stop them
-                                  seeing this" is a greyed-out checkbox. */}
-                              {fixed
-                                ? `An administrator always sees this. Change their access role to withhold it.`
-                                : pageGranted
-                                  ? opt.hint
-                                  : `Grant ${pageLabel} above first.`}
+                              {pageGranted ? opt.hint : `Grant ${pageLabel} above first.`}
                             </span>
                           </span>
                         </label>

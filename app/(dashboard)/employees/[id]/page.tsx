@@ -9,7 +9,7 @@ import { getAvatarColor, getInitials, formatDate, formatPhone } from "@/lib/util
 import { ArrowLeft, Mail, Phone, Pencil, Check } from "lucide-react";
 import type { Employee, EmployeeStatus } from "@/lib/mock-data";
 import { NAV_PAGES } from "@/lib/nav-pages";
-import { PAGE_OPTIONS } from "@/lib/page-options";
+import { defaultPageOptions, PAGE_OPTIONS } from "@/lib/page-options";
 import { adminDashboardWidgets, availableWidgets, defaultDashboardWidgets, isGrantOnly } from "@/lib/dashboard-widgets";
 import EditEmployeeDrawer from "@/components/employees/EditEmployeeDrawer";
 
@@ -80,11 +80,8 @@ export default function EmployeeProfilePage() {
   // Grants inside a page they hold (lib/page-options.ts). Listed separately
   // from the page chips because they aren't pages: "Customers" and "the
   // money on the Customers page" are two different answers.
-  const heldOptions = PAGE_OPTIONS.filter(
-    (o) =>
-      access.includes(o.page) &&
-      (isAdministrator || (employee?.pageOptions ?? []).includes(o.key)),
-  );
+  const held = employee?.pageOptions ?? defaultPageOptions(isAdministrator);
+  const heldOptions = PAGE_OPTIONS.filter((o) => access.includes(o.page) && held.includes(o.key));
   const grantedToAdmin = offerablePanels.filter((w) => isGrantOnly(w.key) && panels.includes(w.key));
   const withheldFromAdmin = offerablePanels.filter((w) => isGrantOnly(w.key) && !panels.includes(w.key));
 
