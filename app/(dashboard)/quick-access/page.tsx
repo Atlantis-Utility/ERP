@@ -9,13 +9,11 @@ import {
 } from "lucide-react";
 import BrandLogo from "@/components/quick-access/BrandLogo";
 import VendorContactsTab from "@/components/quick-access/VendorContactsTab";
+import CustomerEmailTab from "@/components/quick-access/CustomerEmailTab";
+import { useAuth } from "@/lib/auth-context";
+import { CUSTOMER_BROADCAST, hasPageOption } from "@/lib/page-options";
 
-type Tab = "links" | "contacts";
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: "links",    label: "Links"    },
-  { key: "contacts", label: "Contacts" },
-];
+type Tab = "links" | "contacts" | "email";
 
 interface QuickLink {
   label: string;
@@ -288,7 +286,18 @@ const QUICK_LINK_SECTIONS: QuickLinkSection[] = [
 ];
 
 export default function QuickAccessPage() {
+  const { authUser } = useAuth();
+  // Emailing customers in bulk is its own grant, not something everyone who
+  // can reach Quick Access should find here (lib/page-options.ts). The tab
+  // is hidden without it; the route refuses without it too.
+  const canEmailCustomers = hasPageOption(CUSTOMER_BROADCAST, authUser);
   const [activeTab, setActiveTab] = useState<Tab>("links");
+
+  const TABS: { key: Tab; label: string }[] = [
+    { key: "links", label: "Links" },
+    { key: "contacts", label: "Contacts" },
+    ...(canEmailCustomers ? [{ key: "email" as Tab, label: "Email customers" }] : []),
+  ];
 
   return (
     <div>
@@ -297,7 +306,9 @@ export default function QuickAccessPage() {
         subtitle={
           activeTab === "links"
             ? "One-click links to the tools you use every day"
-            : "Support contacts for the companies we buy from"
+            : activeTab === "contacts"
+              ? "Support contacts for the companies we buy from"
+              : "Tell customers something - an outage, a change, an offer"
         }
       />
 
@@ -319,6 +330,10 @@ export default function QuickAccessPage() {
       </div>
 
       {activeTab === "contacts" && <VendorContactsTab />}
+
+      {/* Guarded twice: the tab isn't offered without the grant, and it
+          can't be reached by flipping state either. */}
+      {activeTab === "email" && canEmailCustomers && <CustomerEmailTab />}
 
       <div className={activeTab === "links" ? "space-y-8" : "hidden"}>
         {QUICK_LINK_SECTIONS.map((section) => (

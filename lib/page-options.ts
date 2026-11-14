@@ -30,12 +30,21 @@ export interface PageOption {
 /** Balances, credit limits, and what we pay upstream for their circuits. */
 export const CUSTOMER_BILLING = "customers:billing";
 
+/** Emailing customers in bulk: outages, maintenance, news, offers. */
+export const CUSTOMER_BROADCAST = "quick-access:broadcast";
+
 export const PAGE_OPTIONS: PageOption[] = [
   {
     key: CUSTOMER_BILLING,
     page: "/customers",
     label: "Billing details",
     hint: "Balance, credit limit, and what we're billed for their internet. Off, the page loads without them.",
+  },
+  {
+    key: CUSTOMER_BROADCAST,
+    page: "/quick-access",
+    label: "Email customers",
+    hint: "Send an outage notice, update or offer to many customers at once. Give this to the people who are allowed to speak for the company.",
   },
 ];
 

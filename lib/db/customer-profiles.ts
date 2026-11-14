@@ -133,6 +133,21 @@ function fromRow(row: Record<string, unknown>): CustomerProfileOverlay {
   };
 }
 
+/**
+ * Every overlay at once, for the places that need to ask a question of all
+ * customers rather than one - which services someone has, who their ISP is,
+ * who else to email there.
+ *
+ * 207 customers today and PostgREST truncates a select at 1000 rows without
+ * a word, so this is fine now and would quietly start lying at five times
+ * the size. Paginate it before then.
+ */
+export async function listCustomerProfiles(): Promise<CustomerProfileOverlay[]> {
+  const { data, error } = await supabase.from(TABLE).select("*");
+  if (error) throw error;
+  return (data ?? []).map(fromRow);
+}
+
 export async function getCustomerProfile(customerId: string): Promise<CustomerProfileOverlay | null> {
   const { data, error } = await supabase
     .from(TABLE)
