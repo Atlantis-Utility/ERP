@@ -64,3 +64,49 @@ export function sameIsp(a: string, b: string): boolean {
   const y = ispKey(b);
   return Boolean(x) && x === y;
 }
+
+/**
+ * The one name we show for each provider.
+ *
+ * Nobody types the same name twice (see above), so the same carrier arrives
+ * as "T-Mobile" and "T-Mobile USA", "Spectrum" and "Spectrum Business",
+ * "AT&T", "AT&T Internet" and "AT&T Business". Read back, that is three
+ * carriers where there is one - three chips to tick before an outage notice
+ * reaches everybody on it, and three rows in any count by provider.
+ *
+ * Keyed by ispKey, so a spelling nobody anticipated still lands on the right
+ * entry as long as it reduces to the same key. A key that isn't here is left
+ * exactly as it was typed: an unknown provider is a name we don't have a
+ * house style for, not a mistake.
+ */
+const CANONICAL_ISPS: Record<string, string> = {
+  spectrum: "Spectrum",
+  tmobile: "T-Mobile",
+  att: "AT&T",
+  frontier: "Frontier",
+  lytwave: "Lytwave",
+  airlink: "Airlink",
+  advantage: "Advantage WISP",
+  verizon: "Verizon",
+  starlink: "Starlink",
+  comcast: "Comcast",
+  cox: "Cox",
+  viasat: "Viasat",
+  hughesnet: "HughesNet",
+};
+
+/** Every provider we have a house spelling for, for a suggestion list. */
+export const KNOWN_ISPS: string[] = Object.values(CANONICAL_ISPS).sort((a, b) =>
+  a.localeCompare(b),
+);
+
+/**
+ * How a provider's name should be written, whatever was typed. Unknown
+ * providers come back tidied (trimmed, single-spaced) but otherwise as
+ * written, and an empty name stays empty.
+ */
+export function canonicalIsp(name: string): string {
+  const written = (name ?? "").trim().replace(/\s+/g, " ");
+  if (!written) return "";
+  return CANONICAL_ISPS[ispKey(written)] ?? written;
+}

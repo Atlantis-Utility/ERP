@@ -9,6 +9,7 @@ import { customerStatusKey, type CustomerStatusKey } from "@/lib/customer-status
 import { listCustomerProfiles, type CustomerProfileOverlay } from "@/lib/db/customer-profiles";
 import { listUnifiLinks } from "@/lib/db/unifi-links";
 import { findBilledIsp } from "@/lib/isp-accounts";
+import { canonicalIsp } from "@/lib/isp-match";
 import { buildBroadcastEmail, type BroadcastContent } from "@/lib/email/broadcast-email";
 import { BROADCAST_TEMPLATES, unfilledPlaceholders } from "@/lib/email/broadcast-templates";
 import { getErrorMessage } from "@/lib/utils";
@@ -143,9 +144,14 @@ export default function CustomerEmailTab() {
       if (clean(p?.backupIsp ?? "") || billed?.backup) services.add("backup");
       if (unifiIds.has(c.id)) services.add("network");
 
-      const providerNames = [p?.isp, p?.backupIsp]
-        .map((x) => clean(x ?? ""))
-        .filter(Boolean);
+      // One chip per carrier, not one per spelling: "T-Mobile" and
+      // "T-Mobile USA" are the same outage (lib/isp-match.ts). Deduped
+      // because a customer on the same carrier twice is still one customer.
+      const providerNames = [
+        ...new Set(
+          [p?.isp, p?.backupIsp].map((x) => canonicalIsp(x ?? "")).filter(Boolean),
+        ),
+      ];
 
       const addresses: { email: string; name: string }[] = [];
       if (c.email) addresses.push({ email: c.email, name: c.company });

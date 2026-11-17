@@ -31,6 +31,19 @@ export interface StaticIpConfig {
   dnsSecondary: string;
   label: string; // which circuit it belongs to, e.g. "Lytwave WAN1"
   notes: string;
+  /**
+   * The SIM behind the address, when the circuit is fixed wireless.
+   *
+   * A cellular static IP is not reconfigurable from the IP alone: the APN
+   * decides whether the SIM gets that address at all, and the carrier will
+   * not discuss the line without the ICCID or the number on it. All blank
+   * on a wired circuit, which is the common case.
+   */
+  carrier: string;      // "T-Mobile", and the radio detail if it matters
+  apn: string;          // "b2b.static" - wrong APN, no static IP
+  phone: string;        // the number the SIM is billed under
+  iccid: string;        // the SIM itself
+  imei: string;         // the radio it is sitting in
 }
 
 /**
@@ -107,13 +120,35 @@ export function newStaticIp(overrides: Partial<StaticIpConfig> = {}): StaticIpCo
     dnsSecondary: "",
     label: "",
     notes: "",
+    carrier: "",
+    apn: "",
+    phone: "",
+    iccid: "",
+    imei: "",
     ...overrides,
   };
 }
 
+/**
+ * A stored row, filled out to the current shape. Rows written before the
+ * SIM fields existed hold neither, and the drawer reads every field as a
+ * string - so they are filled in here rather than guarded at each use.
+ */
+function normalizeStaticIp(raw: Partial<StaticIpConfig> | null | undefined): StaticIpConfig {
+  return { ...newStaticIp(), ...(raw ?? {}) };
+}
+
 /** True once anything beyond the generated id has been filled in. */
 export function hasStaticIpDetail(s: StaticIpConfig): boolean {
-  return Boolean(s.ip || s.subnetMask || s.gateway || s.dnsPrimary || s.dnsSecondary || s.label || s.notes);
+  return Boolean(
+    s.ip || s.subnetMask || s.gateway || s.dnsPrimary || s.dnsSecondary || s.label || s.notes ||
+    s.carrier || s.apn || s.phone || s.iccid || s.imei,
+  );
+}
+
+/** True when this row describes a SIM, so the UI can show the SIM half. */
+export function hasSimDetail(s: StaticIpConfig): boolean {
+  return Boolean(s.carrier || s.apn || s.phone || s.iccid || s.imei);
 }
 
 function fromRow(row: Record<string, unknown>): CustomerProfileOverlay {
@@ -125,7 +160,7 @@ function fromRow(row: Record<string, unknown>): CustomerProfileOverlay {
     website: (row.website as string) ?? "",
     contacts: (row.contacts as CustomerContact[]) ?? [],
     mainContactId: (row.main_contact_id as string) ?? DEFAULT_CONTACT_ID,
-    staticIps: (row.static_ips as StaticIpConfig[]) ?? [],
+    staticIps: ((row.static_ips as Partial<StaticIpConfig>[]) ?? []).map(normalizeStaticIp),
     ispAccounts: (row.isp_accounts as IspAccount[]) ?? [],
     hours: normalizeHours(row.hours),
     updatedAt: row.updated_at as string,

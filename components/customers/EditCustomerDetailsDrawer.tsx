@@ -25,6 +25,7 @@ import {
 } from "@/lib/customer-hours";
 import { ExternalLink } from "lucide-react";
 import IspLookupLink from "@/components/customers/IspLookupLink";
+import { canonicalIsp, KNOWN_ISPS } from "@/lib/isp-match";
 
 import { formatPhone } from "@/lib/utils";
 interface DefaultContact {
@@ -159,11 +160,21 @@ export default function EditCustomerDetailsDrawer({
           dnsSecondary: s.dnsSecondary.trim(),
           label: s.label.trim(),
           notes: s.notes.trim(),
+          carrier: s.carrier.trim(),
+          apn: s.apn.trim(),
+          // Stored as digits: a number copied off a portal arrives with
+          // spaces, dashes or brackets, and none of them are the number.
+          phone: s.phone.replace(/[^\d+]/g, ""),
+          iccid: s.iccid.replace(/\s/g, ""),
+          imei: s.imei.replace(/\s/g, ""),
         }))
         .filter(hasStaticIpDetail);
       const next = {
-        isp: isp.trim(),
-        backupIsp: backupIsp.trim(),
+        // One spelling per carrier on the way in, so the next person to
+        // count customers by provider gets one row per provider and not
+        // one per way of writing it (lib/isp-match.ts).
+        isp: canonicalIsp(isp),
+        backupIsp: canonicalIsp(backupIsp),
         address: address.trim(),
         website: website.trim().replace(/^https?:\/\//i, "").replace(/\/$/, ""),
         contacts: filtered,
@@ -357,7 +368,8 @@ export default function EditCustomerDetailsDrawer({
           <FormField label="Internet Service Provider">
             <input
               className={inputClass}
-              placeholder="e.g. Comcast"
+              placeholder="e.g. Spectrum"
+              list="known-isps"
               value={isp}
               onChange={(e) => setIsp(e.target.value)}
             />
@@ -365,11 +377,20 @@ export default function EditCustomerDetailsDrawer({
           <FormField label="Backup Internet Service Provider">
             <input
               className={inputClass}
-              placeholder="e.g. AT&T"
+              placeholder="e.g. T-Mobile"
+              list="known-isps"
               value={backupIsp}
               onChange={(e) => setBackupIsp(e.target.value)}
             />
           </FormField>
+          {/* The providers we already have a house spelling for. Typing
+              something else is still allowed - this is a suggestion, and
+              the save tidies the spelling either way. */}
+          <datalist id="known-isps">
+            {KNOWN_ISPS.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
         </div>
 
         <div className="border-t border-[#f7f7f7] pt-4">
@@ -530,6 +551,59 @@ export default function EditCustomerDetailsDrawer({
                     onChange={(e) => updateStaticIp(s.id, "notes", e.target.value)}
                   />
                 </FormField>
+
+                {/* Fixed wireless only. Left blank on a wired circuit, which
+                    is why it sits behind a line of its own rather than in
+                    the fields everybody fills in. */}
+                <div className="border-t border-dashed border-[#eaeaea] pt-3">
+                  <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-2">
+                    SIM - fixed wireless only
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <FormField label="Carrier">
+                      <input
+                        className={inputClass}
+                        placeholder="e.g. T-Mobile 5G (NSA), band B2+n41"
+                        value={s.carrier}
+                        onChange={(e) => updateStaticIp(s.id, "carrier", e.target.value)}
+                      />
+                    </FormField>
+                    <FormField label="APN">
+                      <input
+                        className={inputClass}
+                        placeholder="e.g. b2b.static"
+                        value={s.apn}
+                        onChange={(e) => updateStaticIp(s.id, "apn", e.target.value)}
+                      />
+                    </FormField>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                    <FormField label="Phone Number">
+                      <input
+                        className={inputClass}
+                        placeholder="15774053985"
+                        value={s.phone}
+                        onChange={(e) => updateStaticIp(s.id, "phone", e.target.value)}
+                      />
+                    </FormField>
+                    <FormField label="ICCID">
+                      <input
+                        className={inputClass}
+                        placeholder="SIM serial"
+                        value={s.iccid}
+                        onChange={(e) => updateStaticIp(s.id, "iccid", e.target.value)}
+                      />
+                    </FormField>
+                    <FormField label="IMEI">
+                      <input
+                        className={inputClass}
+                        placeholder="Radio serial"
+                        value={s.imei}
+                        onChange={(e) => updateStaticIp(s.id, "imei", e.target.value)}
+                      />
+                    </FormField>
+                  </div>
+                </div>
               </div>
             ))}
 

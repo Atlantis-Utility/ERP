@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { Fragment, use, useEffect, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import ExportMenu from "@/components/ui/ExportMenu";
@@ -12,7 +12,7 @@ import IspLookupLink from "@/components/customers/IspLookupLink";
 import OfficeHours from "@/components/customers/OfficeHours";
 import { emptyHours } from "@/lib/customer-hours";
 import { useCustomerFileSummary, formatFileSize } from "@/lib/db/customer-files";
-import { getCustomerProfile, DEFAULT_CONTACT_ID, type CustomerProfileOverlay, type StaticIpConfig } from "@/lib/db/customer-profiles";
+import { getCustomerProfile, hasSimDetail, DEFAULT_CONTACT_ID, type CustomerProfileOverlay, type StaticIpConfig } from "@/lib/db/customer-profiles";
 import { getUnifiLink } from "@/lib/db/unifi-links";
 import { subscribeProjects } from "@/lib/db/projects";
 import { statusConfig, type Project } from "@/lib/mock-projects";
@@ -25,6 +25,7 @@ import IspLogo from "@/components/unifi/IspLogo";
 import {
   findBilledIsp, ISP_PROVIDERS, serviceMonthlyTotal, formatSpeed, type BilledIsp,
 } from "@/lib/isp-accounts";
+import { canonicalIsp } from "@/lib/isp-match";
 import {
   ArrowLeft, RefreshCw, AlertCircle, Building2, Phone, User,
   Smartphone, ListOrdered, Wifi, Router, Pencil, FolderKanban, ArrowUpRight,
@@ -301,7 +302,8 @@ function StaticIpCard({ ips, billedCount }: { ips: StaticIpConfig[]; billedCount
             </thead>
             <tbody>
               {ips.map((s) => (
-                <tr key={s.id} className="border-b border-[#f7f7f7] last:border-0">
+                <Fragment key={s.id}>
+                <tr className={hasSimDetail(s) ? "" : "border-b border-[#f7f7f7] last:border-0"}>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-mono font-medium text-[#0a0a0a]">{s.ip || "-"}</span>
@@ -316,6 +318,33 @@ function StaticIpCard({ ips, billedCount }: { ips: StaticIpConfig[]; billedCount
                   </td>
                   <td className="px-5 py-3 text-sm text-[#666]">{s.label || "-"}</td>
                 </tr>
+                {/* Fixed wireless: the SIM is the circuit. Shown under the
+                    address rather than in columns of its own, which would
+                    be empty on every wired row. */}
+                {hasSimDetail(s) && (
+                  <tr className="border-b border-[#f7f7f7] last:border-0">
+                    <td colSpan={5} className="px-5 pb-3">
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg bg-[#fafafa] px-3 py-2">
+                        {[
+                          { label: "Carrier", value: s.carrier, mono: false, copy: false },
+                          { label: "APN", value: s.apn, mono: true, copy: true },
+                          { label: "Phone", value: s.phone ? formatPhone(s.phone) : "", mono: true, copy: true },
+                          { label: "ICCID", value: s.iccid, mono: true, copy: true },
+                          { label: "IMEI", value: s.imei, mono: true, copy: true },
+                        ]
+                          .filter((f) => f.value)
+                          .map((f) => (
+                            <div key={f.label} className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#999]">{f.label}</span>
+                              <span className={`text-xs text-[#444] ${f.mono ? "font-mono" : ""}`}>{f.value}</span>
+                              {f.copy && <CopyButton value={f.value} label={f.label} />}
+                            </div>
+                          ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -938,13 +967,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
             <Field
               label="Internet Service Provider"
-              value={overlay?.isp || billedPrimary?.name || ""}
+              value={canonicalIsp(overlay?.isp || billedPrimary?.name || "")}
               hint={canSeeBilling && !overlay?.isp && billedPrimary ? `From invoice #${billedPrimary.invoice.number}` : undefined}
             />
             <div className="min-w-0">
               <Field
                 label="Backup Internet Service Provider"
-                value={overlay?.backupIsp || billedBackup?.name || ""}
+                value={canonicalIsp(overlay?.backupIsp || billedBackup?.name || "")}
                 hint={canSeeBilling && !overlay?.backupIsp && billedBackup ? `From invoice #${billedBackup.invoice.number}` : undefined}
               />
               <IspLookupLink address={overlay?.address ?? ""} className="mt-1.5" />

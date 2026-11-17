@@ -16,6 +16,7 @@ import SiteTopology from "@/components/unifi/SiteTopology";
 import RealTopology from "@/components/unifi/RealTopology";
 import ZoomPan from "@/components/unifi/ZoomPan";
 import { matchScore, LIKELY_MATCH_THRESHOLD } from "@/lib/name-match";
+import { canonicalIsp } from "@/lib/isp-match";
 
 type PanelState = "loading" | "unconfigured" | "error" | "ok";
 
@@ -178,8 +179,8 @@ export default function CustomerUnifiPanel({ customerId, companyName, bare }: { 
       const existing = await getCustomerProfile(customerId);
       if (existing?.isp && existing?.backupIsp) return; // both already set — nothing to fill
       await setCustomerProfile(customerId, {
-        isp: existing?.isp || primary,
-        backupIsp: existing?.backupIsp || backup,
+        isp: canonicalIsp(existing?.isp || primary),
+        backupIsp: canonicalIsp(existing?.backupIsp || backup),
         contacts: existing?.contacts ?? [],
         mainContactId: existing?.mainContactId ?? DEFAULT_CONTACT_ID,
         staticIps: existing?.staticIps ?? [], // pass through — this is a full-row upsert
