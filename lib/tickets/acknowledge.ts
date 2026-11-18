@@ -1,5 +1,6 @@
 import { getGraphToken, TICKET_MAILBOX_ENCODED } from "@/app/api/tickets/_ms-auth";
 import { buildTicketAcknowledgementEmail } from "@/lib/email/ticket-acknowledgement-email";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
 /**
  * The automatic "we have your request" reply to a new ticket.
@@ -29,6 +30,22 @@ const NOREPLY_PATTERN = /noreply|no-reply|donotreply|do-not-reply|mailer-daemon|
 
 /** Their robots. An out-of-office is not a support request. */
 const AUTO_SUBJECT_PATTERN = /^\s*(automatic reply|auto:|out of office|undeliverable|delivery status notification)/i;
+
+/**
+ * Headers that mean "this was sent to a list, not to us".
+ *
+ * A newsletter, an invoice notice or a regulatory bulletin is not a ticket,
+ * and nobody at the other end is waiting to hear that a representative will
+ * be in touch. The sender address doesn't always say so - a dry run over a
+ * fortnight of real mail caught a CPUC broadband notice from an ordinary
+ * ca.gov address, which the no-reply pattern can't see - but bulk mail
+ * carries these, because unsubscribe links and auto-submitted markers are
+ * how bulk mail is supposed to identify itself.
+ */
+const BULK_HEADERS = new Set([
+  "list-unsubscribe", "list-id", "list-post", "list-help", "list-subscribe",
+  "x-campaign-id", "x-mailgun-sid", "feedback-id", "x-csa-complaints",
+]);
 
 /**
  * How far back a run looks. It is also the backstop against a first run
@@ -115,6 +132,89 @@ export function isOurMessage(
 }
 
 const isOurs = (address: string) => isOurMessage(address);
+
+/**
+ * The threads we have already replied to, as a row we hold ourselves.
+ *
+ * The real check is the thread itself - a conversation containing a message
+ * from us is answered - and it is a good check. What it cannot do is settle
+ * a race: two sweeps running at the same moment (two instances, two people
+ * opening Tickets) both ask Graph, both are told the thread is unanswered,
+ * and both reply. The throttle in app/api/tickets/route.ts is per instance
+ * and doesn't help across them, and Graph takes a moment to show a sent
+ * message anyway.
+ *
+ * A primary key does settle it. Whoever inserts the row first sends; the
+ * other is told the row exists and stops. The claim is taken immediately
+ * before sending and released if the send fails, so a failure is retried
+ * rather than silently marked done.
+ *
+ * Requires supabase/migration-ticket-acknowledgements.sql. Without the
+ * table this degrades to the Graph check alone rather than falling silent:
+ * one acknowledgement too many is bad, none at all is worse.
+ */
+const LEDGER_TABLE = "ticket_acknowledgements";
+
+type Claim = "claimed" | "already-sent" | "no-ledger";
+
+async function claimThread(c: AcknowledgementCandidate): Promise<Claim> {
+  try {
+    const { error } = await createServiceRoleClient().from(LEDGER_TABLE).insert({
+      conversation_id: c.conversationId,
+      to_address: c.to,
+      subject: c.subject,
+      message_id: c.messageId,
+    });
+    if (!error) return "claimed";
+    // 23505: somebody else holds the row - they are sending it, we are not.
+    if (error.code === "23505") return "already-sent";
+    console.warn("[ticket-ack] ledger unavailable, falling back to the thread check:", error.message);
+    return "no-ledger";
+  } catch (err) {
+    console.warn("[ticket-ack] ledger unavailable:", err instanceof Error ? err.message : err);
+    return "no-ledger";
+  }
+}
+
+/** A claim for a send that never happened, so the next run can try again. */
+async function releaseThread(conversationId: string): Promise<void> {
+  try {
+    await createServiceRoleClient().from(LEDGER_TABLE).delete().eq("conversation_id", conversationId);
+  } catch {
+    // Left behind, this thread goes unacknowledged. That is the safe way
+    // round, and the ticket is still in the list for a person to answer.
+  }
+}
+
+/**
+ * Whether this message is bulk mail, and which header said so.
+ *
+ * Read per candidate rather than for the whole inbox: by the time a message
+ * gets here it has passed every other test, which on a normal run is none
+ * of them or one.
+ */
+async function bulkMailHeader(token: string, messageId: string): Promise<string | null> {
+  try {
+    const m = await graph<{ internetMessageHeaders?: Array<{ name?: string; value?: string }> }>(
+      token,
+      `/users/${TICKET_MAILBOX_ENCODED}/messages/${messageId}?$select=internetMessageHeaders`,
+    );
+    for (const h of m.internetMessageHeaders ?? []) {
+      const name = (h.name ?? "").toLowerCase();
+      const value = (h.value ?? "").trim().toLowerCase();
+      if (BULK_HEADERS.has(name)) return h.name ?? name;
+      if (name === "precedence" && /^(bulk|list|junk)/.test(value)) return `Precedence: ${value}`;
+      // RFC 3834: anything but "no" means a machine sent it.
+      if (name === "auto-submitted" && value && value !== "no") return `Auto-Submitted: ${value}`;
+    }
+    return null;
+  } catch (err) {
+    // Unreadable headers are not grounds to stay silent - every other
+    // test has already passed, and a real ticket would go unanswered.
+    console.warn("[ticket-ack] couldn't read headers:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
 
 /** The mailbox's Sent Items, looked up once per run and remembered. */
 let sentFolderCache: { id: string; at: number } | null = null;
@@ -244,10 +344,18 @@ export async function acknowledgeNewTickets(opts?: {
       receivedAt: m.receivedDateTime ?? "",
     };
 
+    // A newsletter, a notice, an invoice: addressed to a list, not to us.
+    const bulk = await bulkMailHeader(token, m.id);
+    if (bulk) { skip(`bulk mail (${bulk})`); continue; }
+
     if (dryRun) {
       result.acknowledged.push(candidate);
       continue;
     }
+
+    // Last thing before sending, so two sweeps can't both decide to.
+    const claim = await claimThread(candidate);
+    if (claim === "already-sent") { skip("already acknowledged (another run has it)"); continue; }
 
     const { html } = buildTicketAcknowledgementEmail({ customerName: candidate.toName });
     try {
@@ -257,6 +365,7 @@ export async function acknowledgeNewTickets(opts?: {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       console.error(`[ticket-ack] failed for ${from}:`, reason);
+      if (claim === "claimed") await releaseThread(candidate.conversationId);
       skip(`send failed: ${reason}`);
     }
   }
