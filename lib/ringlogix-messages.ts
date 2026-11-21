@@ -112,6 +112,12 @@ export interface SmsMessage {
   mediaSize: number;
   /** True when there is something to fetch through the media proxy. */
   hasMedia: boolean;
+  /**
+   * Set when this went out from the ERP and we know which person sent it,
+   * in which case `fromName` is that person rather than the extension's
+   * owner.
+   */
+  sentFromErp?: boolean;
 }
 
 /**

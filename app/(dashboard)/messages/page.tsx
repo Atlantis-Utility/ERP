@@ -94,12 +94,14 @@ function partyName(c: SmsConversation, names: Record<string, string>, customer: 
 // ── The conversation ────────────────────────────────────────────────────
 
 function Thread({
-  conversation, customer, names, meExtension, onSent,
+  conversation, customer, names, meExtension, meName, onSent,
 }: {
   conversation: SmsConversation;
   customer: string;
   names: Record<string, string>;
   meExtension: string;
+  /** The signed-in person's own name, for saying "(you)". */
+  meName: string;
   onSent: () => void;
 }) {
   const toast = useToast();
@@ -206,7 +208,10 @@ function Thread({
           at: Date.now(),
           direction: "out" as const,
           fromExtension: conversation.user,
-          fromName: names[conversation.user] ?? "",
+          // Us, not the extension's owner: four people share this number
+          // and the one who pressed send is the one reading this.
+          fromName: meName || names[conversation.user] || "",
+          sentFromErp: true,
           from: conversation.ourNumber,
           to: conversation.remote,
         text,
@@ -252,9 +257,12 @@ function Thread({
 
         {messages.map((m) => {
           const mine = m.direction === "out";
-          const who = m.fromName
-            ? (m.fromExtension && m.fromExtension === meExtension ? `${m.fromName} (you)` : m.fromName)
-            : them;
+          // Ours either because the ERP recorded us as the sender, or
+          // because the message came from our own extension.
+          const isMe =
+            (m.sentFromErp && meName && m.fromName === meName) ||
+            Boolean(m.fromExtension && meExtension && m.fromExtension === meExtension);
+          const who = m.fromName ? (isMe ? `${m.fromName} (you)` : m.fromName) : them;
           return (
             <div key={m.id} className={`flex gap-2.5 ${mine ? "flex-row-reverse" : ""}`}>
               <Avatar name={who} tone={mine ? "dark" : "light"} />
@@ -712,18 +720,12 @@ export default function MessagesPage() {
                     >
                       <Avatar name={name} />
                       <span className="min-w-0 flex-1">
-                        <span className="flex items-center justify-between gap-2">
-                          <span className={`text-sm truncate ${c.unread ? "font-semibold text-[#0a0a0a]" : "text-[#444]"}`}>
-                            {name}
-                          </span>
-                          <span className="text-[10px] text-[#bbb] shrink-0">{shortTime(c.lastAt)}</span>
+                        <span className={`block text-sm truncate ${c.unread ? "font-semibold text-[#0a0a0a]" : "text-[#444]"}`}>
+                          {name}
                         </span>
-                        <span className="flex items-center gap-1.5 mt-0.5">
-                          {c.unread && <span className="w-1.5 h-1.5 rounded-full bg-[#0070f3] shrink-0" />}
-                          <span className="text-xs text-[#999] truncate">
-                            {c.theirTurn ? "" : "You: "}
-                            {c.lastMessage.replace(/\s+/g, " ") || "(media)"}
-                          </span>
+                        <span className="block text-xs text-[#999] truncate mt-0.5">
+                          {c.theirTurn ? "" : "You: "}
+                          {c.lastMessage.replace(/\s+/g, " ") || "(media)"}
                         </span>
                         {tags.length > 0 && (
                           <span className="flex flex-wrap items-center gap-1 mt-1">
@@ -733,6 +735,18 @@ export default function MessagesPage() {
                               </span>
                             ))}
                           </span>
+                        )}
+                      </span>
+                      {/* Time, with the unread mark beneath it - the way
+                          every phone shows it, and it leaves the preview
+                          a full line rather than sharing one with a dot. */}
+                      <span className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
+                        <span className="text-[10px] text-[#bbb] whitespace-nowrap">{shortTime(c.lastAt)}</span>
+                        {c.unread && (
+                          <span
+                            data-tip="Unread"
+                            className="w-2 h-2 rounded-full bg-[#0070f3]"
+                          />
                         )}
                       </span>
                     </button>
@@ -802,6 +816,7 @@ export default function MessagesPage() {
                       customer={customerFor(current.remote)}
                       names={names}
                       meExtension={meExtension}
+                      meName={authUser?.displayName ?? ""}
                       onSent={() => load(true)}
                     />
                   </div>

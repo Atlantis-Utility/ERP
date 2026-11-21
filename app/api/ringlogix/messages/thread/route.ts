@@ -4,6 +4,7 @@ import { ringlogixFailure } from "@/lib/ringlogix-response";
 import {
   normalizeMessage, sortMessages, namesByExtension, type RawMessage,
 } from "@/lib/ringlogix-messages";
+import { sendersForSession } from "@/lib/messages/senders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,15 +37,22 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [rows, subscribers] = await Promise.all([
+    const [rows, subscribers, senders] = await Promise.all([
       getMessages(domain, user, session) as Promise<RawMessage[]>,
       // Cached for three minutes alongside every other read, so naming
       // the sender costs nothing after the first thread is opened.
       getSubscribers(domain).catch(() => []) as Promise<Array<Record<string, string>>>,
+      sendersForSession(session),
     ]);
     const names = namesByExtension(subscribers ?? []);
     const messages = sortMessages(
-      (rows ?? []).map((raw) => normalizeMessage(raw, { owner: user, names })),
+      (rows ?? []).map((raw) => {
+        const m = normalizeMessage(raw, { owner: user, names });
+        // Sent from the ERP: the person who pressed send, rather than
+        // whoever happens to own the extension the number sits on.
+        const byPerson = senders[m.id];
+        return byPerson ? { ...m, fromName: byPerson, sentFromErp: true } : m;
+      }),
     );
     return NextResponse.json({ messages, names });
   } catch (err) {
