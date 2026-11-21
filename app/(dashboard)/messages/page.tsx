@@ -604,8 +604,11 @@ export default function MessagesPage() {
       <div className="flex items-start justify-between gap-3 mb-4 shrink-0">
         <div className="min-w-0">
           <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-[#0a0a0a]">Messages</h1>
+          {/* Deliberately not "the same ones that appear in Teams", which
+              was true and read as a dependency: this talks to RingLogix,
+              and Teams is a second reader of the same mailbox. */}
           <p className="text-sm text-[#666] mt-0.5">
-            Texts to and from our numbers — the same ones that appear in Teams
+            Texts to and from our numbers, straight from the phone system
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
