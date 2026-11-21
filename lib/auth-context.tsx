@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase/client";
+import { MS_USER_SCOPES } from "./microsoft/scopes";
 import { adminDashboardWidgets, defaultDashboardWidgets } from "./dashboard-widgets";
 import { defaultPageOptions } from "./page-options";
 
@@ -370,7 +371,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
-        scopes: "email offline_access Calendars.Read",
+        scopes: MS_USER_SCOPES,
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
@@ -387,7 +388,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
-        scopes: "email offline_access Calendars.Read",
+        scopes: MS_USER_SCOPES,
         redirectTo: `${window.location.origin}/auth/callback?vault_verify=1&next=${encodeURIComponent("/vault?ms_verified=1")}`,
       },
     });
