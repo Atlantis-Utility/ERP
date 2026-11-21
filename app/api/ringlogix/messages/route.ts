@@ -112,9 +112,20 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Which of our numbers can send, and from which extension. Derived
+    // from the mailbox rather than hardcoded, so a number added or taken
+    // away in RingLogix is reflected here without a code change.
+    const senders: Array<{ number: string; user: string }> = [];
+    for (const c of conversations) {
+      if (!c.ourNumber || !c.user) continue;
+      if (senders.some((x) => x.number === c.ourNumber)) continue;
+      senders.push({ number: c.ourNumber, user: c.user });
+    }
+
     return NextResponse.json({
       domain,
       via,
+      senders,
       conversations,
       names: namesByExtension(subscribers ?? []),
       contacts,

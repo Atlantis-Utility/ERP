@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MessageSquare, RefreshCw, AlertCircle, BellOff,
   Send, Check, MailOpen, Mail, PanelRight, Search, Tag as TagIcon, Paperclip,
-  Inbox, Phone, UserPlus, ExternalLink,
+  Inbox, Phone, UserPlus, ExternalLink, ChevronLeft, PenSquare, X,
 } from "lucide-react";
 import { formatPhone } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
+import { useConfirm } from "@/lib/confirm";
 import { useAuth } from "@/lib/auth-context";
 import {
   listThreadAnnotations, saveThreadAnnotation, type ThreadAnnotation,
@@ -265,11 +266,15 @@ function Thread({
             Boolean(m.fromExtension && meExtension && m.fromExtension === meExtension);
           const who = m.fromName ? (isMe ? `${m.fromName} (you)` : m.fromName) : them;
           return (
-            <div key={m.id} className={`flex gap-2.5 ${mine ? "flex-row-reverse" : ""}`}>
-              {/* Everyone keeps their own colour on both sides of the
-                  thread; which side it sits on is what says whose it is. */}
-              <Avatar name={who} />
-              <div className={`max-w-[min(34rem,78%)] flex flex-col ${mine ? "items-end" : "items-start"}`}>
+            <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+              {/* The circle sits on the bubble's bottom edge, the way a
+                  chat reads, and the time sits under the bubble rather
+                  than under the circle - both were floating before. */}
+              <div className={`flex items-end gap-2 max-w-full ${mine ? "flex-row-reverse" : ""}`}>
+                {/* Everyone keeps their own colour on both sides of the
+                    thread; which side it sits on is what says whose it is. */}
+                <Avatar name={who} />
+                <div className="max-w-[min(34rem,calc(100%-2.5rem))] min-w-0">
                 <div
                   // Ours tinted, theirs neutral, both with the text dark
                   // enough to read for a long time. A solid accent bubble
@@ -319,8 +324,11 @@ function Thread({
                     ? withLinks(m.text)
                     : !m.hasMedia && <span className="opacity-60 italic">no text</span>}
                 </div>
-                <p className="mt-1 text-[10px] text-[#999]">{fullTime(m.at)}</p>
+                </div>
               </div>
+              <p className={`mt-1 text-[10px] text-[#999] ${mine ? "mr-10" : "ml-10"}`}>
+                {fullTime(m.at)}
+              </p>
             </div>
           );
         })}
@@ -458,10 +466,145 @@ function SaveContact({
   );
 }
 
+/**
+ * Texting somebody who has never texted us.
+ *
+ * Deliberately not part of the reply box. A reply takes its destination
+ * from the conversation and cannot reach anybody new; this takes a number
+ * a person typed, which is the one way a text from here reaches a
+ * stranger. Hence the confirmation, and a server that checks the digits
+ * and the sending number rather than trusting either.
+ */
+function NewMessage({
+  senders, domain, onClose, onSent,
+}: {
+  senders: Array<{ number: string; user: string }>;
+  domain: string;
+  onClose: () => void;
+  onSent: (sessionId: string) => void;
+}) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(senders[0]?.number ?? "");
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const digits = to.replace(/\D/g, "");
+  const national = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  const valid = national.length === 10;
+
+  async function send() {
+    if (!valid || !text.trim() || sending) return;
+    const pretty = formatPhone(national) || national;
+    const ok = await confirm({
+      title: `Text ${pretty}?`,
+      description:
+        `This starts a new conversation with ${pretty} from ${formatPhone(from) || from}. ` +
+        `They have not texted us before, so check the number is right.`,
+      confirmLabel: "Send text",
+    });
+    if (!ok) return;
+
+    setSending(true);
+    try {
+      const res = await fetch("/api/ringlogix/messages/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: digits, fromNumber: from, text: text.trim(), domain }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't send that");
+      toast.success(
+        data.joinedExisting
+          ? `Added to the conversation already open with ${pretty}.`
+          : `Texted ${pretty}.`,
+      );
+      onSent(data.sessionId ?? "");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send that");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const field = "w-full text-sm bg-[#fafafa] border border-[#eaeaea] rounded-lg px-3 py-2 outline-none focus:border-[#0070f3] focus:bg-white transition-colors";
+  return (
+    <div className="h-full min-h-0 flex flex-col">
+      <header className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[#eaeaea] shrink-0">
+        <p className="text-sm font-semibold text-[#0a0a0a]">New message</p>
+        <button
+          onClick={onClose}
+          className="flex items-center justify-center w-8 h-8 rounded-lg text-[#666] hover:bg-[#fafafa] transition-colors"
+          data-tip="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0">
+        <div>
+          <label className="block text-[11px] font-medium text-[#666] mb-1.5">To</label>
+          <input
+            className={field}
+            placeholder="805 555 0123"
+            inputMode="tel"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            autoFocus
+          />
+          {to.trim() !== "" && !valid && (
+            <p className="text-[11px] text-[#b91c1c] mt-1">Ten digits, please — that is {national.length}.</p>
+          )}
+          {valid && (
+            <p className="text-[11px] text-[#15803d] mt-1">{formatPhone(national) || national}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-medium text-[#666] mb-1.5">From</label>
+          {senders.length > 1 ? (
+            <select className={field} value={from} onChange={(e) => setFrom(e.target.value)}>
+              {senders.map((sdr) => (
+                <option key={sdr.number} value={sdr.number}>
+                  {formatPhone(sdr.number) || sdr.number} · ext {sdr.user}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-sm text-[#0a0a0a]">{formatPhone(from) || from || "—"}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-medium text-[#666] mb-1.5">Message</label>
+          <textarea
+            className={`${field} resize-none`}
+            rows={5}
+            placeholder="Write the text…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+
+        <button
+          onClick={send}
+          disabled={!valid || !text.trim() || sending || !from}
+          className="w-full flex items-center justify-center gap-2 bg-[#0070f3] text-white text-sm font-medium rounded-xl py-2.5 hover:bg-[#0060df] transition-colors disabled:opacity-40"
+        >
+          {sending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Notes and tags: the part RingLogix has nowhere to put ───────────────
 
 function Details({
-  conversation, annotation, contact, customer, customerId, displayName, onSave, onContactSaved,
+  conversation, annotation, contact, customer, customerId, displayName,
+  names, meExtension, onSave, onContactSaved,
 }: {
   conversation: SmsConversation;
   annotation: ThreadAnnotation | undefined;
@@ -469,6 +612,9 @@ function Details({
   customer: string;
   customerId: string;
   displayName: string;
+  names: Record<string, string>;
+  /** The signed-in person's own extension, where we could work it out. */
+  meExtension: string;
   onSave: (patch: { notes?: string; tags?: string[] }) => Promise<boolean>;
   onContactSaved: () => void;
 }) {
@@ -536,17 +682,26 @@ function Details({
       <Section title="Details">
         {conversation.remote && (
           <Row label="Phone">
-            <a href={`tel:+${conversation.remote}`} className="font-mono text-[#0070f3] hover:underline">
+            <a href={`tel:+${conversation.remote}`} className="text-[#0070f3] hover:underline tabular-nums">
               {formatPhone(conversation.remote) || conversation.remote}
             </a>
           </Row>
         )}
         {contact?.company && <Row label="Company">{contact.company}</Row>}
         {customer && <Row label="Customer">{customer}</Row>}
-        <Row label="Extension">{conversation.user || "—"}</Row>
+        {/* Your own extension, and - separately - the one this
+            conversation belongs to. They are usually different: a shared
+            number lives on one extension and everybody answers it, so
+            labelling that one "Extension" read as though it were yours. */}
+        <Row label="Your extension">{meExtension || "not matched"}</Row>
+        <Row label="Conversation on">
+          {conversation.user
+            ? `Ext ${conversation.user}${names[conversation.user] ? ` · ${names[conversation.user]}` : ""}`
+            : "—"}
+        </Row>
         {conversation.ourNumber && (
           <Row label="Our number">
-            <span className="font-mono">{formatPhone(conversation.ourNumber) || conversation.ourNumber}</span>
+            <span className="tabular-nums">{formatPhone(conversation.ourNumber) || conversation.ourNumber}</span>
           </Row>
         )}
         <Row label="Status">
@@ -636,9 +791,9 @@ function Section({
 /** Label on the left, value on the right - the shape a record reads in. */
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5 text-[12px]">
-      <span className="text-[#999] shrink-0">{label}</span>
-      <span className="text-[#0a0a0a] truncate text-right">{children}</span>
+    <div className="flex items-baseline justify-between gap-3 py-[5px]">
+      <span className="text-[11px] text-[#999] shrink-0">{label}</span>
+      <span className="text-[13px] font-medium text-[#0a0a0a] truncate text-right">{children}</span>
     </div>
   );
 }
@@ -662,6 +817,11 @@ export default function MessagesPage() {
   // over the conversation pane instead - with its own state, or opening
   // the rail on a desktop would hide the thread on a phone.
   const [mobileDetails, setMobileDetails] = useState(false);
+  // Below md there is only room for one pane. Opening a conversation
+  // moves to it; a back arrow returns.
+  const [pane, setPane] = useState<"list" | "thread">("list");
+  const [composing, setComposing] = useState(false);
+  const [senders, setSenders] = useState<Array<{ number: string; user: string }>>([]);
   const [error, setError] = useState("");
 
   const load = useCallback(async (silent = false) => {
@@ -681,6 +841,7 @@ export default function MessagesPage() {
       setConversations(data.conversations ?? []);
       setNames(data.names ?? {});
       setContacts(data.contacts ?? {});
+      setSenders(data.senders ?? []);
       setState("ok");
     } catch (e) {
       if (silent) return;
@@ -762,11 +923,19 @@ export default function MessagesPage() {
       if (filter === "unread" && !c.unread) return false;
       if (filter === "tagged" && !annotations[c.sessionId]?.tags?.length) return false;
       if (!q) return true;
+      // Digits only when the query has some. "".includes("") is true, so
+      // matching the number against a stripped text query made every
+      // conversation a match and the search did nothing at all.
+      const digits = q.replace(/\D/g, "");
       const name = nameFor(c).toLowerCase();
+      const tagLabels = knownTags(annotations[c.sessionId]?.tags)
+        .map((t) => t.label.toLowerCase())
+        .join(" ");
       return (
         name.includes(q) ||
-        c.remote.includes(q.replace(/\D/g, "")) ||
+        (digits.length >= 3 && (c.remote.includes(digits) || c.ourNumber.includes(digits))) ||
         c.lastMessage.toLowerCase().includes(q) ||
+        tagLabels.includes(q) ||
         (annotations[c.sessionId]?.notes ?? "").toLowerCase().includes(q)
       );
     });
@@ -819,7 +988,10 @@ export default function MessagesPage() {
   return (
     // Exactly the viewport, so the page itself never scrolls: the shell is
     // 100vh with a 3.5rem bar and 2rem of padding top and bottom.
-    <div className="flex flex-col md:h-[calc(100vh-7.5rem)] min-h-0">
+    // The viewport exactly, so the page itself never scrolls: the shell
+    // is 100vh with a bar and its own padding. dvh on small screens,
+    // where the browser's own chrome comes and goes as you scroll.
+    <div className="flex flex-col h-[calc(100dvh-11.5rem)] md:h-[calc(100vh-7.5rem)] min-h-125 md:min-h-0">
       <div className="flex items-start justify-between gap-3 mb-4 shrink-0">
         <div className="min-w-0">
           <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-[#0a0a0a]">Messages</h1>
@@ -884,19 +1056,38 @@ export default function MessagesPage() {
             }`}
           >
             {/* ── The list ── */}
-            <aside className="border-b md:border-b-0 md:border-r border-[#eaeaea] flex flex-col min-h-0">
+            <aside
+              className={`md:border-r border-[#eaeaea] flex-col min-h-0 ${
+                pane === "list" ? "flex" : "hidden md:flex"
+              }`}
+            >
               <div className="p-3 border-b border-[#eaeaea] space-y-2.5 shrink-0">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-[#999] absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full text-sm bg-[#fafafa] border border-[#eaeaea] rounded-lg pl-9 pr-3 py-1.5 outline-none focus:border-[#0a0a0a] focus:bg-white transition-colors"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-[#999] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="w-full text-sm bg-[#fafafa] border border-[#eaeaea] rounded-lg pl-9 pr-3 py-1.5 outline-none focus:border-[#0070f3] focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <button
+                    onClick={() => { setComposing(true); setPane("thread"); }}
+                    disabled={senders.length === 0}
+                    data-tip="Text a number we haven't spoken to"
+                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#0070f3] text-white hover:bg-[#0060df] transition-colors disabled:opacity-40 shrink-0"
+                  >
+                    <PenSquare className="w-3.5 h-3.5" />
+                  </button>
                 </div>
                 <div className="flex items-center gap-1">
+                  {search.trim() && (
+                    <span className="text-[11px] text-[#999] px-1">
+                      {filtered.length} of {conversations.length}
+                    </span>
+                  )}
                   {FILTERS.map((f) => {
                     const on = filter === f.key;
                     return (
@@ -926,9 +1117,23 @@ export default function MessagesPage() {
 
               <div className="flex-1 overflow-y-auto min-h-0">
                 {filtered.length === 0 && (
-                  <p className="p-8 text-center text-xs text-[#999]">
-                    {conversations.length === 0 ? "No texts yet." : "Nothing matches that."}
-                  </p>
+                  <div className="p-8 text-center">
+                    <p className="text-xs text-[#999]">
+                      {conversations.length === 0
+                        ? "No texts yet."
+                        : search.trim()
+                          ? `Nothing matches “${search.trim()}”.`
+                          : "Nothing in this view."}
+                    </p>
+                    {search.trim() && (
+                      <button
+                        onClick={() => setSearch("")}
+                        className="mt-2 text-xs text-[#0070f3] hover:underline"
+                      >
+                        Clear search
+                      </button>
+                    )}
+                  </div>
                 )}
                 {filtered.map((c) => {
                   const active = current?.sessionId === c.sessionId;
@@ -937,7 +1142,7 @@ export default function MessagesPage() {
                   return (
                     <button
                       key={c.sessionId}
-                      onClick={() => setSelected(c.sessionId)}
+                      onClick={() => { setSelected(c.sessionId); setPane("thread"); setComposing(false); }}
                       className={`w-full text-left px-3 py-2.5 border-b border-[#f5f5f5] flex gap-2.5 transition-colors ${
                         active ? "bg-[#fafafa]" : "hover:bg-[#fafafa]"
                       }`}
@@ -980,11 +1185,33 @@ export default function MessagesPage() {
             </aside>
 
             {/* ── The conversation ── */}
-            <section className="flex flex-col min-h-0 min-w-0">
-              {current ? (
+            <section
+              className={`flex-col min-h-0 min-w-0 ${pane === "thread" ? "flex" : "hidden md:flex"}`}
+            >
+              {composing ? (
+                <NewMessage
+                  senders={senders}
+                  domain={conversations[0]?.domain ?? ""}
+                  onClose={() => { setComposing(false); setPane("list"); }}
+                  onSent={(sessionId) => {
+                    setComposing(false);
+                    // Straight into the conversation it created, which is
+                    // where anybody who just sent a text wants to be.
+                    if (sessionId) setSelected(sessionId);
+                    load(true);
+                  }}
+                />
+              ) : current ? (
                 <>
                   <header className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[#eaeaea] shrink-0">
                     <div className="flex items-center gap-2.5 min-w-0">
+                      <button
+                        onClick={() => { setPane("list"); setMobileDetails(false); }}
+                        data-tip="Back to conversations"
+                        className="md:hidden flex items-center justify-center w-8 h-8 -ml-1 rounded-lg text-[#444] hover:bg-[#fafafa] transition-colors shrink-0"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
                       <Avatar name={nameFor(current)} />
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-[#0a0a0a] truncate">
@@ -1034,6 +1261,8 @@ export default function MessagesPage() {
                         customerId={customerIdFor(current.remote)}
                         displayName={nameFor(current)}
                         onContactSaved={() => load(true)}
+                        names={names}
+                        meExtension={meExtension}
                         onSave={(patch) => saveAnnotation(current, patch)}
                       />
                     </div>
@@ -1072,6 +1301,8 @@ export default function MessagesPage() {
                   customerId={customerIdFor(current.remote)}
                   displayName={nameFor(current)}
                   onContactSaved={() => load(true)}
+                  names={names}
+                  meExtension={meExtension}
                   onSave={(patch) => saveAnnotation(current, patch)}
                 />
               </aside>
