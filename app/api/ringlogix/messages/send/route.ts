@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireEmployee, ApiAuthError } from "@/lib/api-auth";
 import { getMessageSessions, sendMessage, isConfigured, ourDomain } from "@/lib/ringlogix";
 import { ringlogixFailure } from "@/lib/ringlogix-response";
-import { digitsOf, type RawMessageSession } from "@/lib/ringlogix-messages";
+import { digitsOf, extensionOf, type RawMessageSession } from "@/lib/ringlogix-messages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,19 +55,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const destination = digitsOf(session.remote);
+    // A colleague's thread carries an extension where a customer's carries
+    // a number; both are valid destinations, and which one decides whether
+    // this is a text or an internal chat.
+    const remoteExtension = extensionOf(session.remote);
+    const destination = remoteExtension || digitsOf(session.remote);
     if (!destination) {
-      return NextResponse.json({ error: "That conversation has no number on it." }, { status: 400 });
+      return NextResponse.json({ error: "That conversation has nobody on the other end." }, { status: 400 });
+    }
+
+    // Our number on this thread. Required for a text - without it
+    // RingLogix accepts the message as an internal chat and it never
+    // leaves the building.
+    const fromNumber = remoteExtension ? undefined : digitsOf(session.smsani);
+    if (!remoteExtension && !fromNumber) {
+      return NextResponse.json(
+        { error: "That conversation has no number of ours on it to send from." },
+        { status: 400 },
+      );
     }
 
     // Sent from the extension that holds the thread, so the reply comes
     // from the number they already know and stays in the same conversation
     // rather than opening a second one.
     const from = session.user ?? user;
-    await sendMessage({ domain, user: from, destination, message: text });
+    await sendMessage({ domain, user: from, destination, message: text, fromNumber });
 
-    console.log(`[sms] ${actor.email} replied to ${destination} from extension ${from || "(none)"}`);
-    return NextResponse.json({ ok: true, destination, from });
+    console.log(
+      `[sms] ${actor.email} replied to ${destination} from extension ${from || "(none)"}` +
+      `${fromNumber ? ` as ${fromNumber}` : " (internal chat)"}`,
+    );
+    return NextResponse.json({ ok: true, destination, from, as: fromNumber ?? "" });
   } catch (err) {
     if (err instanceof ApiAuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     return ringlogixFailure(err);

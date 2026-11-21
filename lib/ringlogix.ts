@@ -242,24 +242,43 @@ export async function getMessages(domain: string, user: string, sessionId: strin
 }
 
 /**
- * Sends an SMS from one of our numbers.
+ * Sends a message: a text to the outside world, or a chat to a colleague.
  *
- * `user` is the extension it goes out from, which decides which of our
- * numbers the recipient sees and which conversation it lands in. A write,
- * so it deliberately bypasses the read cache in pbxApi.
+ * `type` is the difference and the default is wrong for our purposes.
+ * Without it RingLogix creates a *chat* - an internal message addressed to
+ * a user inside the domain. Aimed at a customer's number that user does
+ * not exist, so the message is accepted (202, no warning) and simply never
+ * goes anywhere. It took sending one to our own second line to see it:
+ * `"type":"chat"`, `term_uid:"18054833939@277215"`, and no carrier.
+ *
+ * An SMS additionally needs `from_num` - which of our numbers it comes
+ * from - and RingLogix refuses without it. The answer is the `smsani` on
+ * the conversation, so a reply arrives from the number they already know.
+ *
+ * Passing no `fromNumber` sends an internal chat, which is the right
+ * behaviour when the other party is an extension rather than a number.
+ *
+ * A write, so it deliberately bypasses the read cache in pbxApi.
  */
 export async function sendMessage(opts: {
   domain: string;
   user: string;
   destination: string;
   message: string;
+  /** Our number, for a text. Omit to send an internal chat. */
+  fromNumber?: string;
 }) {
-  return pbxApi("message", "create", {
+  const params: Record<string, string> = {
     domain: opts.domain,
     user: opts.user,
     destination: opts.destination,
     message: opts.message,
-  });
+  };
+  if (opts.fromNumber) {
+    params.type = "sms";
+    params.from_num = opts.fromNumber;
+  }
+  return pbxApi("message", "create", params);
 }
 
 // Reseller client billing
