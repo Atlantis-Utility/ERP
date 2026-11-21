@@ -9,8 +9,19 @@ const PORTAL_BASE = "https://atlantisutility.simplelogin.net";
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-const RL_USER = process.env.RINGLOGIX_USERNAME?.trim();
-const RL_PASS = process.env.RINGLOGIX_PASSWORD?.trim();
+// Its own login, deliberately.
+//
+// This portal is a human web session; pbx/v1 is an API. From 2026-11-20
+// they stopped being the same account: RingLogix issued a dedicated API
+// user (api@277215, Reseller scope) that reads every customer's domain but
+// cannot sign in here. Pointing both at one pair means whichever is wrong
+// takes the other down with it - which is exactly what happened the
+// afternoon the API user was put in.
+//
+// Falls back to the API pair when the portal pair is unset, so an
+// environment that hasn't been given the split yet keeps working.
+const RL_USER = process.env.RINGLOGIX_PORTAL_USERNAME?.trim() || process.env.RINGLOGIX_USERNAME?.trim();
+const RL_PASS = process.env.RINGLOGIX_PORTAL_PASSWORD?.trim() || process.env.RINGLOGIX_PASSWORD?.trim();
 const FETCH_TIMEOUT_MS = 15_000;
 
 export function isPortalConfigured(): boolean {
