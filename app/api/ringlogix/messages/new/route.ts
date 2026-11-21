@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployee, ApiAuthError } from "@/lib/api-auth";
-import { getMessageSessions, sendMessage, isConfigured, ourDomain } from "@/lib/ringlogix";
+import { getMessageSessions, sendMessage, setMessageSessionName, isConfigured, ourDomain } from "@/lib/ringlogix";
 import { ringlogixFailure } from "@/lib/ringlogix-response";
 import { digitsOf, remoteNumbersOf, type RawMessageSession } from "@/lib/ringlogix-messages";
 import { recordSender } from "@/lib/messages/senders";
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       text?: string;
       fromNumber?: string;
       domain?: string;
+      name?: string;
     };
 
     const domain = (body.domain ?? "").trim() || ourDomain();
@@ -115,12 +116,27 @@ export async function POST(req: NextRequest) {
       email: actor.email,
     });
 
+    // Naming it is part of creating it: a group that exists for a few
+    // seconds as a row of numbers is a group somebody has to go back and
+    // fix. Failing to name it is not worth failing the send over - the
+    // text has already gone.
+    const name = (body.name ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
+    const sessionId = created?.session_id ?? existing?.session_id ?? "";
+    if (name && sessionId) {
+      try {
+        await setMessageSessionName({ domain, user, sessionId, name });
+      } catch (err) {
+        console.warn("[sms] couldn't name the new conversation:", err instanceof Error ? err.message : err);
+      }
+    }
+
     console.log(`[sms] ${actor.email} started a conversation with ${destination} as ${fromNumber}`);
     return NextResponse.json({
       ok: true,
       destination,
       from: fromNumber,
-      sessionId: created?.session_id ?? existing?.session_id ?? "",
+      sessionId,
+      name,
       joinedExisting: Boolean(existing),
     });
   } catch (err) {

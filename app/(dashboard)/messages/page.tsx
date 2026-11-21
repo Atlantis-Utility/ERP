@@ -506,6 +506,7 @@ function NewMessage({
   const [to, setTo] = useState("");
   const [from, setFrom] = useState(senders[0]?.number ?? "");
   const [text, setText] = useState("");
+  const [groupName, setGroupName] = useState("");
   const [sending, setSending] = useState(false);
 
   // One number, or several separated by commas - which makes it a group.
@@ -562,14 +563,24 @@ function NewMessage({
       const res = await fetch("/api/ringlogix/messages/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: parsed.join(","), fromNumber: from, text: text.trim(), domain }),
+        body: JSON.stringify({
+          to: parsed.join(","),
+          fromNumber: from,
+          text: text.trim(),
+          domain,
+          // Only a group gets a name here; naming a one-to-one is done
+          // from the conversation, where you can see who it is.
+          name: isGroup ? groupName.trim() : "",
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't send that");
       toast.success(
         data.joinedExisting
           ? `Added to the conversation already open with ${pretty}.`
-          : isGroup ? `Started a group with ${parsed.length} people.` : `Texted ${pretty}.`,
+          : isGroup
+            ? `Started ${data.name ? `“${data.name}”` : "a group"} with ${parsed.length} people.`
+            : `Texted ${pretty}.`,
       );
       onSent(data.sessionId ?? "");
     } catch (e) {
@@ -643,6 +654,24 @@ function NewMessage({
           </p>
         </div>
 
+        {isGroup && (
+          <div>
+            <label className="block text-[11px] font-medium text-[#666] mb-1.5">
+              Group name <span className="text-[#bbb] font-normal">optional</span>
+            </label>
+            <input
+              className={field}
+              placeholder="Salzer's — Friday install"
+              maxLength={60}
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+            />
+            <p className="text-[10px] text-[#bbb] mt-1">
+              Everyone here sees it, in Teams too. You can change it later.
+            </p>
+          </div>
+        )}
+
         <div>
           <label className="block text-[11px] font-medium text-[#666] mb-1.5">From</label>
           {senders.length > 1 ? (
@@ -686,7 +715,7 @@ function NewMessage({
 
 function Details({
   conversation, annotation, contact, customer, customerId, displayName,
-  names, meExtension, onSave, onContactSaved, onRenamed,
+  names, meExtension, onSave, onContactSaved,
 }: {
   conversation: SmsConversation;
   annotation: ThreadAnnotation | undefined;
@@ -699,7 +728,6 @@ function Details({
   meExtension: string;
   onSave: (patch: { notes?: string; tags?: string[] }) => Promise<boolean>;
   onContactSaved: () => void;
-  onRenamed: () => void;
 }) {
   // null means "nothing typed yet, show what is stored". Holding the
   // stored value in state instead would snapshot it at mount - and the
@@ -709,33 +737,6 @@ function Details({
   // React Compiler rules reject outright.
   const [typed, setTyped] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [renaming, setRenaming] = useState(false);
-  const [draftName, setDraftName] = useState(conversation.name);
-  const toast = useToast();
-
-  async function commitName() {
-    const next = draftName.replace(/\s+/g, " ").trim();
-    setRenaming(false);
-    if (next === conversation.name) return;
-    try {
-      const res = await fetch("/api/ringlogix/messages/name", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: conversation.sessionId,
-          user: conversation.user,
-          domain: conversation.domain,
-          name: next,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't rename that");
-      onRenamed();
-    } catch (e) {
-      setDraftName(conversation.name);
-      toast.error(e instanceof Error ? e.message : "Couldn't rename that");
-    }
-  }
   const stored = annotation?.notes ?? "";
   const notes = typed ?? stored;
   const tags = annotation?.tags ?? [];
@@ -760,32 +761,7 @@ function Details({
         <div className="flex items-start gap-3">
           <Avatar name={displayName} size="lg" />
           <div className="min-w-0 pt-1 flex-1">
-            {renaming ? (
-              <input
-                autoFocus
-                value={draftName}
-                maxLength={60}
-                onChange={(e) => setDraftName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); commitName(); }
-                  if (e.key === "Escape") { setRenaming(false); setDraftName(conversation.name); }
-                }}
-                onBlur={commitName}
-                placeholder={conversation.isGroup ? "Name this group" : "Name this conversation"}
-                className="w-full text-[15px] font-semibold text-[#0a0a0a] bg-[#fafafa] border border-[#eaeaea] rounded-lg px-2 py-1 outline-none focus:border-[#0070f3] focus:bg-white transition-colors"
-              />
-            ) : (
-              <div className="flex items-center gap-1.5 min-w-0">
-                <p className="text-[15px] font-semibold text-[#0a0a0a] leading-tight truncate">{displayName}</p>
-                <button
-                  onClick={() => { setDraftName(conversation.name); setRenaming(true); }}
-                  data-tip={conversation.name ? "Rename this conversation" : "Give this conversation a name"}
-                  className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-[#bbb] hover:text-[#0070f3] hover:bg-[#fafafa] transition-colors"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
-              </div>
-            )}
+            <p className="text-[15px] font-semibold text-[#0a0a0a] leading-tight truncate">{displayName}</p>
             <p className="text-[11px] text-[#999] truncate mt-0.5">
               {/* When it has a name, say who it actually is underneath. */}
               {conversation.name
@@ -971,6 +947,8 @@ export default function MessagesPage() {
   // moves to it; a back arrow returns.
   const [pane, setPane] = useState<"list" | "thread">("list");
   const [composing, setComposing] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState("");
   const [senders, setSenders] = useState<Array<{ number: string; user: string }>>([]);
   const [error, setError] = useState("");
 
@@ -1095,6 +1073,26 @@ export default function MessagesPage() {
   const current = conversations.find((c) => c.sessionId === selected) ?? filtered[0];
   const unreadCount = conversations.filter((c) => c.unread).length;
   const taggedCount = conversations.filter((c) => annotations[c.sessionId]?.tags?.length).length;
+
+  async function commitName(c: SmsConversation) {
+    const next = draftName.replace(/\s+/g, " ").trim();
+    setRenaming(false);
+    if (next === c.name) return;
+    try {
+      const res = await fetch("/api/ringlogix/messages/name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: c.sessionId, user: c.user, domain: c.domain, name: next,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't rename that");
+      load(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't rename that");
+    }
+  }
 
   async function setRead(c: SmsConversation, read: boolean) {
     // Optimistic: the round trip to the PBX takes a second or two, and a
@@ -1316,7 +1314,7 @@ export default function MessagesPage() {
                   return (
                     <button
                       key={c.sessionId}
-                      onClick={() => { setSelected(c.sessionId); setPane("thread"); setComposing(false); }}
+                      onClick={() => { setSelected(c.sessionId); setPane("thread"); setComposing(false); setRenaming(false); }}
                       className={`w-full text-left px-3 py-2.5 border-b border-[#f5f5f5] flex gap-2.5 transition-colors ${
                         active ? "bg-[#fafafa]" : "hover:bg-[#fafafa]"
                       }`}
@@ -1389,9 +1387,25 @@ export default function MessagesPage() {
                       </button>
                       <Avatar name={nameFor(current)} />
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[#0a0a0a] truncate">
-                          {nameFor(current)}
-                        </p>
+                        {renaming ? (
+                          <input
+                            autoFocus
+                            value={draftName}
+                            maxLength={60}
+                            onChange={(e) => setDraftName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") { e.preventDefault(); commitName(current); }
+                              if (e.key === "Escape") setRenaming(false);
+                            }}
+                            onBlur={() => commitName(current)}
+                            placeholder={current.isGroup ? "Name this group" : "Name this conversation"}
+                            className="w-full text-sm font-semibold text-[#0a0a0a] bg-[#fafafa] border border-[#eaeaea] rounded-lg px-2 py-1 outline-none focus:border-[#0070f3] focus:bg-white transition-colors"
+                          />
+                        ) : (
+                          <p className="text-sm font-semibold text-[#0a0a0a] truncate">
+                            {nameFor(current)}
+                          </p>
+                        )}
                         <p className="text-[11px] text-[#999] truncate flex items-center gap-2">
                           {current.isGroup && current.remoteNumbers.length > 1
                             ? `Group · ${current.remoteNumbers.length} people`
@@ -1405,6 +1419,17 @@ export default function MessagesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => { setDraftName(current.name); setRenaming((v) => !v); }}
+                        data-tip={current.name ? "Rename this conversation" : "Give this conversation a name"}
+                        className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
+                          renaming
+                            ? "border-[#0070f3] bg-[#eff6ff] text-[#0070f3]"
+                            : "border-[#eaeaea] bg-white text-[#444] hover:bg-[#fafafa]"
+                        }`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={() => setRead(current, current.unread)}
                         data-tip={current.unread ? "Mark read, here and in Teams" : "Mark unread, here and in Teams"}
@@ -1438,7 +1463,6 @@ export default function MessagesPage() {
                         customerId={customerIdFor(current.remote)}
                         displayName={nameFor(current)}
                         onContactSaved={() => load(true)}
-                        onRenamed={() => load(true)}
                         names={names}
                         meExtension={meExtension}
                         onSave={(patch) => saveAnnotation(current, patch)}
@@ -1479,7 +1503,6 @@ export default function MessagesPage() {
                   customerId={customerIdFor(current.remote)}
                   displayName={nameFor(current)}
                   onContactSaved={() => load(true)}
-                  onRenamed={() => load(true)}
                   names={names}
                   meExtension={meExtension}
                   onSave={(patch) => saveAnnotation(current, patch)}
