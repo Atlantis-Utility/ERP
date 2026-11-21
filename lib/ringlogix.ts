@@ -193,7 +193,19 @@ async function pbxApiRaw(
     throw new RingLogixError(object, action, res.status, reason);
   }
 
-  return res.json();
+  // An accepted write answers 202 with no body at all - messagesession's
+  // update does, and so does a media send. res.json() on an empty body
+  // throws "Unexpected end of JSON input", which surfaced as a failed
+  // mark-as-read for a change that had in fact been made.
+  const body = await res.text();
+  if (!body.trim()) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    // 200 with something that isn't JSON is not a failure either; the
+    // caller asked for `format=json` and got what it got.
+    return null;
+  }
 }
 
 function pbxApi(

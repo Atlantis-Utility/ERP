@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MessageSquare, RefreshCw, AlertCircle, BellOff,
   Send, Check, MailOpen, Mail, PanelRight, Search, Tag as TagIcon, Paperclip,
+  Inbox, Phone, UserPlus, ExternalLink,
 } from "lucide-react";
 import { formatPhone } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
@@ -49,7 +50,7 @@ function fullTime(ms: number) {
  * plain strings from strangers, so they are matched and rebuilt rather
  * than interpreted: no markup from a text ever reaches the page.
  */
-function withLinks(text: string, mine: boolean) {
+function withLinks(text: string) {
   const parts = text.split(/(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi);
   return parts.map((part, i) => {
     if (!/^(https?:\/\/|www\.)/i.test(part)) return part;
@@ -60,7 +61,7 @@ function withLinks(text: string, mine: boolean) {
         href={href}
         target="_blank"
         rel="noopener noreferrer nofollow"
-        className={`underline underline-offset-2 ${mine ? "text-white/90 hover:text-white" : "text-[#0070f3]"}`}
+        className="underline underline-offset-2 text-[#0070f3] hover:text-[#0060df]"
       >
         {part}
       </a>
@@ -268,9 +269,12 @@ function Thread({
               <Avatar name={who} tone={mine ? "dark" : "light"} />
               <div className={`max-w-[min(34rem,78%)] flex flex-col ${mine ? "items-end" : "items-start"}`}>
                 <div
-                  className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                  // Ours tinted, theirs neutral, both with the text dark
+                  // enough to read for a long time. A solid accent bubble
+                  // looks striking in a screenshot and tiring in a thread.
+                  className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${
                     mine
-                      ? "bg-[#0070f3] text-white rounded-br-sm"
+                      ? "bg-[#eff6ff] text-[#0a0a0a] rounded-br-sm"
                       : "bg-[#f5f5f5] text-[#0a0a0a] rounded-bl-sm"
                   }`}
                 >
@@ -299,9 +303,7 @@ function Thread({
                         href={src}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`mb-1.5 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs ${
-                          mine ? "bg-white/15 hover:bg-white/25" : "bg-white hover:bg-[#f0f0f0] border border-[#eaeaea]"
-                        } transition-colors`}
+                        className="mb-1.5 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs bg-white hover:bg-[#fafafa] border border-[#eaeaea] transition-colors"
                       >
                         <Paperclip className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">
@@ -312,7 +314,7 @@ function Thread({
                     );
                   })()}
                   {m.text
-                    ? withLinks(m.text, mine)
+                    ? withLinks(m.text)
                     : !m.hasMedia && <span className="opacity-60 italic">no text</span>}
                 </div>
                 <p className="mt-1 text-[10px] text-[#999]">{fullTime(m.at)}</p>
@@ -358,14 +360,115 @@ function Thread({
   );
 }
 
+/**
+ * Puts a name to a number, in RingLogix's own contact book.
+ *
+ * Not in ours: a contact saved here is the one the phone system uses, so
+ * the name shows up for everybody and in Teams as well, rather than being
+ * a label that only exists on this page.
+ */
+function SaveContact({
+  conversation, suggested, onSaved,
+}: {
+  conversation: SmsConversation;
+  suggested: string;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
+  const [company, setCompany] = useState(suggested);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!first.trim() && !last.trim()) {
+      toast.error("A contact needs a name.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/ringlogix/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain: conversation.domain,
+          // Saved on the extension that holds the conversation, which is
+          // the one that will be looking at it again.
+          user: conversation.user,
+          first_name: first.trim(),
+          last_name: last.trim(),
+          company: company.trim(),
+          cell_phone: conversation.remote,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't save that contact");
+      setOpen(false);
+      setFirst(""); setLast("");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save that contact");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#d4d4d4] py-1.5 text-[11px] font-medium text-[#666] hover:border-[#0070f3] hover:text-[#0070f3] transition-colors"
+      >
+        <UserPlus className="w-3.5 h-3.5" />
+        Save as contact
+      </button>
+    );
+  }
+
+  const field = "w-full text-sm bg-[#fafafa] border border-[#eaeaea] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0a0a0a] focus:bg-white transition-colors";
+  return (
+    <div className="space-y-2 rounded-lg border border-[#eaeaea] p-2.5">
+      <div className="grid grid-cols-2 gap-2">
+        <input className={field} placeholder="First name" value={first} onChange={(e) => setFirst(e.target.value)} autoFocus />
+        <input className={field} placeholder="Last name" value={last} onChange={(e) => setLast(e.target.value)} />
+      </div>
+      <input className={field} placeholder="Company (optional)" value={company} onChange={(e) => setCompany(e.target.value)} />
+      <p className="text-[10px] text-[#bbb]">
+        Saved to the phone system against {formatPhone(conversation.remote) || conversation.remote}.
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="flex-1 bg-[#0a0a0a] text-white text-[11px] font-medium rounded-lg py-1.5 hover:bg-[#333] transition-colors disabled:opacity-40"
+        >
+          {saving ? "Saving…" : "Save contact"}
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          className="text-[11px] text-[#999] hover:text-[#444] px-2 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Notes and tags: the part RingLogix has nowhere to put ───────────────
 
 function Details({
-  conversation, annotation, onSave,
+  conversation, annotation, contact, customer, customerId, displayName, onSave, onContactSaved,
 }: {
   conversation: SmsConversation;
   annotation: ThreadAnnotation | undefined;
+  contact: { name: string; company: string } | undefined;
+  customer: string;
+  customerId: string;
+  displayName: string;
   onSave: (patch: { notes?: string; tags?: string[] }) => Promise<boolean>;
+  onContactSaved: () => void;
 }) {
   // null means "nothing typed yet, show what is stored". Holding the
   // stored value in state instead would snapshot it at mount - and the
@@ -394,6 +497,45 @@ function Details({
 
   return (
     <div className="h-full min-h-0 overflow-y-auto p-5 space-y-6">
+      {/* Who this is, before anything about the conversation. */}
+      <div className="flex items-start gap-3">
+        <Avatar name={displayName} size="lg" />
+        <div className="min-w-0 pt-0.5">
+          <p className="text-sm font-semibold text-[#0a0a0a] leading-tight truncate">{displayName}</p>
+          {contact?.company && <p className="text-[11px] text-[#999] truncate">{contact.company}</p>}
+          {!contact && customer && <p className="text-[11px] text-[#999] truncate">{customer}</p>}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {conversation.remote && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-[#999]">Phone</span>
+            <a
+              href={`tel:+${conversation.remote}`}
+              data-tip="Call this number"
+              className="text-[12px] font-mono text-[#0070f3] hover:underline"
+            >
+              {formatPhone(conversation.remote) || conversation.remote}
+            </a>
+          </div>
+        )}
+        {customerId && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-[#999]">Customer</span>
+            <a
+              href={`/customers/${customerId}`}
+              className="text-[12px] text-[#0070f3] hover:underline inline-flex items-center gap-1 truncate"
+            >
+              {customer} <ExternalLink className="w-3 h-3 shrink-0" />
+            </a>
+          </div>
+        )}
+        {!contact && conversation.remote && (
+          <SaveContact conversation={conversation} suggested={customer} onSaved={onContactSaved} />
+        )}
+      </div>
+
       <div>
         <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-2.5">Tags</p>
         <div className="flex flex-wrap gap-1.5">
@@ -439,7 +581,7 @@ function Details({
         <p className="text-[11px] text-[#666]">Extension {conversation.user || "—"}</p>
         {conversation.ourNumber && (
           <p className="text-[11px] text-[#666]">
-            Our number {formatPhone(conversation.ourNumber) || conversation.ourNumber}
+            On our {formatPhone(conversation.ourNumber) || conversation.ourNumber}
           </p>
         )}
         {annotation?.updatedBy && (
@@ -459,6 +601,7 @@ export default function MessagesPage() {
   const [conversations, setConversations] = useState<SmsConversation[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [customers, setCustomers] = useState<PortalCustomer[]>([]);
+  const [contacts, setContacts] = useState<Record<string, { name: string; company: string }>>({});
   const [annotations, setAnnotations] = useState<Record<string, ThreadAnnotation>>({});
   const [selected, setSelected] = useState("");
   const [search, setSearch] = useState("");
@@ -486,6 +629,7 @@ export default function MessagesPage() {
       }
       setConversations(data.conversations ?? []);
       setNames(data.names ?? {});
+      setContacts(data.contacts ?? {});
       setState("ok");
     } catch (e) {
       if (silent) return;
@@ -523,17 +667,33 @@ export default function MessagesPage() {
   // Whoever is texting us may already be a customer. Matched on the digits
   // of the number on file, so formatting differences don't hide a match.
   const byNumber = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { company: string; id: string }>();
     for (const c of customers) {
       const digits = (c.phone ?? "").replace(/\D/g, "").slice(-10);
-      if (digits.length === 10) map.set(digits, c.company);
+      if (digits.length === 10) map.set(digits, { company: c.company, id: c.id });
     }
     return map;
   }, [customers]);
 
   const customerFor = useCallback(
-    (remote: string) => (remote ? byNumber.get(remote.slice(-10)) ?? "" : ""),
+    (remote: string) => (remote ? byNumber.get(remote.slice(-10))?.company ?? "" : ""),
     [byNumber],
+  );
+
+  const customerIdFor = useCallback(
+    (remote: string) => (remote ? byNumber.get(remote.slice(-10))?.id ?? "" : ""),
+    [byNumber],
+  );
+
+  const contactFor = useCallback(
+    (remote: string) => (remote ? contacts[remote.slice(-10)] : undefined),
+    [contacts],
+  );
+
+  /** What to call the other party, in order of how much we know. */
+  const nameFor = useCallback(
+    (c: SmsConversation) => contactFor(c.remote)?.name || partyName(c, names, customerFor(c.remote)),
+    [contactFor, names, customerFor],
   );
 
   // Which extension is the viewer? The ERP knows their name and RingLogix
@@ -551,7 +711,7 @@ export default function MessagesPage() {
       if (filter === "unread" && !c.unread) return false;
       if (filter === "tagged" && !annotations[c.sessionId]?.tags?.length) return false;
       if (!q) return true;
-      const name = partyName(c, names, customerFor(c.remote)).toLowerCase();
+      const name = nameFor(c).toLowerCase();
       return (
         name.includes(q) ||
         c.remote.includes(q.replace(/\D/g, "")) ||
@@ -559,7 +719,7 @@ export default function MessagesPage() {
         (annotations[c.sessionId]?.notes ?? "").toLowerCase().includes(q)
       );
     });
-  }, [conversations, search, filter, names, customerFor, annotations]);
+  }, [conversations, search, filter, nameFor, annotations]);
 
   const current = conversations.find((c) => c.sessionId === selected) ?? filtered[0];
   const unreadCount = conversations.filter((c) => c.unread).length;
@@ -599,10 +759,10 @@ export default function MessagesPage() {
     return true;
   }
 
-  const FILTERS: { key: Filter; label: string; n: number }[] = [
-    { key: "all", label: "All", n: conversations.length },
-    { key: "unread", label: "Unread", n: unreadCount },
-    { key: "tagged", label: "Tagged", n: taggedCount },
+  const FILTERS: { key: Filter; label: string; n: number; Icon: typeof Inbox }[] = [
+    { key: "all", label: "All", n: conversations.length, Icon: Inbox },
+    { key: "unread", label: "Unread", n: unreadCount, Icon: Mail },
+    { key: "tagged", label: "Tagged", n: taggedCount, Icon: TagIcon },
   ];
 
   return (
@@ -686,17 +846,30 @@ export default function MessagesPage() {
                   />
                 </div>
                 <div className="flex items-center gap-1">
-                  {FILTERS.map((f) => (
-                    <button
-                      key={f.key}
-                      onClick={() => setFilter(f.key)}
-                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                        filter === f.key ? "bg-[#f0f0f0] text-[#0a0a0a]" : "text-[#999] hover:text-[#444]"
-                      }`}
-                    >
-                      {f.label} <span className="opacity-60">{f.n}</span>
-                    </button>
-                  ))}
+                  {FILTERS.map((f) => {
+                    const on = filter === f.key;
+                    return (
+                      <button
+                        key={f.key}
+                        onClick={() => setFilter(f.key)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                          on ? "bg-[#eff6ff] text-[#0070f3]" : "text-[#999] hover:bg-[#fafafa] hover:text-[#444]"
+                        }`}
+                      >
+                        <f.Icon className="w-3.5 h-3.5" />
+                        {f.label}
+                        {f.n > 0 && (
+                          <span
+                            className={`rounded px-1 text-[10px] font-semibold ${
+                              on ? "bg-[#0070f3] text-white" : "bg-[#f0f0f0] text-[#666]"
+                            }`}
+                          >
+                            {f.n}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -708,7 +881,7 @@ export default function MessagesPage() {
                 )}
                 {filtered.map((c) => {
                   const active = current?.sessionId === c.sessionId;
-                  const name = partyName(c, names, customerFor(c.remote));
+                  const name = nameFor(c);
                   const tags = knownTags(annotations[c.sessionId]?.tags);
                   return (
                     <button
@@ -761,10 +934,10 @@ export default function MessagesPage() {
                 <>
                   <header className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[#eaeaea] shrink-0">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <Avatar name={partyName(current, names, customerFor(current.remote))} />
+                      <Avatar name={nameFor(current)} />
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-[#0a0a0a] truncate">
-                          {partyName(current, names, customerFor(current.remote))}
+                          {nameFor(current)}
                         </p>
                         <p className="text-[11px] text-[#999] truncate flex items-center gap-2">
                           {current.remote
@@ -805,6 +978,11 @@ export default function MessagesPage() {
                         key={`m-${current.sessionId}`}
                         conversation={current}
                         annotation={annotations[current.sessionId]}
+                        contact={contactFor(current.remote)}
+                        customer={customerFor(current.remote)}
+                        customerId={customerIdFor(current.remote)}
+                        displayName={nameFor(current)}
+                        onContactSaved={() => load(true)}
                         onSave={(patch) => saveAnnotation(current, patch)}
                       />
                     </div>
@@ -838,6 +1016,11 @@ export default function MessagesPage() {
                   key={current.sessionId}
                   conversation={current}
                   annotation={annotations[current.sessionId]}
+                  contact={contactFor(current.remote)}
+                  customer={customerFor(current.remote)}
+                  customerId={customerIdFor(current.remote)}
+                  displayName={nameFor(current)}
+                  onContactSaved={() => load(true)}
                   onSave={(patch) => saveAnnotation(current, patch)}
                 />
               </aside>

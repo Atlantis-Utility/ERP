@@ -36,9 +36,12 @@ export default function Avatar({
   name: string;
   /** "dark" marks our own side of a conversation. */
   tone?: "light" | "dark";
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
 }) {
-  const dimensions = size === "sm" ? "w-6 h-6 text-[9px]" : "w-8 h-8 text-[11px]";
+  const dimensions =
+    size === "sm" ? "w-6 h-6 text-[9px]"
+    : size === "lg" ? "w-11 h-11 text-sm"
+    : "w-8 h-8 text-[11px]";
   // Our side picks up the same blue as our messages; everybody else is
   // neutral. Both backgrounds are in the set globals.css darkens, so the
   // circles don't stay bright white at night.

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMessageSessions, getSubscribers, isConfigured, ourDomain } from "@/lib/ringlogix";
+import { getContacts, getMessageSessions, getSubscribers, isConfigured, ourDomain } from "@/lib/ringlogix";
 import { ringlogixFailure } from "@/lib/ringlogix-response";
 import {
   normalizeSession, sortConversations, dedupeConversations, namesByExtension,
@@ -85,11 +85,39 @@ export async function GET(req: NextRequest) {
     // extension where a customer's would carry a phone number. Sent along
     // so the list can say "Cyril Obishai" rather than "104".
     const subscribers = (await getSubscribers(domain).catch(() => [])) as Array<Record<string, string>>;
+
+    // The contact book, so a number somebody has named reads as that name
+    // rather than as digits. Contacts are per-extension with a shared
+    // flag, so this asks the extensions that actually hold conversations
+    // plus "*" for the shared ones - six calls, each cached.
+    const owners = [...new Set(conversations.map((c) => c.user).filter(Boolean))];
+    const books = await Promise.all(
+      ["*", ...owners].map((u) =>
+        (getContacts(domain, u) as Promise<Array<Record<string, string>>>).catch(() => []),
+      ),
+    );
+    const contacts: Record<string, { name: string; company: string }> = {};
+    for (const book of books) {
+      for (const entry of book ?? []) {
+        const name = `${entry.first_name ?? ""} ${entry.last_name ?? ""}`.replace(/\s+/g, " ").trim();
+        if (!name) continue;
+        for (const field of ["cell_phone", "work_phone", "home_phone"]) {
+          const digits = (entry[field] ?? "").replace(/\D/g, "").slice(-10);
+          // Last ten digits, so "805-816-8896" and "18058168896" are one
+          // number rather than two.
+          if (digits.length === 10 && !contacts[digits]) {
+            contacts[digits] = { name, company: (entry.company ?? "").trim() };
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       domain,
       via,
       conversations,
       names: namesByExtension(subscribers ?? []),
+      contacts,
       unread: conversations.filter((c) => c.unread).length,
     });
   } catch (err) {
