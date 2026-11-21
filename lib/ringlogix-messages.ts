@@ -39,6 +39,9 @@ export interface RawMessage {
   /** "orig" = they sent it, "term" = we sent it. */
   direction?: string;
   from_num?: string;
+  /** "100@277215" when one of our extensions sent it; blank from outside. */
+  from_uid?: string;
+  term_uid?: string;
   dialed?: string;
   text?: string;
   status?: string;
@@ -52,8 +55,17 @@ export interface SmsConversation {
   /** The extension here that holds the conversation. */
   user: string;
   domain: string;
-  /** Their number, digits only. */
+  /** Their number, digits only. Empty when the other party is a colleague. */
   remote: string;
+  /**
+   * The colleague's extension, when the conversation is an internal one.
+   *
+   * Staff text each other through the same system, and those sessions
+   * carry "104@277215" where a customer's carries a phone number. Reduced
+   * to digits it became "104277215", which reads as a phone number and is
+   * not one.
+   */
+  remoteExtension: string;
   /** Our number, the one they texted. */
   ourNumber: string;
   lastMessage: string;
@@ -70,10 +82,18 @@ export interface SmsConversation {
 export interface SmsMessage {
   id: string;
   at: number; // ms
-  /** "in" = from them, "out" = from us. */
+  /** "in" = from them, "out" = from this conversation's own extension. */
   direction: "in" | "out";
   from: string;
   to: string;
+  /** The extension that sent it, when one of ours did: "100". */
+  fromExtension: string;
+  /**
+   * Who sent it, in words. One of our people by name, otherwise the other
+   * party's number. Without this a thread is a wall of grey and blue with
+   * no way to tell which colleague answered.
+   */
+  fromName: string;
   text: string;
   /**
    * The status RingLogix stores, verbatim. Not a delivery receipt: every
@@ -105,9 +125,21 @@ export function digitsOf(value: string | undefined): string {
   return (value ?? "").replace(/\D/g, "");
 }
 
+/** "100@277215" -> "100". Blank for anything that isn't one of ours. */
+export function extensionOf(uid: string | undefined | null): string {
+  const value = (uid ?? "").trim();
+  if (!value.includes("@")) return "";
+  const user = value.split("@")[0];
+  // A uid is an extension; a full phone number in that position is the
+  // other party, not a colleague.
+  return user.length <= 6 ? user : "";
+}
+
 export function normalizeSession(raw: RawMessageSession): SmsConversation {
-  const remote = digitsOf(raw.remote);
+  const remoteExtension = extensionOf(raw.remote);
+  const remote = remoteExtension ? "" : digitsOf(raw.remote);
   return {
+    remoteExtension,
     sessionId: raw.session_id ?? "",
     user: raw.user ?? "",
     domain: raw.domain ?? "",
@@ -115,7 +147,9 @@ export function normalizeSession(raw: RawMessageSession): SmsConversation {
     ourNumber: digitsOf(raw.smsani),
     lastMessage: (raw.last_mesg ?? "").trim(),
     // The sender of the last message is a number: theirs or ours.
-    theirTurn: digitsOf(raw.last_sender) === remote && remote !== "",
+    theirTurn: remoteExtension
+      ? extensionOf(raw.last_sender) === remoteExtension || digitsOf(raw.last_sender) === remoteExtension
+      : digitsOf(raw.last_sender) === remote && remote !== "",
     lastAt: parseTimestamp(raw.last_timestamp),
     unread: (raw.last_status ?? "").toLowerCase() === "unread",
     muted: (raw.muted ?? "").toLowerCase() === "yes",
@@ -124,11 +158,37 @@ export function normalizeSession(raw: RawMessageSession): SmsConversation {
   };
 }
 
-export function normalizeMessage(raw: RawMessage): SmsMessage {
+/**
+ * One message, told apart by who sent it rather than by `direction`.
+ *
+ * `direction` is "orig"/"term" on a text to or from the outside world and
+ * *empty* on an internal one between two extensions - which read as
+ * incoming on both sides, so a colleague's conversation with another
+ * colleague appeared as fifty messages nobody had answered.
+ *
+ * `from_uid` is reliable in both cases: it names the extension that sent
+ * it, and is blank when the sender was the outside world.
+ */
+export function normalizeMessage(
+  raw: RawMessage,
+  opts: { owner?: string; names?: Record<string, string> } = {},
+): SmsMessage {
+  const fromExtension = extensionOf(raw.from_uid);
+  const owner = (opts.owner ?? "").trim();
+  const direction: "in" | "out" = fromExtension
+    ? (owner ? (fromExtension === owner ? "out" : "in") : "out")
+    : raw.direction === "term" ? "out" : "in";
+
+  const fromName = fromExtension
+    ? opts.names?.[fromExtension] ?? `Extension ${fromExtension}`
+    : "";
+
   return {
     id: raw.id ?? `${raw.timestamp ?? ""}-${raw.from_num ?? ""}`,
     at: parseTimestamp(raw.timestamp),
-    direction: raw.direction === "term" ? "out" : "in",
+    direction,
+    fromExtension,
+    fromName,
     from: digitsOf(raw.from_num),
     to: digitsOf(raw.dialed),
     text: raw.text ?? "",
@@ -169,6 +229,27 @@ export function dedupeConversations(list: SmsConversation[]): SmsConversation[] 
  */
 export function sortConversations(list: SmsConversation[]): SmsConversation[] {
   return [...list].sort((a, b) => b.lastAt - a.lastAt);
+}
+
+/**
+ * Extension -> the person on it, from the subscriber list.
+ *
+ * `first_name`/`last_name` are what the directory holds; `callid_name` is
+ * the fallback because a shared line ("Ticketing System Voicemail") has
+ * one of those and no person's name.
+ */
+export function namesByExtension(
+  subscribers: Array<{ user?: string; first_name?: string; last_name?: string; callid_name?: string }>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const s of subscribers) {
+    const user = (s.user ?? "").trim();
+    if (!user) continue;
+    const full = `${s.first_name ?? ""} ${s.last_name ?? ""}`.replace(/\s+/g, " ").trim();
+    const name = full || (s.callid_name ?? "").trim();
+    if (name) out[user] = name;
+  }
+  return out;
 }
 
 /** Oldest first - a conversation reads downwards. */

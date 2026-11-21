@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMessageSessions, getSubscribers, isConfigured, ourDomain } from "@/lib/ringlogix";
 import { ringlogixFailure } from "@/lib/ringlogix-response";
 import {
-  normalizeSession, sortConversations, dedupeConversations,
+  normalizeSession, sortConversations, dedupeConversations, namesByExtension,
   type RawMessageSession, type SmsConversation,
 } from "@/lib/ringlogix-messages";
 
@@ -81,10 +81,15 @@ export async function GET(req: NextRequest) {
       .filter((c) => c.sessionId && (c.lastMessage || c.hasMedia));
 
     const conversations = sortConversations(dedupeConversations(real));
+    // Colleagues text each other too, and those conversations carry an
+    // extension where a customer's would carry a phone number. Sent along
+    // so the list can say "Cyril Obishai" rather than "104".
+    const subscribers = (await getSubscribers(domain).catch(() => [])) as Array<Record<string, string>>;
     return NextResponse.json({
       domain,
       via,
       conversations,
+      names: namesByExtension(subscribers ?? []),
       unread: conversations.filter((c) => c.unread).length,
     });
   } catch (err) {

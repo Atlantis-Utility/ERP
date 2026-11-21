@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMessages, isConfigured, ourDomain } from "@/lib/ringlogix";
+import { getMessages, getSubscribers, isConfigured, ourDomain } from "@/lib/ringlogix";
 import { ringlogixFailure } from "@/lib/ringlogix-response";
 import {
-  normalizeMessage, sortMessages, type RawMessage,
+  normalizeMessage, sortMessages, namesByExtension, type RawMessage,
 } from "@/lib/ringlogix-messages";
 
 export const runtime = "nodejs";
@@ -36,8 +36,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rows = ((await getMessages(domain, user, session)) ?? []) as RawMessage[];
-    return NextResponse.json({ messages: sortMessages(rows.map(normalizeMessage)) });
+    const [rows, subscribers] = await Promise.all([
+      getMessages(domain, user, session) as Promise<RawMessage[]>,
+      // Cached for three minutes alongside every other read, so naming
+      // the sender costs nothing after the first thread is opened.
+      getSubscribers(domain).catch(() => []) as Promise<Array<Record<string, string>>>,
+    ]);
+    const names = namesByExtension(subscribers ?? []);
+    const messages = sortMessages(
+      (rows ?? []).map((raw) => normalizeMessage(raw, { owner: user, names })),
+    );
+    return NextResponse.json({ messages, names });
   } catch (err) {
     return ringlogixFailure(err);
   }

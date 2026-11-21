@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "@/components/layout/Header";
 import { MessageSquare, RefreshCw, AlertCircle, Image as ImageIcon, BellOff, Send } from "lucide-react";
 import { useToast } from "@/lib/toast";
+import { useAuth } from "@/lib/auth-context";
 import { formatPhone } from "@/lib/utils";
 import type { SmsConversation, SmsMessage } from "@/lib/ringlogix-messages";
 
@@ -29,7 +30,28 @@ function fullTime(ms: number) {
   });
 }
 
-function Thread({ conversation, customer }: { conversation: SmsConversation; customer: string }) {
+/**
+ * What to call the other party: a colleague by name, a customer by
+ * company, anybody else by their number.
+ */
+function partyName(
+  c: SmsConversation,
+  names: Record<string, string>,
+  customer: string,
+): string {
+  if (c.remoteExtension) return names[c.remoteExtension] ?? `Extension ${c.remoteExtension}`;
+  return customer || formatPhone(c.remote) || c.remote || "Unknown";
+}
+
+function Thread({
+  conversation, customer, names, meExtension,
+}: {
+  conversation: SmsConversation;
+  customer: string;
+  names: Record<string, string>;
+  /** The signed-in person's own extension, so "You" can be said. */
+  meExtension: string;
+}) {
   const toast = useToast();
   const [messages, setMessages] = useState<SmsMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +85,11 @@ function Thread({ conversation, customer }: { conversation: SmsConversation; cus
           id: `local-${Date.now()}`,
           at: Date.now(),
           direction: "out" as const,
+          // It goes out from the extension that holds the thread, so that
+          // is the name it will carry once RingLogix lists it - say so now
+          // rather than letting the label change under them on refresh.
+          fromExtension: conversation.user,
+          fromName: names[conversation.user] ?? "",
           from: conversation.ourNumber,
           to: conversation.remote,
           text,
@@ -106,7 +133,7 @@ function Thread({ conversation, customer }: { conversation: SmsConversation; cus
       <div className="border-b border-[#eaeaea] px-5 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm font-semibold text-[#0a0a0a]">
-            {formatPhone(conversation.remote) || conversation.remote}
+            {partyName(conversation, names, customer)}
           </p>
           {customer && (
             <span className="rounded-full bg-[#eff6ff] px-2 py-0.5 text-[10px] font-medium text-[#0070f3]">
@@ -139,9 +166,16 @@ function Thread({ conversation, customer }: { conversation: SmsConversation; cus
         {!loading && !error && messages.length === 0 && (
           <p className="py-10 text-center text-xs text-[#999]">Nothing in this conversation.</p>
         )}
-        {messages.map((m) => (
+        {messages.map((m) => {
+          const who = m.fromName
+            ? (m.fromExtension && m.fromExtension === meExtension ? `${m.fromName} (you)` : m.fromName)
+            : partyName(conversation, names, customer);
+          return (
           <div key={m.id} className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}>
             <div className="max-w-[min(32rem,78%)]">
+              {/* Named on both sides. Four people share these numbers, and
+                  "who said that" is the first question anybody asks. */}
+              <p className={`text-[10px] text-[#999] mb-0.5 ${m.direction === "out" ? "text-right" : ""}`}>{who}</p>
               <div
                 className={`rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
                   m.direction === "out"
@@ -161,7 +195,8 @@ function Thread({ conversation, customer }: { conversation: SmsConversation; cus
               </p>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Replies go back into this conversation, to the number already on
@@ -181,7 +216,7 @@ function Thread({ conversation, customer }: { conversation: SmsConversation; cus
                 send();
               }
             }}
-            placeholder={`Reply to ${formatPhone(conversation.remote) || conversation.remote}…`}
+            placeholder={`Reply to ${partyName(conversation, names, customer)}…`}
             className="flex-1 resize-none text-sm border border-[#eaeaea] rounded-lg px-3 py-2 max-h-32 outline-none focus:border-[#0070f3] transition-colors"
           />
           <button
@@ -195,7 +230,10 @@ function Thread({ conversation, customer }: { conversation: SmsConversation; cus
           </button>
         </div>
         <p className="text-[10px] text-[#bbb] mt-1.5">
-          Goes out from extension {conversation.user || "—"} as {formatPhone(conversation.ourNumber) || conversation.ourNumber}
+          Goes out from extension {conversation.user || "—"}
+          {/* A colleague's thread has no outside number on it, and
+              "as" followed by nothing reads like a bug. */}
+          {conversation.ourNumber ? ` as ${formatPhone(conversation.ourNumber) || conversation.ourNumber}` : ""}
         </p>
       </div>
     </div>
@@ -203,8 +241,10 @@ function Thread({ conversation, customer }: { conversation: SmsConversation; cus
 }
 
 export default function MessagesPage() {
+  const { authUser } = useAuth();
   const [state, setState] = useState<ViewState>("loading");
   const [conversations, setConversations] = useState<SmsConversation[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
   const [customers, setCustomers] = useState<PortalCustomer[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [search, setSearch] = useState("");
@@ -221,6 +261,7 @@ export default function MessagesPage() {
         throw new Error(data.error ?? `Request failed (${res.status})`);
       }
       setConversations(data.conversations ?? []);
+      setNames(data.names ?? {});
       setState("ok");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -269,6 +310,15 @@ export default function MessagesPage() {
       customerFor(c.remote).toLowerCase().includes(q),
     );
   }, [conversations, search, customerFor]);
+
+  // Which extension is the viewer? The ERP knows their name and RingLogix
+  // knows the extensions; the name is what both agree on. Only used to add
+  // "(you)" to a label, so a miss costs nothing.
+  const meExtension = useMemo(() => {
+    const mine = (authUser?.displayName ?? "").trim().toLowerCase();
+    if (!mine) return "";
+    return Object.entries(names).find(([, n]) => n.trim().toLowerCase() === mine)?.[0] ?? "";
+  }, [names, authUser?.displayName]);
 
   const unread = conversations.filter((c) => c.unread).length;
   const current = conversations.find((c) => c.sessionId === selected) ?? filtered[0];
@@ -352,11 +402,11 @@ export default function MessagesPage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <p className={`text-sm truncate ${c.unread ? "font-semibold text-[#0a0a0a]" : "text-[#444]"}`}>
-                          {company || formatPhone(c.remote) || c.remote}
+                          {partyName(c, names, company)}
                         </p>
                         <span className="text-[10px] text-[#999] shrink-0">{shortTime(c.lastAt)}</span>
                       </div>
-                      {company && (
+                      {company && c.remote && (
                         <p className="text-[10px] text-[#999] font-mono">{formatPhone(c.remote) || c.remote}</p>
                       )}
                       <div className="flex items-center gap-1.5 mt-0.5">
@@ -379,6 +429,8 @@ export default function MessagesPage() {
                   key={current.sessionId}
                   conversation={current}
                   customer={customerFor(current.remote)}
+                  names={names}
+                  meExtension={meExtension}
                 />
               ) : (
                 <div className="h-full flex items-center justify-center">
