@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "@/components/layout/Header";
-import { MessageSquare, RefreshCw, AlertCircle, Image as ImageIcon, BellOff } from "lucide-react";
+import { MessageSquare, RefreshCw, AlertCircle, Image as ImageIcon, BellOff, Send } from "lucide-react";
+import { useToast } from "@/lib/toast";
 import { formatPhone } from "@/lib/utils";
 import type { SmsConversation, SmsMessage } from "@/lib/ringlogix-messages";
 
@@ -29,9 +30,52 @@ function fullTime(ms: number) {
 }
 
 function Thread({ conversation, customer }: { conversation: SmsConversation; customer: string }) {
+  const toast = useToast();
   const [messages, setMessages] = useState<SmsMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function send() {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/ringlogix/messages/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: conversation.sessionId,
+          user: conversation.user,
+          domain: conversation.domain,
+          text,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't send that");
+      setDraft("");
+      // Shown straight away rather than waiting for RingLogix to list it:
+      // a reply that takes a minute to appear is a reply people send twice.
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-${Date.now()}`,
+          at: Date.now(),
+          direction: "out" as const,
+          from: conversation.ourNumber,
+          to: conversation.remote,
+          text,
+          status: "",
+          mediaType: "",
+        },
+      ]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send that");
+    } finally {
+      setSending(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -118,6 +162,41 @@ function Thread({ conversation, customer }: { conversation: SmsConversation; cus
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Replies go back into this conversation, to the number already on
+          it - the route looks the destination up rather than trusting the
+          browser, so nothing here can text a stranger. */}
+      <div className="border-t border-[#eaeaea] p-3">
+        <div className="flex items-end gap-2">
+          <textarea
+            rows={1}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends, Shift+Enter makes a new line - what every
+              // messaging app does, and what fingers expect.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder={`Reply to ${formatPhone(conversation.remote) || conversation.remote}…`}
+            className="flex-1 resize-none text-sm border border-[#eaeaea] rounded-lg px-3 py-2 max-h-32 outline-none focus:border-[#0070f3] transition-colors"
+          />
+          <button
+            onClick={send}
+            disabled={!draft.trim() || sending}
+            data-tip="Send this text (Enter)"
+            className="flex items-center gap-1.5 bg-[#0a0a0a] text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#333] transition-colors disabled:opacity-40"
+          >
+            {sending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            Send
+          </button>
+        </div>
+        <p className="text-[10px] text-[#bbb] mt-1.5">
+          Goes out from extension {conversation.user || "—"} as {formatPhone(conversation.ourNumber) || conversation.ourNumber}
+        </p>
       </div>
     </div>
   );

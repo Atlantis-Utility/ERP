@@ -241,6 +241,27 @@ export async function getMessages(domain: string, user: string, sessionId: strin
   return pbxApi("message", "read", { domain, user, session_id: sessionId });
 }
 
+/**
+ * Sends an SMS from one of our numbers.
+ *
+ * `user` is the extension it goes out from, which decides which of our
+ * numbers the recipient sees and which conversation it lands in. A write,
+ * so it deliberately bypasses the read cache in pbxApi.
+ */
+export async function sendMessage(opts: {
+  domain: string;
+  user: string;
+  destination: string;
+  message: string;
+}) {
+  return pbxApi("message", "create", {
+    domain: opts.domain,
+    user: opts.user,
+    destination: opts.destination,
+    message: opts.message,
+  });
+}
+
 // Reseller client billing
 export async function getBilling(domain?: string) {
   const params: Record<string, string> = {};
