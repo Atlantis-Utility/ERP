@@ -30,21 +30,45 @@ const AUTHORITY = "https://login.microsoftonline.com";
 /**
  * What we ask each person for.
  *
- * `offline_access` is what makes the connection last beyond an hour -
- * without it there is no refresh token and they would be reconnecting all
- * day. The rest is read-only on purpose: this feature shows what is
- * already in Teams, so nothing here can send, edit or delete.
+ * Every scope here is one a person can consent to for themselves, so
+ * connecting is genuinely "sign in and it works" - no approval request to
+ * Microsoft, no tenant-wide grant, nothing to buy. They already pay for
+ * these licences; this reads what the licence already gives them.
+ *
+ * `offline_access` is what makes the connection outlast the hour: without
+ * a refresh token they would be reconnecting all day. The rest is
+ * read-only on purpose - this shows what is already in Teams, so nothing
+ * here can send, edit or delete.
  */
-export const DELEGATED_SCOPES = [
+const SELF_CONSENT_SCOPES = [
   "offline_access",
   "openid",
   "profile",
   "email",
   "User.Read",
+  // 1:1 and group chats - including whatever the carrier connector posts
+  // into them, which is where the texts show up.
   "Chat.Read",
-  "ChannelMessage.Read.All",
   "Calendars.Read",
-  "Presence.Read.All",
+  // Their own presence. Presence.Read.All, for everybody's, is the
+  // admin-consent version and deliberately not asked for.
+  "Presence.Read",
+];
+
+/**
+ * Messages in team channels, which Microsoft gates behind admin consent
+ * even for delegated access - unlike chats, which it does not.
+ *
+ * Left out by default so that one person's curiosity about channels does
+ * not turn every employee's connection into something an administrator has
+ * to approve first. Set MS_INCLUDE_CHANNEL_MESSAGES=1 once consent has
+ * been granted for the tenant.
+ */
+const ADMIN_CONSENT_SCOPES = ["ChannelMessage.Read.All"];
+
+export const DELEGATED_SCOPES = [
+  ...SELF_CONSENT_SCOPES,
+  ...(process.env.MS_INCLUDE_CHANNEL_MESSAGES === "1" ? ADMIN_CONSENT_SCOPES : []),
 ].join(" ");
 
 function config() {
