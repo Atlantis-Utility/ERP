@@ -9,7 +9,6 @@ import { getInitials, formatPhone } from "@/lib/utils";
 import { Pencil, Check, Mail, Shield, Clock, Phone, MapPin, Briefcase, Building2, X, Calendar, Activity } from "lucide-react";
 import Header from "@/components/layout/Header";
 import FormField, { inputClass } from "@/components/ui/FormField";
-import MicrosoftConnectionCard from "@/components/account/MicrosoftConnectionCard";
 import type { Employee } from "@/lib/mock-data";
 
 // ── Admin-only extra profile (localStorage, used when no employee record) ──
@@ -395,10 +394,7 @@ export default function AccountPage() {
           </div>
         </div>
 
-        {/* ── Right: connections, then activity ── */}
-        <div className="space-y-5 h-fit">
-        <MicrosoftConnectionCard />
-
+        {/* ── Right: activity ── */}
         <div className="bg-white border border-[#eaeaea] rounded-xl p-5 h-fit">
           <div className="flex items-center gap-2 mb-4">
             <Activity className="w-4 h-4 text-[#999]" />
@@ -429,7 +425,6 @@ export default function AccountPage() {
               })}
             </ul>
           )}
-        </div>
         </div>
 
       </div>
