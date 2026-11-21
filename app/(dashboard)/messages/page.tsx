@@ -266,7 +266,9 @@ function Thread({
           const who = m.fromName ? (isMe ? `${m.fromName} (you)` : m.fromName) : them;
           return (
             <div key={m.id} className={`flex gap-2.5 ${mine ? "flex-row-reverse" : ""}`}>
-              <Avatar name={who} tone={mine ? "dark" : "light"} />
+              {/* Everyone keeps their own colour on both sides of the
+                  thread; which side it sits on is what says whose it is. */}
+              <Avatar name={who} />
               <div className={`max-w-[min(34rem,78%)] flex flex-col ${mine ? "items-end" : "items-start"}`}>
                 <div
                   // Ours tinted, theirs neutral, both with the text dark
@@ -496,48 +498,74 @@ function Details({
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto p-5 space-y-6">
+    <div className="h-full min-h-0 overflow-y-auto">
       {/* Who this is, before anything about the conversation. */}
-      <div className="flex items-start gap-3">
-        <Avatar name={displayName} size="lg" />
-        <div className="min-w-0 pt-0.5">
-          <p className="text-sm font-semibold text-[#0a0a0a] leading-tight truncate">{displayName}</p>
-          {contact?.company && <p className="text-[11px] text-[#999] truncate">{contact.company}</p>}
-          {!contact && customer && <p className="text-[11px] text-[#999] truncate">{customer}</p>}
+      <div className="px-5 pt-5 pb-4 border-b border-[#f0f0f0]">
+        <div className="flex items-start gap-3">
+          <Avatar name={displayName} size="lg" />
+          <div className="min-w-0 pt-1">
+            <p className="text-[15px] font-semibold text-[#0a0a0a] leading-tight truncate">{displayName}</p>
+            <p className="text-[11px] text-[#999] truncate mt-0.5">
+              {contact?.company || customer || (conversation.remote ? "Not in your contacts" : "Internal")}
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-2">
-        {conversation.remote && (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-[#999]">Phone</span>
+        <div className="flex items-center gap-1.5 mt-3.5">
+          {conversation.remote && (
             <a
               href={`tel:+${conversation.remote}`}
               data-tip="Call this number"
-              className="text-[12px] font-mono text-[#0070f3] hover:underline"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#eff6ff] text-[#0070f3] text-[11px] font-semibold py-2 hover:bg-[#e0edff] transition-colors"
             >
-              {formatPhone(conversation.remote) || conversation.remote}
+              <Phone className="w-3.5 h-3.5" /> Call
             </a>
-          </div>
-        )}
-        {customerId && (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-[#999]">Customer</span>
+          )}
+          {customerId && (
             <a
               href={`/customers/${customerId}`}
-              className="text-[12px] text-[#0070f3] hover:underline inline-flex items-center gap-1 truncate"
+              data-tip="Open this customer"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#fafafa] text-[#444] text-[11px] font-semibold py-2 hover:bg-[#f0f0f0] transition-colors"
             >
-              {customer} <ExternalLink className="w-3 h-3 shrink-0" />
+              <ExternalLink className="w-3.5 h-3.5" /> Customer
             </a>
-          </div>
-        )}
-        {!contact && conversation.remote && (
-          <SaveContact conversation={conversation} suggested={customer} onSaved={onContactSaved} />
-        )}
+          )}
+        </div>
       </div>
 
-      <div>
-        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-2.5">Tags</p>
+      <Section title="Details">
+        {conversation.remote && (
+          <Row label="Phone">
+            <a href={`tel:+${conversation.remote}`} className="font-mono text-[#0070f3] hover:underline">
+              {formatPhone(conversation.remote) || conversation.remote}
+            </a>
+          </Row>
+        )}
+        {contact?.company && <Row label="Company">{contact.company}</Row>}
+        {customer && <Row label="Customer">{customer}</Row>}
+        <Row label="Extension">{conversation.user || "—"}</Row>
+        {conversation.ourNumber && (
+          <Row label="Our number">
+            <span className="font-mono">{formatPhone(conversation.ourNumber) || conversation.ourNumber}</span>
+          </Row>
+        )}
+        <Row label="Status">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+              conversation.unread ? "bg-[#eff6ff] text-[#0070f3]" : "bg-[#f0fdf4] text-[#15803d]"
+            }`}
+          >
+            {conversation.unread ? "Unread" : "Read"}
+          </span>
+        </Row>
+        {!contact && conversation.remote && (
+          <div className="pt-3">
+            <SaveContact conversation={conversation} suggested={customer} onSaved={onContactSaved} />
+          </div>
+        )}
+      </Section>
+
+      <Section title="Tags">
         <div className="flex flex-wrap gap-1.5">
           {MESSAGE_TAGS.map((t) => {
             const on = tags.includes(t.key);
@@ -546,7 +574,7 @@ function Details({
                 key={t.key}
                 onClick={() => toggleTag(t.key)}
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  on ? t.className : "bg-white text-[#999] border border-[#eaeaea] hover:border-[#d4d4d4]"
+                  on ? t.className : "bg-white text-[#999] border border-[#eaeaea] hover:border-[#0070f3] hover:text-[#0070f3]"
                 }`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${on ? t.dot : "bg-[#d4d4d4]"}`} />
@@ -555,39 +583,62 @@ function Details({
             );
           })}
         </div>
-      </div>
+      </Section>
 
-      <div>
-        <div className="flex items-center justify-between mb-2.5">
-          <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest">Notes</p>
-          {status === "saving" && <span className="text-[10px] text-[#999]">saving…</span>}
-          {status === "saved" && (
-            <span className="text-[10px] text-[#15803d] flex items-center gap-1"><Check className="w-3 h-3" /> saved</span>
-          )}
-        </div>
+      <Section
+        title="Notes"
+        aside={
+          status === "saving" ? <span className="text-[10px] text-[#999]">saving…</span>
+          : status === "saved" ? (
+            <span className="text-[10px] text-[#15803d] flex items-center gap-1">
+              <Check className="w-3 h-3" /> saved
+            </span>
+          ) : null
+        }
+      >
         <textarea
           value={notes}
           onChange={(e) => { setTyped(e.target.value); setStatus("idle"); }}
           onBlur={commitNotes}
-          rows={8}
+          rows={6}
           placeholder="What this is about, what was promised, who is handling it…"
-          className="w-full resize-none text-sm bg-[#fafafa] border border-[#eaeaea] rounded-xl px-3 py-2.5 outline-none focus:border-[#0a0a0a] focus:bg-white transition-colors"
+          className="w-full resize-none text-sm bg-[#fafafa] border border-[#eaeaea] rounded-xl px-3 py-2.5 outline-none focus:border-[#0070f3] focus:bg-white transition-colors"
         />
-        <p className="text-[10px] text-[#bbb] mt-1.5">Saved when you click away. Everyone here sees it.</p>
-      </div>
+        <p className="text-[10px] text-[#bbb] mt-1.5">
+          {annotation?.updatedBy
+            ? `Saved when you click away. Last noted by ${annotation.updatedBy}.`
+            : "Saved when you click away. Everyone here sees it."}
+        </p>
+      </Section>
+    </div>
+  );
+}
 
-      <div className="border-t border-[#f5f5f5] pt-4 space-y-1">
-        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-2">Conversation</p>
-        <p className="text-[11px] text-[#666]">Extension {conversation.user || "—"}</p>
-        {conversation.ourNumber && (
-          <p className="text-[11px] text-[#666]">
-            On our {formatPhone(conversation.ourNumber) || conversation.ourNumber}
-          </p>
-        )}
-        {annotation?.updatedBy && (
-          <p className="text-[11px] text-[#bbb] pt-1">Last noted by {annotation.updatedBy}</p>
-        )}
+/** A titled block, so the panel reads as sections rather than a list. */
+function Section({
+  title, aside, children,
+}: {
+  title: string;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="px-5 py-4 border-b border-[#f0f0f0] last:border-0">
+      <div className="flex items-center justify-between mb-2.5">
+        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest">{title}</p>
+        {aside}
       </div>
+      {children}
+    </div>
+  );
+}
+
+/** Label on the left, value on the right - the shape a record reads in. */
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1.5 text-[12px]">
+      <span className="text-[#999] shrink-0">{label}</span>
+      <span className="text-[#0a0a0a] truncate text-right">{children}</span>
     </div>
   );
 }

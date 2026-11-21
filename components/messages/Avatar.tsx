@@ -28,27 +28,51 @@ export function initialsFor(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
+/**
+ * The colours a circle can take.
+ *
+ * Every background here is one app/globals.css darkens for the dark
+ * theme; a prettier hex that isn't on that list stays bright white at
+ * night and ruins the page it was chosen for. The text colours are left
+ * alone by the theme and read on both.
+ */
+const PALETTE = [
+  "bg-[#eff6ff] text-[#0070f3]",
+  "bg-[#f0fdf4] text-[#15803d]",
+  "bg-[#f3e8ff] text-[#7c3aed]",
+  "bg-[#fff7e6] text-[#92400e]",
+  "bg-[#ecfeff] text-[#0070f3]",
+  "bg-[#fef2f2] text-[#b91c1c]",
+];
+
+/**
+ * The same person always gets the same colour, on every screen and after
+ * every reload - a colour that shuffles is worse than no colour, because
+ * the eye learns it and is then wrong.
+ */
+export function colourFor(name: string): string {
+  const key = (name ?? "").trim().toLowerCase();
+  if (!key) return "bg-[#f5f5f5] text-[#666]";
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return PALETTE[hash % PALETTE.length];
+}
+
 export default function Avatar({
   name,
-  tone = "light",
+  tone = "colour",
   size = "md",
 }: {
   name: string;
-  /** "dark" marks our own side of a conversation. */
-  tone?: "light" | "dark";
+  /** "mono" for places that want the circle to recede. */
+  tone?: "colour" | "mono";
   size?: "sm" | "md" | "lg";
 }) {
   const dimensions =
     size === "sm" ? "w-6 h-6 text-[9px]"
-    : size === "lg" ? "w-11 h-11 text-sm"
+    : size === "lg" ? "w-12 h-12 text-base"
     : "w-8 h-8 text-[11px]";
-  // Our side picks up the same blue as our messages; everybody else is
-  // neutral. Both backgrounds are in the set globals.css darkens, so the
-  // circles don't stay bright white at night.
-  const colours =
-    tone === "dark"
-      ? "bg-[#eff6ff] text-[#0070f3]"
-      : "bg-[#f5f5f5] text-[#666] border border-[#eaeaea]";
+  const colours = tone === "mono" ? "bg-[#f5f5f5] text-[#666]" : colourFor(name);
   return (
     <span
       data-tip={name || undefined}
