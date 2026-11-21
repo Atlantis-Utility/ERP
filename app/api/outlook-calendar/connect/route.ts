@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { MS_USER_SCOPES } from "@/lib/microsoft/scopes";
 
 export function GET() {
   const tenant = process.env.MS_CALENDAR_TENANT_ID ?? "common";
@@ -7,7 +8,7 @@ export function GET() {
     response_type: "code",
     redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/outlook-calendar/callback`,
     response_mode: "query",
-    scope: "offline_access Calendars.Read",
+    scope: MS_USER_SCOPES,
   });
 
   return NextResponse.redirect(

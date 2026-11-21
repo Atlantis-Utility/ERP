@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MS_USER_SCOPES } from "@/lib/microsoft/scopes";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
         grant_type:    "authorization_code",
         code,
         redirect_uri:  `${process.env.NEXT_PUBLIC_APP_URL}/api/outlook-calendar/callback`,
-        scope:         "offline_access Calendars.Read",
+        scope:         MS_USER_SCOPES,
       }),
       cache: "no-store",
     });
