@@ -11,6 +11,21 @@ export function isConfigured(): boolean {
   return Boolean(API_ID && API_SECRET && RL_USER && RL_PASS);
 }
 
+/**
+ * Our own PBX domain - the one Atlantis's extensions and SMS numbers live
+ * on, as opposed to a customer's.
+ *
+ * Read from the API user's own name (`api@277215`), which is where it is
+ * least likely to drift: an account that moves domains brings its username
+ * with it. The client id carries the same number in its `c<domain>`
+ * segment, which is the fallback.
+ */
+export function ourDomain(): string {
+  const fromUser = (RL_USER ?? "").split("@")[1]?.trim();
+  if (fromUser) return fromUser;
+  return (API_ID ?? "").match(/-c(\d+)/)?.[1] ?? "";
+}
+
 type RLToken = { value: string; type: string; expiresAt: number; refreshToken: string };
 
 // In-memory token cache (per server process)
@@ -204,6 +219,26 @@ export async function getCDRs(opts?: {
   if (opts?.startDate) params.start_time = opts.startDate;
   if (opts?.endDate)   params.end_time   = opts.endDate;
   return pbxApi("cdr2", "read", params);
+}
+
+/**
+ * SMS/MMS conversations for one extension.
+ *
+ * Texts to our numbers surface in Teams through the RingLogix connector,
+ * but Teams is only displaying them - the messages themselves live here,
+ * and this is the only place they can be read from.
+ *
+ * Both `domain` and `user` are required: the API answers "Please include
+ * domain and user fields" without them, because a session belongs to the
+ * extension that holds the conversation rather than to the number.
+ */
+export async function getMessageSessions(domain: string, user: string) {
+  return pbxApi("messagesession", "read", { domain, user });
+}
+
+/** Every message in one conversation, newest first as stored. */
+export async function getMessages(domain: string, user: string, sessionId: string) {
+  return pbxApi("message", "read", { domain, user, session_id: sessionId });
 }
 
 // Reseller client billing

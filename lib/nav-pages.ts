@@ -37,6 +37,7 @@ export const NAV_PAGES: NavPage[] = [
   { href: "/departments",   label: "Departments",   section: "Customers"   },
 
   { href: "/tickets",       label: "Tickets",       section: "Support"     },
+  { href: "/messages",      label: "Messages",      section: "Support"     },
 
   // Telephony. Most of these are hidden from the sidebar today (the RingLogix
   // group is commented out in components/layout/Sidebar.tsx) but the routes
