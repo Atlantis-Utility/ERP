@@ -8,21 +8,20 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// A domain with fifty extensions is fifty reads on a cold cache. They run
-// eight at a time and each one is cached for three minutes afterwards, so
-// this is slow once and instant after.
 export const maxDuration = 60;
 
 /**
  * Every text conversation on a domain.
  *
- * RingLogix keys conversations by extension, not by number: there is no
- * "all messages on this domain" call, only "this extension's sessions". So
- * the subscriber list is the index, and this fans out across it.
+ * RingLogix keys conversations by extension and refuses a read without a
+ * `user`. It does, however, accept `user=*`, which returns the domain's
+ * whole mailbox in one call - verified against the alternative below, which
+ * walks the subscriber list and returns exactly the same 154 sessions for
+ * 54 times the requests.
  *
- * Extensions with no messages - auto-attendants, voicemail boxes, the DIDs
- * that appear in the subscriber list - answer with an empty array, which
- * costs a round trip and nothing else.
+ * The walk is kept as a fallback rather than deleted: the wildcard is not
+ * in any documentation we hold, so if a future release stops honouring it
+ * this degrades to slow instead of empty.
  */
 const CONCURRENCY = 8;
 
@@ -46,6 +45,15 @@ async function pooled<T, R>(items: T[], work: (item: T) => Promise<R[]>): Promis
   return out;
 }
 
+/** The slow way: one read per extension, eight at a time. */
+async function everyExtension(domain: string): Promise<RawMessageSession[]> {
+  const subscribers = (await getSubscribers(domain)) as Array<{ user?: string }>;
+  const users = [...new Set(subscribers.map((s) => s.user).filter(Boolean) as string[])];
+  return pooled(users, async (user) =>
+    ((await getMessageSessions(domain, user)) ?? []) as RawMessageSession[],
+  );
+}
+
 export async function GET(req: NextRequest) {
   if (!isConfigured()) {
     return NextResponse.json({ error: "not_configured" }, { status: 503 });
@@ -57,22 +65,27 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const subscribers = (await getSubscribers(domain)) as Array<{ user?: string }>;
-    const users = [...new Set(subscribers.map((s) => s.user).filter(Boolean) as string[])];
-
-    const conversations = await pooled(users, async (user) => {
-      const rows = ((await getMessageSessions(domain, user)) ?? []) as RawMessageSession[];
-      return rows.map(normalizeSession);
-    });
+    let rows: RawMessageSession[];
+    let via: "wildcard" | "per-extension" = "wildcard";
+    try {
+      rows = ((await getMessageSessions(domain, "*")) ?? []) as RawMessageSession[];
+    } catch {
+      via = "per-extension";
+      rows = await everyExtension(domain);
+    }
 
     // A conversation with no last message is an empty shell the PBX keeps
     // after a thread is cleared; it has nothing to show.
-    const real: SmsConversation[] = conversations.filter((c) => c.sessionId && (c.lastMessage || c.hasMedia));
+    const real: SmsConversation[] = rows
+      .map(normalizeSession)
+      .filter((c) => c.sessionId && (c.lastMessage || c.hasMedia));
 
+    const conversations = sortConversations(dedupeConversations(real));
     return NextResponse.json({
       domain,
-      extensions: users.length,
-      conversations: sortConversations(dedupeConversations(real)),
+      via,
+      conversations,
+      unread: conversations.filter((c) => c.unread).length,
     });
   } catch (err) {
     return ringlogixFailure(err);

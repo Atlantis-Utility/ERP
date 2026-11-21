@@ -16,14 +16,21 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl;
   const domain = searchParams.get("domain")?.trim() || ourDomain();
-  const user = searchParams.get("user")?.trim() ?? "";
+  // Deliberately not rejected when empty: two of our conversations belong
+  // to no extension at all, and the API reads those with an empty user.
+  // What it will not take here is the "*" the session list accepts.
+  const user = (searchParams.get("user") ?? "").trim();
   const session = searchParams.get("session")?.trim() ?? "";
 
-  // All three are required by the API itself; saying so here beats a
-  // "Please include domain and user fields" surfacing as a 500.
-  if (!domain || !user || !session) {
+  if (!domain || !session) {
     return NextResponse.json(
-      { error: "A thread needs a domain, an extension and a session id" },
+      { error: "A thread needs a domain and a session id" },
+      { status: 400 },
+    );
+  }
+  if (user === "*") {
+    return NextResponse.json(
+      { error: "A thread belongs to one extension; the wildcard only lists sessions" },
       { status: 400 },
     );
   }

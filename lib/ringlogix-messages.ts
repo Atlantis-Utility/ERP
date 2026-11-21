@@ -157,12 +157,18 @@ export function dedupeConversations(list: SmsConversation[]): SmsConversation[] 
   return [...best.values()];
 }
 
-/** Newest conversation first; an unread one is never buried under a read one. */
+/**
+ * Newest conversation first, and only that.
+ *
+ * Sorting unread to the top is the obvious thing and the wrong thing here:
+ * the desk reads these in Teams, which does not clear the PBX's own flag,
+ * so 115 of 154 conversations are marked unread and 114 of those are more
+ * than a week old. Honouring it would bury this afternoon's conversation
+ * under a month of "STOP" replies. The flag is still shown as a dot,
+ * where it costs nothing if it is wrong.
+ */
 export function sortConversations(list: SmsConversation[]): SmsConversation[] {
-  return [...list].sort((a, b) => {
-    if (a.unread !== b.unread) return a.unread ? -1 : 1;
-    return b.lastAt - a.lastAt;
-  });
+  return [...list].sort((a, b) => b.lastAt - a.lastAt);
 }
 
 /** Oldest first - a conversation reads downwards. */
