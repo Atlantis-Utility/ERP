@@ -63,6 +63,15 @@ export interface SmsConversation {
   /** Their number, digits only. Empty when the other party is a colleague. */
   remote: string;
   /**
+   * Everyone on the far side. One number for an ordinary conversation,
+   * several for a group - RingLogix stores those as a JSON array, which
+   * reduced to digits became "1310908584718052128139": two phone numbers
+   * glued into something that is not a phone number.
+   */
+  remoteNumbers: string[];
+  /** A group text: more than one person on the other end. */
+  isGroup: boolean;
+  /**
    * The colleague's extension, when the conversation is an internal one.
    *
    * Staff text each other through the same system, and those sessions
@@ -156,11 +165,38 @@ export function extensionOf(uid: string | undefined | null): string {
   return value.split("@")[0].trim();
 }
 
+/**
+ * Everyone on the far side of a conversation.
+ *
+ * A one-to-one carries a plain number; a group carries a JSON array of
+ * them. Both come back as a list, so callers stop having to care.
+ */
+export function remoteNumbersOf(raw: string | undefined | null): string[] {
+  const value = (raw ?? "").trim();
+  if (value.startsWith("[")) {
+    try {
+      return (JSON.parse(value) as unknown[])
+        .map((n) => digitsOf(String(n)))
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+  const one = digitsOf(value);
+  return one ? [one] : [];
+}
+
 export function normalizeSession(raw: RawMessageSession): SmsConversation {
   const remoteExtension = extensionOf(raw.remote);
-  const remote = remoteExtension ? "" : digitsOf(raw.remote);
+  const remoteNumbers = remoteExtension ? [] : remoteNumbersOf(raw.remote);
+  const isGroup = remoteNumbers.length > 1 || (raw.session_type ?? "") === "group-mms";
+  // The first number stands for the conversation where one has to; the
+  // full list is what a group is actually addressed to.
+  const remote = remoteExtension ? "" : remoteNumbers[0] ?? "";
   return {
     remoteExtension,
+    remoteNumbers,
+    isGroup,
     sessionId: raw.session_id ?? "",
     user: raw.user ?? "",
     domain: raw.domain ?? "",
@@ -170,7 +206,9 @@ export function normalizeSession(raw: RawMessageSession): SmsConversation {
     // The sender of the last message is a number: theirs or ours.
     theirTurn: remoteExtension
       ? extensionOf(raw.last_sender) === remoteExtension || digitsOf(raw.last_sender) === remoteExtension
-      : digitsOf(raw.last_sender) === remote && remote !== "",
+      // Anybody on the far side counts, which for a group is several
+      // people; ours is the one that carries an extension.
+      : !extensionOf(raw.last_sender) && remoteNumbers.includes(digitsOf(raw.last_sender)),
     lastAt: parseTimestamp(raw.last_timestamp),
     unread: (raw.last_status ?? "").toLowerCase() === "unread",
     muted: (raw.muted ?? "").toLowerCase() === "yes",

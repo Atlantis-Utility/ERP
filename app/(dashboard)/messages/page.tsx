@@ -79,7 +79,20 @@ function fileSize(bytes: number) {
 }
 
 /** A colleague by name, a customer by company, anyone else by number. */
-function partyName(c: SmsConversation, names: Record<string, string>, customer: string): string {
+function partyName(
+  c: SmsConversation,
+  names: Record<string, string>,
+  customer: string,
+  contacts?: Record<string, { name: string; company: string }>,
+): string {
+  // A group is who is in it, not the first of them.
+  if (c.isGroup && c.remoteNumbers.length > 1) {
+    const each = c.remoteNumbers.map(
+      (n) => contacts?.[n.slice(-10)]?.name || formatPhone(n) || n,
+    );
+    if (each.length <= 2) return each.join(" & ");
+    return `${each.slice(0, 2).join(", ")} +${each.length - 2}`;
+  }
   if (c.remoteExtension) {
     const known = names[c.remoteExtension];
     if (known) return known;
@@ -490,18 +503,24 @@ function NewMessage({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
-  const digits = to.replace(/\D/g, "");
-  const national = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-  const valid = national.length === 10;
+  // One number, or several separated by commas - which makes it a group.
+  const parsed = to
+    .split(/[,;]+/)
+    .map((x) => x.replace(/\D/g, ""))
+    .filter(Boolean)
+    .map((x) => (x.length === 11 && x.startsWith("1") ? x.slice(1) : x));
+  const valid = parsed.length > 0 && parsed.every((x) => x.length === 10);
+  const isGroup = parsed.length > 1;
 
   async function send() {
     if (!valid || !text.trim() || sending) return;
-    const pretty = formatPhone(national) || national;
+    const pretty = parsed.map((n) => formatPhone(n) || n).join(", ");
     const ok = await confirm({
-      title: `Text ${pretty}?`,
+      title: isGroup ? `Text ${parsed.length} people?` : `Text ${pretty}?`,
       description:
-        `This starts a new conversation with ${pretty} from ${formatPhone(from) || from}. ` +
-        `They have not texted us before, so check the number is right.`,
+        `This starts a ${isGroup ? "group " : ""}conversation with ${pretty} from ` +
+        `${formatPhone(from) || from}. ${isGroup ? "They will all see each other's replies. " : ""}` +
+        `Check the number${isGroup ? "s are" : " is"} right — nobody here has texted us before.`,
       confirmLabel: "Send text",
     });
     if (!ok) return;
@@ -511,14 +530,14 @@ function NewMessage({
       const res = await fetch("/api/ringlogix/messages/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: digits, fromNumber: from, text: text.trim(), domain }),
+        body: JSON.stringify({ to: parsed.join(","), fromNumber: from, text: text.trim(), domain }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't send that");
       toast.success(
         data.joinedExisting
           ? `Added to the conversation already open with ${pretty}.`
-          : `Texted ${pretty}.`,
+          : isGroup ? `Started a group with ${parsed.length} people.` : `Texted ${pretty}.`,
       );
       onSent(data.sessionId ?? "");
     } catch (e) {
@@ -547,18 +566,26 @@ function NewMessage({
           <label className="block text-[11px] font-medium text-[#666] mb-1.5">To</label>
           <input
             className={field}
-            placeholder="805 555 0123"
+            placeholder="805 555 0123, 310 555 0199"
             inputMode="tel"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             autoFocus
           />
           {to.trim() !== "" && !valid && (
-            <p className="text-[11px] text-[#b91c1c] mt-1">Ten digits, please — that is {national.length}.</p>
+            <p className="text-[11px] text-[#b91c1c] mt-1">
+              Ten digits each, separated by commas.
+            </p>
           )}
           {valid && (
-            <p className="text-[11px] text-[#15803d] mt-1">{formatPhone(national) || national}</p>
+            <p className="text-[11px] text-[#15803d] mt-1">
+              {parsed.map((n) => formatPhone(n) || n).join(", ")}
+              {isGroup && ` · a group of ${parsed.length}`}
+            </p>
           )}
+          <p className="text-[10px] text-[#bbb] mt-1">
+            Add more numbers, separated by commas, to start a group.
+          </p>
         </div>
 
         <div>
@@ -680,13 +707,23 @@ function Details({
       </div>
 
       <Section title="Details">
-        {conversation.remote && (
+        {conversation.isGroup && conversation.remoteNumbers.length > 1 ? (
+          <Row label="People">
+            <span className="flex flex-col items-end gap-0.5">
+              {conversation.remoteNumbers.map((n) => (
+                <a key={n} href={`tel:+${n}`} className="text-[#0070f3] hover:underline tabular-nums">
+                  {formatPhone(n) || n}
+                </a>
+              ))}
+            </span>
+          </Row>
+        ) : conversation.remote ? (
           <Row label="Phone">
             <a href={`tel:+${conversation.remote}`} className="text-[#0070f3] hover:underline tabular-nums">
               {formatPhone(conversation.remote) || conversation.remote}
             </a>
           </Row>
-        )}
+        ) : null}
         {contact?.company && <Row label="Company">{contact.company}</Row>}
         {customer && <Row label="Customer">{customer}</Row>}
         {/* Your own extension, and - separately - the one this
@@ -713,7 +750,7 @@ function Details({
             {conversation.unread ? "Unread" : "Read"}
           </span>
         </Row>
-        {!contact && conversation.remote && (
+        {!contact && conversation.remote && !conversation.isGroup && (
           <div className="pt-3">
             <SaveContact conversation={conversation} suggested={customer} onSaved={onContactSaved} />
           </div>
@@ -904,8 +941,9 @@ export default function MessagesPage() {
 
   /** What to call the other party, in order of how much we know. */
   const nameFor = useCallback(
-    (c: SmsConversation) => contactFor(c.remote)?.name || partyName(c, names, customerFor(c.remote)),
-    [contactFor, names, customerFor],
+    (c: SmsConversation) =>
+      (!c.isGroup && contactFor(c.remote)?.name) || partyName(c, names, customerFor(c.remote), contacts),
+    [contactFor, names, customerFor, contacts],
   );
 
   // Which extension is the viewer? The ERP knows their name and RingLogix
@@ -1218,9 +1256,11 @@ export default function MessagesPage() {
                           {nameFor(current)}
                         </p>
                         <p className="text-[11px] text-[#999] truncate flex items-center gap-2">
-                          {current.remote
-                            ? formatPhone(current.remote) || current.remote
-                            : `Extension ${current.remoteExtension}`}
+                          {current.isGroup && current.remoteNumbers.length > 1
+                            ? `Group · ${current.remoteNumbers.length} people`
+                            : current.remote
+                              ? formatPhone(current.remote) || current.remote
+                              : `Extension ${current.remoteExtension}`}
                           {current.muted && (
                             <span className="inline-flex items-center gap-1"><BellOff className="w-3 h-3" /> muted</span>
                           )}

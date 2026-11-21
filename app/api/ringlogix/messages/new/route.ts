@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireEmployee, ApiAuthError } from "@/lib/api-auth";
 import { getMessageSessions, sendMessage, isConfigured, ourDomain } from "@/lib/ringlogix";
 import { ringlogixFailure } from "@/lib/ringlogix-response";
-import { digitsOf, type RawMessageSession } from "@/lib/ringlogix-messages";
+import { digitsOf, remoteNumbersOf, type RawMessageSession } from "@/lib/ringlogix-messages";
 import { recordSender } from "@/lib/messages/senders";
 
 export const runtime = "nodejs";
@@ -39,7 +39,12 @@ export async function POST(req: NextRequest) {
 
     const domain = (body.domain ?? "").trim() || ourDomain();
     const text = (body.text ?? "").trim();
-    const to = digitsOf(body.to);
+    // One number, or several for a group - the PBX addresses a group by
+    // listing them, comma separated.
+    const recipients = String(body.to ?? "")
+      .split(/[,;\s]+/)
+      .map((x) => digitsOf(x))
+      .filter(Boolean);
     const fromNumber = digitsOf(body.fromNumber);
 
     if (!text) return NextResponse.json({ error: "Nothing to send" }, { status: 400 });
@@ -51,15 +56,29 @@ export async function POST(req: NextRequest) {
     }
 
     // Ten digits, or eleven starting with a 1. Anything else is a typo,
-    // and a typo in this field is the whole risk of the feature.
-    const national = to.length === 11 && to.startsWith("1") ? to.slice(1) : to;
-    if (national.length !== 10) {
+    // and a typo in this field is the whole risk of the feature - so
+    // every one of them is checked, not just the first.
+    if (recipients.length === 0) {
+      return NextResponse.json({ error: "Who is this going to?" }, { status: 400 });
+    }
+    if (recipients.length > 10) {
       return NextResponse.json(
-        { error: "That doesn't look like a US number — ten digits, please." },
+        { error: "That's more than ten people — send a broadcast from Quick Access instead." },
         { status: 400 },
       );
     }
-    const destination = `1${national}`;
+    const numbers: string[] = [];
+    for (const one of recipients) {
+      const national = one.length === 11 && one.startsWith("1") ? one.slice(1) : one;
+      if (national.length !== 10) {
+        return NextResponse.json(
+          { error: `"${one}" doesn't look like a US number — ten digits, please.` },
+          { status: 400 },
+        );
+      }
+      if (!numbers.includes(`1${national}`)) numbers.push(`1${national}`);
+    }
+    const destination = numbers.join(",");
 
     // The sending number has to be one of ours, and which ones those are
     // is learned from the mailbox rather than taken from the request.
@@ -76,8 +95,13 @@ export async function POST(req: NextRequest) {
 
     // Already talking to them on that number? Then this belongs in the
     // conversation that already exists.
+    // The same set of people on the same number of ours is the same
+    // conversation, whatever order they were typed in.
+    const key = [...numbers].sort().join(",");
     const existing = sessions.find(
-      (s) => digitsOf(s.remote) === destination && digitsOf(s.smsani) === fromNumber,
+      (s) =>
+        digitsOf(s.smsani) === fromNumber &&
+        [...remoteNumbersOf(s.remote)].sort().join(",") === key,
     );
 
     const created = (await sendMessage({

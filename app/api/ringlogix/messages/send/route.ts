@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireEmployee, ApiAuthError } from "@/lib/api-auth";
 import { getMessageSessions, sendMessage, isConfigured, ourDomain } from "@/lib/ringlogix";
 import { ringlogixFailure } from "@/lib/ringlogix-response";
-import { digitsOf, extensionOf, type RawMessageSession } from "@/lib/ringlogix-messages";
+import { digitsOf, extensionOf, remoteNumbersOf, type RawMessageSession } from "@/lib/ringlogix-messages";
 import { recordSender } from "@/lib/messages/senders";
 
 export const runtime = "nodejs";
@@ -60,7 +60,10 @@ export async function POST(req: NextRequest) {
     // a number; both are valid destinations, and which one decides whether
     // this is a text or an internal chat.
     const remoteExtension = extensionOf(session.remote);
-    const destination = remoteExtension || digitsOf(session.remote);
+    // A group carries several numbers and is addressed to all of them at
+    // once; replying to only the first would quietly split the thread.
+    const numbers = remoteNumbersOf(session.remote);
+    const destination = remoteExtension || numbers.join(",");
     if (!destination) {
       return NextResponse.json({ error: "That conversation has nobody on the other end." }, { status: 400 });
     }
