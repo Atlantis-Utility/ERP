@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MessageSquare, RefreshCw, AlertCircle, BellOff,
   Send, Check, MailOpen, Mail, PanelRight, Search, Tag as TagIcon, Paperclip,
-  Inbox, Phone, UserPlus, ExternalLink, ChevronLeft, PenSquare, X,
+  Inbox, Phone, UserPlus, ExternalLink, ChevronLeft, PenSquare, X, Pencil,
 } from "lucide-react";
 import { formatPhone } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
@@ -85,6 +85,9 @@ function partyName(
   customer: string,
   contacts?: Record<string, { name: string; company: string }>,
 ): string {
+  // Somebody took the trouble to name this one; nothing we can work out
+  // beats that.
+  if (c.name) return c.name;
   // A group is who is in it, not the first of them.
   if (c.isGroup && c.remoteNumbers.length > 1) {
     const each = c.remoteNumbers.map(
@@ -489,10 +492,12 @@ function SaveContact({
  * and the sending number rather than trusting either.
  */
 function NewMessage({
-  senders, domain, onClose, onSent,
+  senders, domain, suggestions, onClose, onSent,
 }: {
   senders: Array<{ number: string; user: string }>;
   domain: string;
+  /** Numbers we already know: from conversations and the contact book. */
+  suggestions: Array<{ number: string; label: string; from: string }>;
   onClose: () => void;
   onSent: (sessionId: string) => void;
 }) {
@@ -511,6 +516,33 @@ function NewMessage({
     .map((x) => (x.length === 11 && x.startsWith("1") ? x.slice(1) : x));
   const valid = parsed.length > 0 && parsed.every((x) => x.length === 10);
   const isGroup = parsed.length > 1;
+
+  // Suggestions match the bit being typed, not the whole box - otherwise
+  // adding a second number to a group would search for both at once.
+  const [showList, setShowList] = useState(false);
+  const segments = to.split(/[,;]/);
+  const typing = (segments[segments.length - 1] ?? "").trim().toLowerCase();
+  const typingDigits = typing.replace(/\D/g, "");
+  const already = parsed.slice(0, -1);
+  const matches = useMemo(() => {
+    if (!typing) return [];
+    return suggestions
+      .filter((x) => {
+        const national = x.number.slice(-10);
+        if (already.includes(national)) return false;
+        return typingDigits.length >= 2
+          ? national.includes(typingDigits)
+          : x.label.toLowerCase().includes(typing);
+      })
+      .slice(0, 6);
+  }, [suggestions, typing, typingDigits, already.join(",")]);
+
+  /** Replaces the part being typed with a chosen number. */
+  function choose(number: string) {
+    const head = segments.slice(0, -1).map((x) => x.trim()).filter(Boolean);
+    setTo([...head, formatPhone(number) || number].join(", "));
+    setShowList(false);
+  }
 
   async function send() {
     if (!valid || !text.trim() || sending) return;
@@ -564,14 +596,37 @@ function NewMessage({
       <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0">
         <div>
           <label className="block text-[11px] font-medium text-[#666] mb-1.5">To</label>
-          <input
-            className={field}
-            placeholder="805 555 0123, 310 555 0199"
-            inputMode="tel"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            autoFocus
-          />
+          <div className="relative">
+            <input
+              className={field}
+              placeholder="Name or number"
+              value={to}
+              onChange={(e) => { setTo(e.target.value); setShowList(true); }}
+              onFocus={() => setShowList(true)}
+              autoFocus
+            />
+            {showList && matches.length > 0 && (
+              <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-[#eaeaea] rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                {matches.map((m) => (
+                  <li key={`${m.number}-${m.from}`}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); choose(m.number); }}
+                      className="w-full text-left px-3 py-2 hover:bg-[#fafafa] transition-colors flex items-center gap-2.5"
+                    >
+                      <Avatar name={m.label} size="sm" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm text-[#0a0a0a] truncate">{m.label}</span>
+                        <span className="block text-[11px] text-[#999] tabular-nums">
+                          {formatPhone(m.number) || m.number} · {m.from}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {to.trim() !== "" && !valid && (
             <p className="text-[11px] text-[#b91c1c] mt-1">
               Ten digits each, separated by commas.
@@ -631,7 +686,7 @@ function NewMessage({
 
 function Details({
   conversation, annotation, contact, customer, customerId, displayName,
-  names, meExtension, onSave, onContactSaved,
+  names, meExtension, onSave, onContactSaved, onRenamed,
 }: {
   conversation: SmsConversation;
   annotation: ThreadAnnotation | undefined;
@@ -644,6 +699,7 @@ function Details({
   meExtension: string;
   onSave: (patch: { notes?: string; tags?: string[] }) => Promise<boolean>;
   onContactSaved: () => void;
+  onRenamed: () => void;
 }) {
   // null means "nothing typed yet, show what is stored". Holding the
   // stored value in state instead would snapshot it at mount - and the
@@ -653,6 +709,33 @@ function Details({
   // React Compiler rules reject outright.
   const [typed, setTyped] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState(conversation.name);
+  const toast = useToast();
+
+  async function commitName() {
+    const next = draftName.replace(/\s+/g, " ").trim();
+    setRenaming(false);
+    if (next === conversation.name) return;
+    try {
+      const res = await fetch("/api/ringlogix/messages/name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: conversation.sessionId,
+          user: conversation.user,
+          domain: conversation.domain,
+          name: next,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't rename that");
+      onRenamed();
+    } catch (e) {
+      setDraftName(conversation.name);
+      toast.error(e instanceof Error ? e.message : "Couldn't rename that");
+    }
+  }
   const stored = annotation?.notes ?? "";
   const notes = typed ?? stored;
   const tags = annotation?.tags ?? [];
@@ -676,10 +759,40 @@ function Details({
       <div className="px-5 pt-5 pb-4 border-b border-[#f0f0f0]">
         <div className="flex items-start gap-3">
           <Avatar name={displayName} size="lg" />
-          <div className="min-w-0 pt-1">
-            <p className="text-[15px] font-semibold text-[#0a0a0a] leading-tight truncate">{displayName}</p>
+          <div className="min-w-0 pt-1 flex-1">
+            {renaming ? (
+              <input
+                autoFocus
+                value={draftName}
+                maxLength={60}
+                onChange={(e) => setDraftName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); commitName(); }
+                  if (e.key === "Escape") { setRenaming(false); setDraftName(conversation.name); }
+                }}
+                onBlur={commitName}
+                placeholder={conversation.isGroup ? "Name this group" : "Name this conversation"}
+                className="w-full text-[15px] font-semibold text-[#0a0a0a] bg-[#fafafa] border border-[#eaeaea] rounded-lg px-2 py-1 outline-none focus:border-[#0070f3] focus:bg-white transition-colors"
+              />
+            ) : (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-[15px] font-semibold text-[#0a0a0a] leading-tight truncate">{displayName}</p>
+                <button
+                  onClick={() => { setDraftName(conversation.name); setRenaming(true); }}
+                  data-tip={conversation.name ? "Rename this conversation" : "Give this conversation a name"}
+                  className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-[#bbb] hover:text-[#0070f3] hover:bg-[#fafafa] transition-colors"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
+            )}
             <p className="text-[11px] text-[#999] truncate mt-0.5">
-              {contact?.company || customer || (conversation.remote ? "Not in your contacts" : "Internal")}
+              {/* When it has a name, say who it actually is underneath. */}
+              {conversation.name
+                ? (conversation.isGroup
+                    ? `Group · ${conversation.remoteNumbers.length} people`
+                    : formatPhone(conversation.remote) || contact?.company || customer || "Conversation")
+                : contact?.company || customer || (conversation.remote ? "Not in your contacts" : "Internal")}
             </p>
           </div>
         </div>
@@ -942,7 +1055,7 @@ export default function MessagesPage() {
   /** What to call the other party, in order of how much we know. */
   const nameFor = useCallback(
     (c: SmsConversation) =>
-      (!c.isGroup && contactFor(c.remote)?.name) || partyName(c, names, customerFor(c.remote), contacts),
+      c.name || (!c.isGroup && contactFor(c.remote)?.name) || partyName(c, names, customerFor(c.remote), contacts),
     [contactFor, names, customerFor, contacts],
   );
 
@@ -1016,6 +1129,29 @@ export default function MessagesPage() {
     setAnnotations((prev) => ({ ...prev, [c.sessionId]: saved }));
     return true;
   }
+
+  const suggestions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ number: string; label: string; from: string }> = [];
+    for (const c of conversations) {
+      for (const n of c.remoteNumbers) {
+        const key = n.slice(-10);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          number: n,
+          label: c.isGroup ? formatPhone(n) || n : nameFor(c),
+          from: "conversation",
+        });
+      }
+    }
+    for (const [digits, info] of Object.entries(contacts)) {
+      if (seen.has(digits)) continue;
+      seen.add(digits);
+      out.push({ number: digits, label: info.name, from: "contact" });
+    }
+    return out;
+  }, [conversations, contacts, nameFor]);
 
   const FILTERS: { key: Filter; label: string; n: number; Icon: typeof Inbox }[] = [
     { key: "all", label: "All", n: conversations.length, Icon: Inbox },
@@ -1230,6 +1366,7 @@ export default function MessagesPage() {
                 <NewMessage
                   senders={senders}
                   domain={conversations[0]?.domain ?? ""}
+                  suggestions={suggestions}
                   onClose={() => { setComposing(false); setPane("list"); }}
                   onSent={(sessionId) => {
                     setComposing(false);
@@ -1301,6 +1438,7 @@ export default function MessagesPage() {
                         customerId={customerIdFor(current.remote)}
                         displayName={nameFor(current)}
                         onContactSaved={() => load(true)}
+                        onRenamed={() => load(true)}
                         names={names}
                         meExtension={meExtension}
                         onSave={(patch) => saveAnnotation(current, patch)}
@@ -1341,6 +1479,7 @@ export default function MessagesPage() {
                   customerId={customerIdFor(current.remote)}
                   displayName={nameFor(current)}
                   onContactSaved={() => load(true)}
+                  onRenamed={() => load(true)}
                   names={names}
                   meExtension={meExtension}
                   onSave={(patch) => saveAnnotation(current, patch)}

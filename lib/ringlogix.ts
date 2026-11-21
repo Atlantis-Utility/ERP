@@ -347,6 +347,30 @@ export async function setMessageSessionStatus(opts: {
   return result;
 }
 
+/**
+ * Names a conversation, or clears the name.
+ *
+ * Stored in the PBX rather than in our own tables, so a group somebody
+ * names here is named in Teams as well - the two are windows onto one
+ * mailbox, and a name that only exists in one of them is a name half the
+ * company cannot see.
+ */
+export async function setMessageSessionName(opts: {
+  domain: string;
+  user: string;
+  sessionId: string;
+  name: string;
+}) {
+  const result = await pbxApi("messagesession", "update", {
+    domain: opts.domain,
+    user: opts.user,
+    session_id: opts.sessionId,
+    session_name: opts.name,
+  });
+  invalidate("rl:messagesession");
+  return result;
+}
+
 // Reseller client billing
 export async function getBilling(domain?: string) {
   const params: Record<string, string> = {};
