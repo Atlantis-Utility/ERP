@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MessageSquare, RefreshCw, AlertCircle, BellOff,
   Send, Check, MailOpen, Mail, PanelRight, Search, Tag as TagIcon, Paperclip,
-  Inbox, Phone, UserPlus, ExternalLink, ChevronLeft, PenSquare, X, Pencil,
+  Inbox, Phone, UserPlus, ExternalLink, ChevronLeft, PenSquare, X, Pencil, Trash2,
 } from "lucide-react";
 import { formatPhone } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
@@ -1074,8 +1074,8 @@ export default function MessagesPage() {
   const unreadCount = conversations.filter((c) => c.unread).length;
   const taggedCount = conversations.filter((c) => annotations[c.sessionId]?.tags?.length).length;
 
-  async function commitName(c: SmsConversation) {
-    const next = draftName.replace(/\s+/g, " ").trim();
+  async function commitName(c: SmsConversation, value?: string) {
+    const next = (value ?? draftName).replace(/\s+/g, " ").trim();
     setRenaming(false);
     if (next === c.name) return;
     try {
@@ -1397,16 +1397,15 @@ export default function MessagesPage() {
                               if (e.key === "Enter") { e.preventDefault(); commitName(current); }
                               if (e.key === "Escape") setRenaming(false);
                             }}
-                            onBlur={() => commitName(current)}
                             placeholder={current.isGroup ? "Name this group" : "Name this conversation"}
-                            className="w-full text-sm font-semibold text-[#0a0a0a] bg-[#fafafa] border border-[#eaeaea] rounded-lg px-2 py-1 outline-none focus:border-[#0070f3] focus:bg-white transition-colors"
+                            className="w-full text-sm text-[#0a0a0a] bg-white border border-[#0070f3] rounded-lg px-2.5 py-1.5 outline-none transition-colors"
                           />
                         ) : (
                           <p className="text-sm font-semibold text-[#0a0a0a] truncate">
                             {nameFor(current)}
                           </p>
                         )}
-                        <p className="text-[11px] text-[#999] truncate flex items-center gap-2">
+                        <p className={`text-[11px] text-[#999] truncate items-center gap-2 ${renaming ? "hidden" : "flex"}`}>
                           {current.isGroup && current.remoteNumbers.length > 1
                             ? `Group · ${current.remoteNumbers.length} people`
                             : current.remote
@@ -1419,17 +1418,44 @@ export default function MessagesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => { setDraftName(current.name); setRenaming((v) => !v); }}
-                        data-tip={current.name ? "Rename this conversation" : "Give this conversation a name"}
-                        className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
-                          renaming
-                            ? "border-[#0070f3] bg-[#eff6ff] text-[#0070f3]"
-                            : "border-[#eaeaea] bg-white text-[#444] hover:bg-[#fafafa]"
-                        }`}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
+                      {renaming ? (
+                        <>
+                          <button
+                            onClick={() => commitName(current)}
+                            className="flex items-center gap-1.5 bg-[#0070f3] text-white text-[11px] font-medium px-2.5 h-8 rounded-lg hover:bg-[#0060df] transition-colors"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setRenaming(false)}
+                            className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[11px] font-medium text-[#444] px-2.5 h-8 rounded-lg hover:bg-[#fafafa] transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          {current.name && (
+                            <button
+                              onClick={() => { setDraftName(""); commitName(current, ""); }}
+                              data-tip="Remove the name"
+                              className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#eaeaea] bg-white text-[#b91c1c] hover:bg-[#fef2f2] transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => { setDraftName(current.name); setRenaming(true); }}
+                          data-tip={current.name ? "Rename this conversation" : "Give this conversation a name"}
+                          className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#eaeaea] bg-white text-[#444] hover:bg-[#fafafa] transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {/* Not `hidden`: the attribute sets display:none and
+                          the element's own flex class overrides it, so the
+                          button stayed on screen mid-rename. */}
+                      {!renaming && (
                       <button
                         onClick={() => setRead(current, current.unread)}
                         data-tip={current.unread ? "Mark read, here and in Teams" : "Mark unread, here and in Teams"}
@@ -1438,6 +1464,7 @@ export default function MessagesPage() {
                         {current.unread ? <MailOpen className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
                         {current.unread ? "Mark read" : "Mark unread"}
                       </button>
+                      )}
                       <button
                         onClick={() => setMobileDetails((v) => !v)}
                         data-tip={mobileDetails ? "Back to the conversation" : "Notes and tags"}
