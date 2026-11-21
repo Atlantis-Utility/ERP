@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  MessageSquare, RefreshCw, AlertCircle, Image as ImageIcon, BellOff,
-  Send, Check, MailOpen, Mail, PanelRight, Search, Tag as TagIcon,
+  MessageSquare, RefreshCw, AlertCircle, BellOff,
+  Send, Check, MailOpen, Mail, PanelRight, Search, Tag as TagIcon, Paperclip,
 } from "lucide-react";
 import { formatPhone } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
@@ -41,6 +41,41 @@ function fullTime(ms: number) {
   });
 }
 
+/**
+ * Turns the URLs in a message into links.
+ *
+ * Customers send tracking links, portal links, addresses. Rendering them
+ * as dead text means copying by hand out of a bubble - and these are
+ * plain strings from strangers, so they are matched and rebuilt rather
+ * than interpreted: no markup from a text ever reaches the page.
+ */
+function withLinks(text: string, mine: boolean) {
+  const parts = text.split(/(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi);
+  return parts.map((part, i) => {
+    if (!/^(https?:\/\/|www\.)/i.test(part)) return part;
+    const href = part.startsWith("www.") ? `https://${part}` : part;
+    return (
+      <a
+        key={i}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        className={`underline underline-offset-2 ${mine ? "text-white/90 hover:text-white" : "text-[#0070f3]"}`}
+      >
+        {part}
+      </a>
+    );
+  });
+}
+
+/** "22 KB", "1.4 MB" - a size nobody has to divide in their head. */
+function fileSize(bytes: number) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** A colleague by name, a customer by company, anyone else by number. */
 function partyName(c: SmsConversation, names: Record<string, string>, customer: string): string {
   if (c.remoteExtension) {
@@ -74,12 +109,19 @@ function Thread({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  // Messages sent from here that RingLogix hasn't listed back yet. Kept
+  // apart from the server's own, or a poll two seconds after sending
+  // would make the reply vanish and reappear.
+  const pending = useRef<SmsMessage[]>([]);
 
   useEffect(() => {
     let alive = true;
+    pending.current = [];
     setLoading(true);
     setError("");
-    (async () => {
+
+    const read = async (silent: boolean) => {
       try {
         const params = new URLSearchParams({
           domain: conversation.domain,
@@ -89,20 +131,46 @@ function Thread({
         const res = await fetch(`/api/ringlogix/messages/thread?${params}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't open this conversation");
-        if (alive) setMessages(data.messages ?? []);
+        if (!alive) return;
+        const server: SmsMessage[] = data.messages ?? [];
+        // A reply we are still waiting to see listed stays on screen until
+        // the server's copy of it turns up, matched on its text.
+        pending.current = pending.current.filter(
+          (p) => !server.some((m) => m.direction === "out" && m.text === p.text),
+        );
+        setMessages([...server, ...pending.current].sort((a, b) => a.at - b.at));
+        setError("");
       } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : "Couldn't open this conversation");
+        // A failed poll is not worth replacing a readable conversation
+        // with an error; only the first read gets to do that.
+        if (alive && !silent) setError(e instanceof Error ? e.message : "Couldn't open this conversation");
       } finally {
-        if (alive) setLoading(false);
+        if (alive && !silent) setLoading(false);
       }
-    })();
-    return () => { alive = false; };
+    };
+
+    read(false);
+
+    // New texts arrive whenever the customer sends them, so the open
+    // conversation asks again every few seconds - but only while the tab
+    // is actually being looked at.
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") read(true);
+    }, 8000);
+    return () => { alive = false; clearInterval(timer); };
   }, [conversation.domain, conversation.user, conversation.sessionId]);
 
-  // A conversation opens at its newest message, like every other inbox.
+  // A conversation opens at its newest message, and follows along while
+  // you are at the bottom - but never yanks you away from something you
+  // have scrolled up to read.
+  const count = messages.length;
+  const wasAtBottom = useRef(true);
   useEffect(() => {
-    if (!loading) bottom.current?.scrollIntoView({ block: "end" });
-  }, [loading, messages.length]);
+    const el = scroller.current;
+    if (!el) return;
+    if (loading) return;
+    if (wasAtBottom.current) bottom.current?.scrollIntoView({ block: "end" });
+  }, [loading, count]);
 
   async function send() {
     const text = draft.trim();
@@ -122,11 +190,10 @@ function Thread({
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't send that");
       setDraft("");
+      wasAtBottom.current = true;
       // Shown straight away rather than waiting for RingLogix to list it:
       // a reply that takes a minute to appear is a reply people send twice.
-      setMessages((prev) => [
-        ...prev,
-        {
+      const echo: SmsMessage = {
           id: `local-${Date.now()}`,
           at: Date.now(),
           direction: "out" as const,
@@ -134,11 +201,14 @@ function Thread({
           fromName: names[conversation.user] ?? "",
           from: conversation.ourNumber,
           to: conversation.remote,
-          text,
-          status: "",
-          mediaType: "",
-        },
-      ]);
+        text,
+        status: "",
+        mediaType: "",
+        mediaSize: 0,
+        hasMedia: false,
+      };
+      pending.current = [...pending.current, echo];
+      setMessages((prev) => [...prev, echo]);
       onSent();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't send that");
@@ -151,7 +221,14 @@ function Thread({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 min-h-0">
+      <div
+        ref={scroller}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          wasAtBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+        }}
+        className="flex-1 overflow-y-auto px-5 py-5 space-y-4 min-h-0"
+      >
         {loading && (
           <div className="py-10 text-center"><RefreshCw className="w-5 h-5 animate-spin text-[#999] mx-auto" /></div>
         )}
@@ -177,16 +254,50 @@ function Thread({
                 <div
                   className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words ${
                     mine
-                      ? "bg-[#0a0a0a] text-white rounded-br-sm"
+                      ? "bg-[#0070f3] text-white rounded-br-sm"
                       : "bg-[#f5f5f5] text-[#0a0a0a] rounded-bl-sm"
                   }`}
                 >
-                  {m.text || <span className="opacity-60 italic">no text</span>}
-                  {m.mediaType && (
-                    <span className="mt-1 flex items-center gap-1 text-[10px] opacity-70">
-                      <ImageIcon className="w-3 h-3" /> {m.mediaType}
-                    </span>
-                  )}
+                  {m.hasMedia && (() => {
+                    const src = `/api/ringlogix/messages/media?${new URLSearchParams({
+                      domain: conversation.domain,
+                      user: conversation.user,
+                      session: conversation.sessionId,
+                      id: m.id,
+                    })}`;
+                    const isImage = m.mediaType.startsWith("image/");
+                    return isImage ? (
+                      <a href={src} target="_blank" rel="noopener noreferrer" className="block mb-1.5">
+                        {/* Not next/image: the bytes come through our own
+                            proxy and their dimensions are unknown here. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={m.text || "Attachment"}
+                          loading="lazy"
+                          className="rounded-lg max-h-72 w-auto bg-[#f5f5f5]"
+                        />
+                      </a>
+                    ) : (
+                      <a
+                        href={src}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`mb-1.5 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs ${
+                          mine ? "bg-white/15 hover:bg-white/25" : "bg-white hover:bg-[#f0f0f0] border border-[#eaeaea]"
+                        } transition-colors`}
+                      >
+                        <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">
+                          {m.mediaType || "Attachment"}
+                          {m.mediaSize ? ` · ${fileSize(m.mediaSize)}` : ""}
+                        </span>
+                      </a>
+                    );
+                  })()}
+                  {m.text
+                    ? withLinks(m.text, mine)
+                    : !m.hasMedia && <span className="opacity-60 italic">no text</span>}
                 </div>
                 <p className="mt-1 text-[10px] text-[#999]">{fullTime(m.at)}</p>
               </div>
@@ -217,7 +328,7 @@ function Thread({
             onClick={send}
             disabled={!draft.trim() || sending}
             data-tip="Send (Enter)"
-            className="flex items-center justify-center w-10 h-10 bg-[#0a0a0a] text-white rounded-xl hover:bg-[#333] transition-colors disabled:opacity-30"
+            className="flex items-center justify-center w-10 h-10 bg-[#0070f3] text-white rounded-xl hover:bg-[#0060df] transition-colors disabled:opacity-30"
           >
             {sending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
@@ -350,12 +461,23 @@ export default function MessagesPage() {
       setNames(data.names ?? {});
       setState("ok");
     } catch (e) {
+      if (silent) return;
       setError(e instanceof Error ? e.message : "Failed to load");
       setState("error");
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // A text can arrive in any conversation, not just the open one, so the
+  // list refreshes itself as well - silently, so it never flashes a
+  // spinner over something being read, and never while the tab is hidden.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") load(true);
+    }, 12000);
+    return () => clearInterval(timer);
+  }, [load]);
 
   useEffect(() => {
     let alive = true;

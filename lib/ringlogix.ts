@@ -101,6 +101,16 @@ async function getToken(): Promise<{ token: string; type: string }> {
 }
 
 /**
+ * The Authorization header the API expects, for the one case that needs
+ * to fetch a RingLogix URL directly rather than through pbxApi: an
+ * attachment, which lives behind its own token-protected address.
+ */
+export async function ringlogixAuthHeader(): Promise<string> {
+  const { token, type } = await getToken();
+  return `${type} ${token}`;
+}
+
+/**
  * A refusal from the RingLogix API, with the reason it actually gave.
  *
  * `denied` separates "we are not allowed to ask this" from "the request
@@ -135,6 +145,21 @@ export class RingLogixError extends Error {
 
 const READ_ACTIONS = new Set(["read", "list"]);
 const RL_TTL = 3 * 60_000; // 3 minutes for read-only data
+
+/**
+ * Messages are the exception to the three-minute cache.
+ *
+ * Everything else here - numbers, devices, subscribers - changes when
+ * somebody provisions something, so three minutes is generous. A text
+ * arrives whenever the customer decides to send one, and a message list
+ * served from a three-minute cache cannot be polled: the page would ask
+ * every ten seconds and be told the same thing for three minutes.
+ *
+ * Short enough to feel live, long enough that ten people watching the
+ * inbox is still a handful of calls a minute rather than sixty.
+ */
+const RL_MESSAGE_TTL = 5_000;
+const LIVE_OBJECTS = new Set(["messagesession", "message"]);
 
 async function pbxApiRaw(
   object: string,
@@ -180,7 +205,8 @@ function pbxApi(
   if (!READ_ACTIONS.has(action)) return doFetch();
   // Stable cache key from sorted params
   const paramStr = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join("&");
-  return withCache(`rl:${object}:${action}:${paramStr}`, RL_TTL, doFetch);
+  const ttl = LIVE_OBJECTS.has(object) ? RL_MESSAGE_TTL : RL_TTL;
+  return withCache(`rl:${object}:${action}:${paramStr}`, ttl, doFetch);
 }
 
 // Domains = customer accounts in reseller context
@@ -278,7 +304,12 @@ export async function sendMessage(opts: {
     params.type = "sms";
     params.from_num = opts.fromNumber;
   }
-  return pbxApi("message", "create", params);
+  const sent = await pbxApi("message", "create", params);
+  // Drop the cached view of this mailbox so the next poll sees the reply
+  // rather than a list from before it was sent.
+  invalidate("rl:messagesession");
+  invalidate("rl:message:");
+  return sent;
 }
 
 /**
@@ -294,12 +325,14 @@ export async function setMessageSessionStatus(opts: {
   sessionId: string;
   read: boolean;
 }) {
-  return pbxApi("messagesession", "update", {
+  const result = await pbxApi("messagesession", "update", {
     domain: opts.domain,
     user: opts.user,
     session_id: opts.sessionId,
     last_status: opts.read ? "read" : "unread",
   });
+  invalidate("rl:messagesession");
+  return result;
 }
 
 // Reseller client billing

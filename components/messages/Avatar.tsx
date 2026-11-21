@@ -39,9 +39,12 @@ export default function Avatar({
   size?: "sm" | "md";
 }) {
   const dimensions = size === "sm" ? "w-6 h-6 text-[9px]" : "w-8 h-8 text-[11px]";
+  // Our side picks up the same blue as our messages; everybody else is
+  // neutral. Both backgrounds are in the set globals.css darkens, so the
+  // circles don't stay bright white at night.
   const colours =
     tone === "dark"
-      ? "bg-[#0a0a0a] text-white"
+      ? "bg-[#eff6ff] text-[#0070f3]"
       : "bg-[#f5f5f5] text-[#666] border border-[#eaeaea]";
   return (
     <span

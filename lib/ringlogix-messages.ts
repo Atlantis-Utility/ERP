@@ -47,6 +47,11 @@ export interface RawMessage {
   status?: string;
   media_type?: string;
   media_size?: string;
+  /**
+   * Where the picture actually lives: a RingLogix URL that needs our bearer
+   * token, so the browser cannot fetch it directly and the app proxies it.
+   */
+  remotepath?: string;
   session_id?: string;
 }
 
@@ -103,6 +108,10 @@ export interface SmsMessage {
    */
   status: string;
   mediaType: string;
+  /** Bytes, as RingLogix counted them. 0 when there is no attachment. */
+  mediaSize: number;
+  /** True when there is something to fetch through the media proxy. */
+  hasMedia: boolean;
 }
 
 /**
@@ -200,6 +209,8 @@ export function normalizeMessage(
     text: raw.text ?? "",
     status: (raw.status ?? "").trim(),
     mediaType: (raw.media_type ?? "").trim(),
+    mediaSize: Number(raw.media_size ?? "0") || 0,
+    hasMedia: Boolean((raw.remotepath ?? "").trim()),
   };
 }
 
