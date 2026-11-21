@@ -121,7 +121,7 @@ function Thread({
     setLoading(true);
     setError("");
 
-    const read = async (silent: boolean) => {
+    const read = async (silent: boolean, attempt = 0) => {
       try {
         const params = new URLSearchParams({
           domain: conversation.domain,
@@ -142,8 +142,16 @@ function Thread({
         setError("");
       } catch (e) {
         // A failed poll is not worth replacing a readable conversation
-        // with an error; only the first read gets to do that.
-        if (alive && !silent) setError(e instanceof Error ? e.message : "Couldn't open this conversation");
+        // with an error; only the first read gets to do that - and even
+        // then it asks twice. RingLogix hands back the occasional 500
+        // with an activity id and no explanation, and it passes.
+        if (!alive || silent) return;
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 800));
+          if (alive) await read(false, 1);
+          return;
+        }
+        setError(e instanceof Error ? e.message : "Couldn't open this conversation");
       } finally {
         if (alive && !silent) setLoading(false);
       }
@@ -351,14 +359,25 @@ function Details({
   annotation: ThreadAnnotation | undefined;
   onSave: (patch: { notes?: string; tags?: string[] }) => Promise<boolean>;
 }) {
-  const [notes, setNotes] = useState(annotation?.notes ?? "");
+  // null means "nothing typed yet, show what is stored". Holding the
+  // stored value in state instead would snapshot it at mount - and the
+  // annotations arrive a moment after the conversation does, so a note
+  // somebody had already written rendered as an empty box. Deriving it
+  // also keeps this clear of setting state from an effect, which the
+  // React Compiler rules reject outright.
+  const [typed, setTyped] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const stored = annotation?.notes ?? "";
+  const notes = typed ?? stored;
   const tags = annotation?.tags ?? [];
 
   async function commitNotes() {
-    if (notes === (annotation?.notes ?? "")) return;
+    if (typed === null || typed === stored) return;
     setStatus("saving");
-    setStatus((await onSave({ notes })) ? "saved" : "idle");
+    const ok = await onSave({ notes: typed });
+    setStatus(ok ? "saved" : "idle");
+    // Back to showing what is stored, which is now what was typed.
+    if (ok) setTyped(null);
   }
 
   async function toggleTag(key: string) {
@@ -398,7 +417,7 @@ function Details({
         </div>
         <textarea
           value={notes}
-          onChange={(e) => { setNotes(e.target.value); setStatus("idle"); }}
+          onChange={(e) => { setTyped(e.target.value); setStatus("idle"); }}
           onBlur={commitNotes}
           rows={8}
           placeholder="What this is about, what was promised, who is handling it…"
