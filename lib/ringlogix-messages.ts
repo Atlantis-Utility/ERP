@@ -125,14 +125,20 @@ export function digitsOf(value: string | undefined): string {
   return (value ?? "").replace(/\D/g, "");
 }
 
-/** "100@277215" -> "100". Blank for anything that isn't one of ours. */
+/**
+ * "100@277215" -> "100". Blank for anything that isn't inside our domain.
+ *
+ * The "@" is the whole test. An earlier version also required the user to
+ * be short, on the assumption that an internal party is always a three
+ * digit extension - but some of our users *are* numbers (the DIDs appear
+ * in the subscriber list), and those threads came out as "18054833939277215":
+ * the "@" stripped by digitsOf, leaving something that looks like a phone
+ * number and is not one.
+ */
 export function extensionOf(uid: string | undefined | null): string {
   const value = (uid ?? "").trim();
   if (!value.includes("@")) return "";
-  const user = value.split("@")[0];
-  // A uid is an extension; a full phone number in that position is the
-  // other party, not a colleague.
-  return user.length <= 6 ? user : "";
+  return value.split("@")[0].trim();
 }
 
 export function normalizeSession(raw: RawMessageSession): SmsConversation {

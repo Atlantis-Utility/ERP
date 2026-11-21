@@ -281,6 +281,27 @@ export async function sendMessage(opts: {
   return pbxApi("message", "create", params);
 }
 
+/**
+ * Marks a conversation read or unread.
+ *
+ * Written through to the PBX rather than kept locally, so that marking
+ * something read here marks it read in Teams too - two inboxes that
+ * disagree about what has been dealt with is worse than neither.
+ */
+export async function setMessageSessionStatus(opts: {
+  domain: string;
+  user: string;
+  sessionId: string;
+  read: boolean;
+}) {
+  return pbxApi("messagesession", "update", {
+    domain: opts.domain,
+    user: opts.user,
+    session_id: opts.sessionId,
+    last_status: opts.read ? "read" : "unread",
+  });
+}
+
 // Reseller client billing
 export async function getBilling(domain?: string) {
   const params: Record<string, string> = {};

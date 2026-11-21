@@ -1,14 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Header from "@/components/layout/Header";
-import { MessageSquare, RefreshCw, AlertCircle, Image as ImageIcon, BellOff, Send } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  MessageSquare, RefreshCw, AlertCircle, Image as ImageIcon, BellOff,
+  Send, Check, MailOpen, Mail, PanelRight, Search, Tag as TagIcon,
+} from "lucide-react";
+import { formatPhone } from "@/lib/utils";
 import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
-import { formatPhone } from "@/lib/utils";
+import {
+  listThreadAnnotations, saveThreadAnnotation, type ThreadAnnotation,
+} from "@/lib/db/message-threads";
+import { MESSAGE_TAGS, knownTags } from "@/lib/message-tags";
+import Avatar from "@/components/messages/Avatar";
 import type { SmsConversation, SmsMessage } from "@/lib/ringlogix-messages";
 
 type ViewState = "loading" | "unconfigured" | "denied" | "error" | "ok";
+type Filter = "all" | "unread" | "tagged";
 
 interface PortalCustomer { id: string; company: string; phone: string }
 
@@ -17,10 +25,13 @@ function shortTime(ms: number) {
   if (!ms) return "";
   const d = new Date(ms);
   const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-  const sameYear = d.getFullYear() === now.getFullYear();
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  }
+  return d.toLocaleDateString("en-US", {
+    month: "short", day: "numeric",
+    ...(d.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
 }
 
 function fullTime(ms: number) {
@@ -30,27 +41,31 @@ function fullTime(ms: number) {
   });
 }
 
-/**
- * What to call the other party: a colleague by name, a customer by
- * company, anybody else by their number.
- */
-function partyName(
-  c: SmsConversation,
-  names: Record<string, string>,
-  customer: string,
-): string {
-  if (c.remoteExtension) return names[c.remoteExtension] ?? `Extension ${c.remoteExtension}`;
+/** A colleague by name, a customer by company, anyone else by number. */
+function partyName(c: SmsConversation, names: Record<string, string>, customer: string): string {
+  if (c.remoteExtension) {
+    const known = names[c.remoteExtension];
+    if (known) return known;
+    // Some of our own users are numbers - the DIDs are in the subscriber
+    // list - so an unnamed internal party still reads as a phone number
+    // rather than as "Extension 18054833939".
+    return /^\d{10,}$/.test(c.remoteExtension)
+      ? formatPhone(c.remoteExtension) || c.remoteExtension
+      : `Extension ${c.remoteExtension}`;
+  }
   return customer || formatPhone(c.remote) || c.remote || "Unknown";
 }
 
+// ── The conversation ────────────────────────────────────────────────────
+
 function Thread({
-  conversation, customer, names, meExtension,
+  conversation, customer, names, meExtension, onSent,
 }: {
   conversation: SmsConversation;
   customer: string;
   names: Record<string, string>;
-  /** The signed-in person's own extension, so "You" can be said. */
   meExtension: string;
+  onSent: () => void;
 }) {
   const toast = useToast();
   const [messages, setMessages] = useState<SmsMessage[]>([]);
@@ -58,6 +73,36 @@ function Thread({
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const bottom = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError("");
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          domain: conversation.domain,
+          user: conversation.user,
+          session: conversation.sessionId,
+        });
+        const res = await fetch(`/api/ringlogix/messages/thread?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't open this conversation");
+        if (alive) setMessages(data.messages ?? []);
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : "Couldn't open this conversation");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [conversation.domain, conversation.user, conversation.sessionId]);
+
+  // A conversation opens at its newest message, like every other inbox.
+  useEffect(() => {
+    if (!loading) bottom.current?.scrollIntoView({ block: "end" });
+  }, [loading, messages.length]);
 
   async function send() {
     const text = draft.trim();
@@ -85,9 +130,6 @@ function Thread({
           id: `local-${Date.now()}`,
           at: Date.now(),
           direction: "out" as const,
-          // It goes out from the extension that holds the thread, so that
-          // is the name it will carry once RingLogix lists it - say so now
-          // rather than letting the label change under them on refresh.
           fromExtension: conversation.user,
           fromName: names[conversation.user] ?? "",
           from: conversation.ourNumber,
@@ -97,6 +139,7 @@ function Thread({
           mediaType: "",
         },
       ]);
+      onSent();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't send that");
     } finally {
@@ -104,58 +147,13 @@ function Thread({
     }
   }
 
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setError("");
-    (async () => {
-      try {
-        const params = new URLSearchParams({
-          domain: conversation.domain,
-          user: conversation.user,
-          session: conversation.sessionId,
-        });
-        const res = await fetch(`/api/ringlogix/messages/thread?${params}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message ?? data.error ?? "Couldn't open this conversation");
-        if (alive) setMessages(data.messages ?? []);
-      } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : "Couldn't open this conversation");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [conversation.domain, conversation.user, conversation.sessionId]);
+  const them = partyName(conversation, names, customer);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="border-b border-[#eaeaea] px-5 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-semibold text-[#0a0a0a]">
-            {partyName(conversation, names, customer)}
-          </p>
-          {customer && (
-            <span className="rounded-full bg-[#eff6ff] px-2 py-0.5 text-[10px] font-medium text-[#0070f3]">
-              {customer}
-            </span>
-          )}
-          {conversation.muted && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-[#999]">
-              <BellOff className="w-3 h-3" /> muted
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] text-[#999] mt-0.5">
-          Extension {conversation.user} · our number {formatPhone(conversation.ourNumber) || conversation.ourNumber}
-        </p>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 min-h-0">
         {loading && (
-          <div className="py-10 text-center">
-            <RefreshCw className="w-5 h-5 animate-spin text-[#999] mx-auto" />
-          </div>
+          <div className="py-10 text-center"><RefreshCw className="w-5 h-5 animate-spin text-[#999] mx-auto" /></div>
         )}
         {error && !loading && (
           <div className="py-10 text-center">
@@ -164,45 +162,44 @@ function Thread({
           </div>
         )}
         {!loading && !error && messages.length === 0 && (
-          <p className="py-10 text-center text-xs text-[#999]">Nothing in this conversation.</p>
+          <p className="py-10 text-center text-xs text-[#999]">Nothing in this conversation yet.</p>
         )}
+
         {messages.map((m) => {
+          const mine = m.direction === "out";
           const who = m.fromName
             ? (m.fromExtension && m.fromExtension === meExtension ? `${m.fromName} (you)` : m.fromName)
-            : partyName(conversation, names, customer);
+            : them;
           return (
-          <div key={m.id} className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}>
-            <div className="max-w-[min(32rem,78%)]">
-              {/* Named on both sides. Four people share these numbers, and
-                  "who said that" is the first question anybody asks. */}
-              <p className={`text-[10px] text-[#999] mb-0.5 ${m.direction === "out" ? "text-right" : ""}`}>{who}</p>
-              <div
-                className={`rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
-                  m.direction === "out"
-                    ? "bg-[#eff6ff] text-[#0a0a0a] rounded-br-sm"
-                    : "bg-[#f5f5f5] text-[#0a0a0a] rounded-bl-sm"
-                }`}
-              >
-                {m.text || <span className="text-[#999] italic">no text</span>}
-                {m.mediaType && (
-                  <span className="mt-1 flex items-center gap-1 text-[10px] text-[#666]">
-                    <ImageIcon className="w-3 h-3" /> {m.mediaType}
-                  </span>
-                )}
+            <div key={m.id} className={`flex gap-2.5 ${mine ? "flex-row-reverse" : ""}`}>
+              <Avatar name={who} tone={mine ? "dark" : "light"} />
+              <div className={`max-w-[min(34rem,78%)] flex flex-col ${mine ? "items-end" : "items-start"}`}>
+                <div
+                  className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                    mine
+                      ? "bg-[#0a0a0a] text-white rounded-br-sm"
+                      : "bg-[#f5f5f5] text-[#0a0a0a] rounded-bl-sm"
+                  }`}
+                >
+                  {m.text || <span className="opacity-60 italic">no text</span>}
+                  {m.mediaType && (
+                    <span className="mt-1 flex items-center gap-1 text-[10px] opacity-70">
+                      <ImageIcon className="w-3 h-3" /> {m.mediaType}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-[10px] text-[#999]">{fullTime(m.at)}</p>
               </div>
-              <p className={`mt-1 text-[10px] text-[#999] ${m.direction === "out" ? "text-right" : ""}`}>
-                {fullTime(m.at)}
-              </p>
             </div>
-          </div>
           );
         })}
+        <div ref={bottom} />
       </div>
 
       {/* Replies go back into this conversation, to the number already on
           it - the route looks the destination up rather than trusting the
           browser, so nothing here can text a stranger. */}
-      <div className="border-t border-[#eaeaea] p-3">
+      <div className="border-t border-[#eaeaea] p-3 shrink-0">
         <div className="flex items-end gap-2">
           <textarea
             rows={1}
@@ -211,53 +208,142 @@ function Thread({
             onKeyDown={(e) => {
               // Enter sends, Shift+Enter makes a new line - what every
               // messaging app does, and what fingers expect.
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
             }}
-            placeholder={`Reply to ${partyName(conversation, names, customer)}…`}
-            className="flex-1 resize-none text-sm border border-[#eaeaea] rounded-lg px-3 py-2 max-h-32 outline-none focus:border-[#0070f3] transition-colors"
+            placeholder={`Reply to ${them}…`}
+            className="flex-1 resize-none text-sm bg-[#fafafa] border border-[#eaeaea] rounded-xl px-3.5 py-2.5 max-h-32 outline-none focus:border-[#0a0a0a] focus:bg-white transition-colors"
           />
           <button
             onClick={send}
             disabled={!draft.trim() || sending}
-            data-tip="Send this text (Enter)"
-            className="flex items-center gap-1.5 bg-[#0a0a0a] text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#333] transition-colors disabled:opacity-40"
+            data-tip="Send (Enter)"
+            className="flex items-center justify-center w-10 h-10 bg-[#0a0a0a] text-white rounded-xl hover:bg-[#333] transition-colors disabled:opacity-30"
           >
-            {sending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-            Send
+            {sending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
-        <p className="text-[10px] text-[#bbb] mt-1.5">
-          Goes out from extension {conversation.user || "—"}
-          {/* A colleague's thread has no outside number on it, and
-              "as" followed by nothing reads like a bug. */}
-          {conversation.ourNumber ? ` as ${formatPhone(conversation.ourNumber) || conversation.ourNumber}` : ""}
+        <p className="text-[10px] text-[#bbb] mt-1.5 px-0.5">
+          From extension {conversation.user || "—"}
+          {conversation.ourNumber ? ` · ${formatPhone(conversation.ourNumber) || conversation.ourNumber}` : ""}
         </p>
       </div>
     </div>
   );
 }
 
+// ── Notes and tags: the part RingLogix has nowhere to put ───────────────
+
+function Details({
+  conversation, annotation, onSave,
+}: {
+  conversation: SmsConversation;
+  annotation: ThreadAnnotation | undefined;
+  onSave: (patch: { notes?: string; tags?: string[] }) => Promise<boolean>;
+}) {
+  const [notes, setNotes] = useState(annotation?.notes ?? "");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const tags = annotation?.tags ?? [];
+
+  async function commitNotes() {
+    if (notes === (annotation?.notes ?? "")) return;
+    setStatus("saving");
+    setStatus((await onSave({ notes })) ? "saved" : "idle");
+  }
+
+  async function toggleTag(key: string) {
+    await onSave({ tags: tags.includes(key) ? tags.filter((t) => t !== key) : [...tags, key] });
+  }
+
+  return (
+    <div className="h-full min-h-0 overflow-y-auto p-5 space-y-6">
+      <div>
+        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-2.5">Tags</p>
+        <div className="flex flex-wrap gap-1.5">
+          {MESSAGE_TAGS.map((t) => {
+            const on = tags.includes(t.key);
+            return (
+              <button
+                key={t.key}
+                onClick={() => toggleTag(t.key)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  on ? t.className : "bg-white text-[#999] border border-[#eaeaea] hover:border-[#d4d4d4]"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${on ? t.dot : "bg-[#d4d4d4]"}`} />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2.5">
+          <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest">Notes</p>
+          {status === "saving" && <span className="text-[10px] text-[#999]">saving…</span>}
+          {status === "saved" && (
+            <span className="text-[10px] text-[#15803d] flex items-center gap-1"><Check className="w-3 h-3" /> saved</span>
+          )}
+        </div>
+        <textarea
+          value={notes}
+          onChange={(e) => { setNotes(e.target.value); setStatus("idle"); }}
+          onBlur={commitNotes}
+          rows={8}
+          placeholder="What this is about, what was promised, who is handling it…"
+          className="w-full resize-none text-sm bg-[#fafafa] border border-[#eaeaea] rounded-xl px-3 py-2.5 outline-none focus:border-[#0a0a0a] focus:bg-white transition-colors"
+        />
+        <p className="text-[10px] text-[#bbb] mt-1.5">Saved when you click away. Everyone here sees it.</p>
+      </div>
+
+      <div className="border-t border-[#f5f5f5] pt-4 space-y-1">
+        <p className="text-[10px] font-semibold text-[#999] uppercase tracking-widest mb-2">Conversation</p>
+        <p className="text-[11px] text-[#666]">Extension {conversation.user || "—"}</p>
+        {conversation.ourNumber && (
+          <p className="text-[11px] text-[#666]">
+            Our number {formatPhone(conversation.ourNumber) || conversation.ourNumber}
+          </p>
+        )}
+        {annotation?.updatedBy && (
+          <p className="text-[11px] text-[#bbb] pt-1">Last noted by {annotation.updatedBy}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── The page ────────────────────────────────────────────────────────────
+
 export default function MessagesPage() {
   const { authUser } = useAuth();
+  const toast = useToast();
   const [state, setState] = useState<ViewState>("loading");
   const [conversations, setConversations] = useState<SmsConversation[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [customers, setCustomers] = useState<PortalCustomer[]>([]);
-  const [selected, setSelected] = useState<string>("");
+  const [annotations, setAnnotations] = useState<Record<string, ThreadAnnotation>>({});
+  const [selected, setSelected] = useState("");
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [showDetails, setShowDetails] = useState(true);
+  // Below lg there is no room for a third column, so the details take
+  // over the conversation pane instead - with its own state, or opening
+  // the rail on a desktop would hide the thread on a phone.
+  const [mobileDetails, setMobileDetails] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setState("loading");
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setState("loading");
     try {
       const res = await fetch("/api/ringlogix/messages");
       if (res.status === 503) { setState("unconfigured"); return; }
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 403) { setError(data.message ?? "RingLogix won't let us read messages."); setState("denied"); return; }
+        if (res.status === 403) {
+          setError(data.message ?? "RingLogix won't let us read messages.");
+          setState("denied");
+          return;
+        }
         throw new Error(data.error ?? `Request failed (${res.status})`);
       }
       setConversations(data.conversations ?? []);
@@ -274,12 +360,13 @@ export default function MessagesPage() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      try {
-        const res = await fetch("/api/ringlogix/customers");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (alive) setCustomers(Array.isArray(data) ? data : (data.data ?? []));
-      } catch { /* a number without a name is still a number */ }
+      const [list, notes] = await Promise.all([
+        fetch("/api/ringlogix/customers").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+        listThreadAnnotations().catch(() => ({})),
+      ]);
+      if (!alive) return;
+      setCustomers(Array.isArray(list) ? list : (list.data ?? []));
+      setAnnotations(notes);
     })();
     return () => { alive = false; };
   }, []);
@@ -296,20 +383,9 @@ export default function MessagesPage() {
   }, [customers]);
 
   const customerFor = useCallback(
-    (remote: string) => byNumber.get(remote.slice(-10)) ?? "",
+    (remote: string) => (remote ? byNumber.get(remote.slice(-10)) ?? "" : ""),
     [byNumber],
   );
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return conversations;
-    return conversations.filter((c) =>
-      c.remote.includes(q.replace(/\D/g, "")) ||
-      c.lastMessage.toLowerCase().includes(q) ||
-      c.user.includes(q) ||
-      customerFor(c.remote).toLowerCase().includes(q),
-    );
-  }, [conversations, search, customerFor]);
 
   // Which extension is the viewer? The ERP knows their name and RingLogix
   // knows the extensions; the name is what both agree on. Only used to add
@@ -320,32 +396,105 @@ export default function MessagesPage() {
     return Object.entries(names).find(([, n]) => n.trim().toLowerCase() === mine)?.[0] ?? "";
   }, [names, authUser?.displayName]);
 
-  const unread = conversations.filter((c) => c.unread).length;
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return conversations.filter((c) => {
+      if (filter === "unread" && !c.unread) return false;
+      if (filter === "tagged" && !annotations[c.sessionId]?.tags?.length) return false;
+      if (!q) return true;
+      const name = partyName(c, names, customerFor(c.remote)).toLowerCase();
+      return (
+        name.includes(q) ||
+        c.remote.includes(q.replace(/\D/g, "")) ||
+        c.lastMessage.toLowerCase().includes(q) ||
+        (annotations[c.sessionId]?.notes ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [conversations, search, filter, names, customerFor, annotations]);
+
   const current = conversations.find((c) => c.sessionId === selected) ?? filtered[0];
+  const unreadCount = conversations.filter((c) => c.unread).length;
+  const taggedCount = conversations.filter((c) => annotations[c.sessionId]?.tags?.length).length;
+
+  async function setRead(c: SmsConversation, read: boolean) {
+    // Optimistic: the round trip to the PBX takes a second or two, and a
+    // click that appears to do nothing gets clicked again.
+    setConversations((prev) => prev.map((x) => (x.sessionId === c.sessionId ? { ...x, unread: !read } : x)));
+    try {
+      const res = await fetch("/api/ringlogix/messages/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: c.sessionId, user: c.user, domain: c.domain, read }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Couldn't change that");
+    } catch (e) {
+      setConversations((prev) => prev.map((x) => (x.sessionId === c.sessionId ? { ...x, unread: c.unread } : x)));
+      toast.error(e instanceof Error ? e.message : "Couldn't change that");
+    }
+  }
+
+  async function saveAnnotation(
+    c: SmsConversation,
+    patch: { notes?: string; tags?: string[] },
+  ): Promise<boolean> {
+    const saved = await saveThreadAnnotation(
+      c.sessionId,
+      { ...patch, domain: c.domain },
+      authUser?.displayName || authUser?.email || "",
+    );
+    if (!saved) {
+      toast.error("Couldn't save that — supabase/migration-message-threads.sql may not have been run yet.");
+      return false;
+    }
+    setAnnotations((prev) => ({ ...prev, [c.sessionId]: saved }));
+    return true;
+  }
+
+  const FILTERS: { key: Filter; label: string; n: number }[] = [
+    { key: "all", label: "All", n: conversations.length },
+    { key: "unread", label: "Unread", n: unreadCount },
+    { key: "tagged", label: "Tagged", n: taggedCount },
+  ];
 
   return (
-    <div>
-      <Header
-        title="Messages"
-        subtitle="Texts to and from our numbers — the same ones that appear in Teams"
-        actions={
+    // Exactly the viewport, so the page itself never scrolls: the shell is
+    // 100vh with a 3.5rem bar and 2rem of padding top and bottom.
+    <div className="flex flex-col md:h-[calc(100vh-7.5rem)] min-h-0">
+      <div className="flex items-start justify-between gap-3 mb-4 shrink-0">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-[#0a0a0a]">Messages</h1>
+          <p className="text-sm text-[#666] mt-0.5">
+            Texts to and from our numbers — the same ones that appear in Teams
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={load}
+            onClick={() => setShowDetails((v) => !v)}
+            data-tip={showDetails ? "Hide notes and tags" : "Show notes and tags"}
+            className={`hidden lg:flex items-center justify-center w-9 h-9 rounded-lg border transition-colors ${
+              showDetails
+                ? "border-[#0a0a0a] bg-[#0a0a0a] text-white"
+                : "border-[#eaeaea] bg-white text-[#444] hover:bg-[#fafafa]"
+            }`}
+          >
+            <PanelRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => load()}
             disabled={state === "loading"}
-            data-tip="Fetch the latest conversations from RingLogix"
-            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-4 py-2 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+            data-tip="Fetch the latest conversations"
+            className="flex items-center gap-2 border border-[#eaeaea] bg-white text-sm font-medium text-[#0a0a0a] px-3.5 h-9 rounded-lg hover:bg-[#fafafa] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${state === "loading" ? "animate-spin" : ""}`} />
             Refresh
           </button>
-        }
-      />
+        </div>
+      </div>
 
       {state === "loading" && (
         <div className="bg-white border border-[#eaeaea] rounded-xl p-12 text-center">
           <RefreshCw className="w-6 h-6 animate-spin text-[#999] mx-auto mb-3" />
-          <p className="text-sm text-[#666]">Reading every extension&apos;s conversations…</p>
-          <p className="text-xs text-[#999] mt-1">Slow the first time, instant afterwards.</p>
+          <p className="text-sm text-[#666]">Reading your conversations…</p>
         </div>
       )}
 
@@ -355,35 +504,51 @@ export default function MessagesPage() {
           <p className="text-sm font-medium text-[#0a0a0a] mb-1">
             {state === "unconfigured" ? "RingLogix isn't configured"
               : state === "denied" ? "RingLogix won't let us read this"
-              : "Failed to load"}
+              : "Couldn't load your messages"}
           </p>
           <p className="text-xs text-[#999] max-w-md mx-auto">{error}</p>
           {state === "error" && (
-            <button onClick={load} className="mt-3 text-xs text-[#0070f3] hover:underline">Retry</button>
+            <button onClick={() => load()} className="mt-3 text-xs text-[#0070f3] hover:underline">Retry</button>
           )}
         </div>
       )}
 
       {state === "ok" && (
-        <div className="bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
-          <div className="grid grid-cols-1 md:grid-cols-[22rem_1fr] h-[calc(100vh-15rem)] min-h-125">
-            {/* The list */}
-            <div className="border-b md:border-b-0 md:border-r border-[#eaeaea] flex flex-col min-h-0">
-              <div className="px-4 py-3 border-b border-[#eaeaea]">
-                <input
-                  type="text"
-                  placeholder="Search a number, a name, a word…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full text-sm border border-[#eaeaea] rounded-lg px-3 py-1.5 outline-none focus:border-[#0070f3] transition-colors"
-                />
-                <p className="text-[11px] text-[#999] mt-2">
-                  {conversations.length} conversation{conversations.length === 1 ? "" : "s"}
-                  {unread > 0 && <span className="text-[#0070f3] font-medium"> · {unread} unread</span>}
-                </p>
+        <div className="flex-1 min-h-0 bg-white border border-[#eaeaea] rounded-xl overflow-hidden">
+          <div
+            className={`grid h-full min-h-0 grid-cols-1 md:grid-cols-[20rem_1fr] ${
+              showDetails && current ? "lg:grid-cols-[20rem_1fr_18rem]" : ""
+            }`}
+          >
+            {/* ── The list ── */}
+            <aside className="border-b md:border-b-0 md:border-r border-[#eaeaea] flex flex-col min-h-0">
+              <div className="p-3 border-b border-[#eaeaea] space-y-2.5 shrink-0">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-[#999] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full text-sm bg-[#fafafa] border border-[#eaeaea] rounded-lg pl-9 pr-3 py-1.5 outline-none focus:border-[#0a0a0a] focus:bg-white transition-colors"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  {FILTERS.map((f) => (
+                    <button
+                      key={f.key}
+                      onClick={() => setFilter(f.key)}
+                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                        filter === f.key ? "bg-[#f0f0f0] text-[#0a0a0a]" : "text-[#999] hover:text-[#444]"
+                      }`}
+                    >
+                      {f.label} <span className="opacity-60">{f.n}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto min-h-0">
                 {filtered.length === 0 && (
                   <p className="p-8 text-center text-xs text-[#999]">
                     {conversations.length === 0 ? "No texts yet." : "Nothing matches that."}
@@ -391,47 +556,112 @@ export default function MessagesPage() {
                 )}
                 {filtered.map((c) => {
                   const active = current?.sessionId === c.sessionId;
-                  const company = customerFor(c.remote);
+                  const name = partyName(c, names, customerFor(c.remote));
+                  const tags = knownTags(annotations[c.sessionId]?.tags);
                   return (
                     <button
                       key={c.sessionId}
                       onClick={() => setSelected(c.sessionId)}
-                      className={`w-full text-left px-4 py-3 border-b border-[#f7f7f7] transition-colors ${
-                        active ? "bg-[#eff6ff]" : "hover:bg-[#fafafa]"
+                      className={`w-full text-left px-3 py-2.5 border-b border-[#f5f5f5] flex gap-2.5 transition-colors ${
+                        active ? "bg-[#fafafa]" : "hover:bg-[#fafafa]"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className={`text-sm truncate ${c.unread ? "font-semibold text-[#0a0a0a]" : "text-[#444]"}`}>
-                          {partyName(c, names, company)}
-                        </p>
-                        <span className="text-[10px] text-[#999] shrink-0">{shortTime(c.lastAt)}</span>
-                      </div>
-                      {company && c.remote && (
-                        <p className="text-[10px] text-[#999] font-mono">{formatPhone(c.remote) || c.remote}</p>
-                      )}
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {c.unread && <span className="w-1.5 h-1.5 rounded-full bg-[#0070f3] shrink-0" />}
-                        <p className="text-xs text-[#999] truncate">
-                          {c.theirTurn ? "" : "You: "}{c.lastMessage.replace(/\s+/g, " ") || "(media)"}
-                        </p>
-                      </div>
-                      <p className="text-[10px] text-[#bbb] mt-0.5">ext {c.user}</p>
+                      <Avatar name={name} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className={`text-sm truncate ${c.unread ? "font-semibold text-[#0a0a0a]" : "text-[#444]"}`}>
+                            {name}
+                          </span>
+                          <span className="text-[10px] text-[#bbb] shrink-0">{shortTime(c.lastAt)}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5 mt-0.5">
+                          {c.unread && <span className="w-1.5 h-1.5 rounded-full bg-[#0070f3] shrink-0" />}
+                          <span className="text-xs text-[#999] truncate">
+                            {c.theirTurn ? "" : "You: "}
+                            {c.lastMessage.replace(/\s+/g, " ") || "(media)"}
+                          </span>
+                        </span>
+                        {tags.length > 0 && (
+                          <span className="flex flex-wrap items-center gap-1 mt-1">
+                            {tags.map((t) => (
+                              <span key={t.key} className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${t.className}`}>
+                                {t.label}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </aside>
 
-            {/* The conversation */}
-            <div className="min-h-0">
+            {/* ── The conversation ── */}
+            <section className="flex flex-col min-h-0 min-w-0">
               {current ? (
-                <Thread
-                  key={current.sessionId}
-                  conversation={current}
-                  customer={customerFor(current.remote)}
-                  names={names}
-                  meExtension={meExtension}
-                />
+                <>
+                  <header className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[#eaeaea] shrink-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar name={partyName(current, names, customerFor(current.remote))} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[#0a0a0a] truncate">
+                          {partyName(current, names, customerFor(current.remote))}
+                        </p>
+                        <p className="text-[11px] text-[#999] truncate flex items-center gap-2">
+                          {current.remote
+                            ? formatPhone(current.remote) || current.remote
+                            : `Extension ${current.remoteExtension}`}
+                          {current.muted && (
+                            <span className="inline-flex items-center gap-1"><BellOff className="w-3 h-3" /> muted</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => setRead(current, current.unread)}
+                        data-tip={current.unread ? "Mark read, here and in Teams" : "Mark unread, here and in Teams"}
+                        className="flex items-center gap-1.5 border border-[#eaeaea] bg-white text-[11px] font-medium text-[#444] px-2.5 h-8 rounded-lg hover:bg-[#fafafa] transition-colors"
+                      >
+                        {current.unread ? <MailOpen className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
+                        {current.unread ? "Mark read" : "Mark unread"}
+                      </button>
+                      <button
+                        onClick={() => setMobileDetails((v) => !v)}
+                        data-tip={mobileDetails ? "Back to the conversation" : "Notes and tags"}
+                        className={`lg:hidden flex items-center justify-center w-8 h-8 border rounded-lg transition-colors ${
+                          mobileDetails
+                            ? "border-[#0a0a0a] bg-[#0a0a0a] text-white"
+                            : "border-[#eaeaea] bg-white text-[#444] hover:bg-[#fafafa]"
+                        }`}
+                      >
+                        <TagIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </header>
+
+                  {mobileDetails ? (
+                    <div className="lg:hidden flex-1 min-h-0">
+                      <Details
+                        key={`m-${current.sessionId}`}
+                        conversation={current}
+                        annotation={annotations[current.sessionId]}
+                        onSave={(patch) => saveAnnotation(current, patch)}
+                      />
+                    </div>
+                  ) : null}
+                  <div className={mobileDetails ? "hidden lg:flex lg:flex-col flex-1 min-h-0" : "flex flex-col flex-1 min-h-0"}>
+                    <Thread
+                      key={current.sessionId}
+                      conversation={current}
+                      customer={customerFor(current.remote)}
+                      names={names}
+                      meExtension={meExtension}
+                      onSent={() => load(true)}
+                    />
+                  </div>
+                </>
               ) : (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center">
@@ -440,7 +670,19 @@ export default function MessagesPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </section>
+
+            {/* ── Notes and tags ── */}
+            {showDetails && current && (
+              <aside className="hidden lg:block border-l border-[#eaeaea] min-h-0">
+                <Details
+                  key={current.sessionId}
+                  conversation={current}
+                  annotation={annotations[current.sessionId]}
+                  onSave={(patch) => saveAnnotation(current, patch)}
+                />
+              </aside>
+            )}
           </div>
         </div>
       )}
