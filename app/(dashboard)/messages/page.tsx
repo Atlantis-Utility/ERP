@@ -497,7 +497,7 @@ function NewMessage({
   senders: Array<{ number: string; user: string }>;
   domain: string;
   /** Numbers we already know: from conversations and the contact book. */
-  suggestions: Array<{ number: string; label: string; from: string }>;
+  suggestions: Array<{ number: string; label: string; from: string; kind?: "number" | "extension" }>;
   onClose: () => void;
   onSent: (sessionId: string) => void;
 }) {
@@ -515,7 +515,8 @@ function NewMessage({
     .map((x) => x.replace(/\D/g, ""))
     .filter(Boolean)
     .map((x) => (x.length === 11 && x.startsWith("1") ? x.slice(1) : x));
-  const valid = parsed.length > 0 && parsed.every((x) => x.length === 10);
+  const asExtension = parsed.length === 1 && parsed[0].length >= 2 && parsed[0].length <= 6;
+  const valid = asExtension || (parsed.length > 0 && parsed.every((x) => x.length === 10));
   const isGroup = parsed.length > 1;
 
   // Suggestions match the bit being typed, not the whole box - otherwise
@@ -529,19 +530,23 @@ function NewMessage({
     if (!typing) return [];
     return suggestions
       .filter((x) => {
-        const national = x.number.slice(-10);
-        if (already.includes(national)) return false;
+        const key = x.kind === "extension" ? x.number : x.number.slice(-10);
+        if (already.includes(key)) return false;
+        // A colleague can only be messaged on their own, so once there
+        // is more than one recipient they stop being offered.
+        if (x.kind === "extension" && segments.length > 1) return false;
         return typingDigits.length >= 2
-          ? national.includes(typingDigits)
+          ? key.includes(typingDigits)
           : x.label.toLowerCase().includes(typing);
       })
       .slice(0, 6);
-  }, [suggestions, typing, typingDigits, already.join(",")]);
+  }, [suggestions, typing, typingDigits, already.join(","), segments.length]);
 
   /** Replaces the part being typed with a chosen number. */
-  function choose(number: string) {
+  function choose(value: string, kind?: "number" | "extension") {
     const head = segments.slice(0, -1).map((x) => x.trim()).filter(Boolean);
-    setTo([...head, formatPhone(number) || number].join(", "));
+    const shown = kind === "extension" ? value : formatPhone(value) || value;
+    setTo([...head, shown].join(", "));
     setShowList(false);
   }
 
@@ -622,14 +627,14 @@ function NewMessage({
                   <li key={`${m.number}-${m.from}`}>
                     <button
                       type="button"
-                      onMouseDown={(e) => { e.preventDefault(); choose(m.number); }}
+                      onMouseDown={(e) => { e.preventDefault(); choose(m.number, m.kind); }}
                       className="w-full text-left px-3 py-2 hover:bg-[#fafafa] transition-colors flex items-center gap-2.5"
                     >
                       <Avatar name={m.label} size="sm" />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm text-[#0a0a0a] truncate">{m.label}</span>
                         <span className="block text-[11px] text-[#999] tabular-nums">
-                          {formatPhone(m.number) || m.number} · {m.from}
+                          {m.kind === "extension" ? `Ext ${m.number}` : formatPhone(m.number) || m.number} · {m.from}
                         </span>
                       </span>
                     </button>
@@ -640,21 +645,27 @@ function NewMessage({
           </div>
           {to.trim() !== "" && !valid && (
             <p className="text-[11px] text-[#b91c1c] mt-1">
-              Ten digits each, separated by commas.
+              Ten digits each, separated by commas — or one extension for a colleague.
             </p>
           )}
-          {valid && (
+          {valid && asExtension && (
+            <p className="text-[11px] text-[#15803d] mt-1">
+              Extension {parsed[0]} · an internal chat, not a text
+            </p>
+          )}
+          {valid && !asExtension && (
             <p className="text-[11px] text-[#15803d] mt-1">
               {parsed.map((n) => formatPhone(n) || n).join(", ")}
               {isGroup && ` · a group of ${parsed.length}`}
             </p>
           )}
           <p className="text-[10px] text-[#bbb] mt-1">
-            Add more numbers, separated by commas, to start a group.
+            Add more numbers, separated by commas, to start a group. A colleague&apos;s
+            extension can only be messaged on its own.
           </p>
         </div>
 
-        {isGroup && (
+        {isGroup && !asExtension && (
           <div>
             <label className="block text-[11px] font-medium text-[#666] mb-1.5">
               Group name <span className="text-[#bbb] font-normal">optional</span>
@@ -672,7 +683,7 @@ function NewMessage({
           </div>
         )}
 
-        <div>
+        <div className={asExtension ? "hidden" : ""}>
           <label className="block text-[11px] font-medium text-[#666] mb-1.5">From</label>
           {senders.length > 1 ? (
             <select className={field} value={from} onChange={(e) => setFrom(e.target.value)}>
@@ -700,7 +711,7 @@ function NewMessage({
 
         <button
           onClick={send}
-          disabled={!valid || !text.trim() || sending || !from}
+          disabled={!valid || !text.trim() || sending || (!from && !asExtension)}
           className="w-full flex items-center justify-center gap-2 bg-[#0070f3] text-white text-sm font-medium rounded-xl py-2.5 hover:bg-[#0060df] transition-colors disabled:opacity-40"
         >
           {sending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -1130,7 +1141,7 @@ export default function MessagesPage() {
 
   const suggestions = useMemo(() => {
     const seen = new Set<string>();
-    const out: Array<{ number: string; label: string; from: string }> = [];
+    const out: Array<{ number: string; label: string; from: string; kind: "number" | "extension" }> = [];
     for (const c of conversations) {
       for (const n of c.remoteNumbers) {
         const key = n.slice(-10);
@@ -1140,16 +1151,23 @@ export default function MessagesPage() {
           number: n,
           label: c.isGroup ? formatPhone(n) || n : nameFor(c),
           from: "conversation",
+          kind: "number",
         });
       }
     }
     for (const [digits, info] of Object.entries(contacts)) {
       if (seen.has(digits)) continue;
       seen.add(digits);
-      out.push({ number: digits, label: info.name, from: "contact" });
+      out.push({ number: digits, label: info.name, from: "contact", kind: "number" });
+    }
+    // Colleagues, by extension. Not a text - an internal chat, which is
+    // how people here message each other and what shows up in Teams.
+    for (const [ext, name] of Object.entries(names)) {
+      if (ext === meExtension) continue;
+      out.push({ number: ext, label: name, from: `colleague · ext ${ext}`, kind: "extension" });
     }
     return out;
-  }, [conversations, contacts, nameFor]);
+  }, [conversations, contacts, nameFor, names, meExtension]);
 
   const FILTERS: { key: Filter; label: string; n: number; Icon: typeof Inbox }[] = [
     { key: "all", label: "All", n: conversations.length, Icon: Inbox },

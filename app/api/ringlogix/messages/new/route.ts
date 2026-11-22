@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployee, ApiAuthError } from "@/lib/api-auth";
-import { getMessageSessions, sendMessage, setMessageSessionName, isConfigured, ourDomain } from "@/lib/ringlogix";
+import {
+  getMessageSessions, getSubscribers, sendMessage, setMessageSessionName, isConfigured, ourDomain,
+} from "@/lib/ringlogix";
 import { ringlogixFailure } from "@/lib/ringlogix-response";
-import { digitsOf, remoteNumbersOf, type RawMessageSession } from "@/lib/ringlogix-messages";
+import { digitsOf, extensionOf, remoteNumbersOf, type RawMessageSession } from "@/lib/ringlogix-messages";
 import { recordSender } from "@/lib/messages/senders";
 
 export const runtime = "nodejs";
@@ -41,12 +43,14 @@ export async function POST(req: NextRequest) {
     const domain = (body.domain ?? "").trim() || ourDomain();
     const text = (body.text ?? "").trim();
     // One number, or several for a group - the PBX addresses a group by
-    // listing them, comma separated.
+    // listing them, comma separated. A short number is an extension: a
+    // colleague, reached by internal chat rather than by text.
     const recipients = String(body.to ?? "")
       .split(/[,;\s]+/)
       .map((x) => digitsOf(x))
       .filter(Boolean);
     const fromNumber = digitsOf(body.fromNumber);
+    const isExtension = (x: string) => x.length <= 6;
 
     if (!text) return NextResponse.json({ error: "Nothing to send" }, { status: 400 });
     if (text.length > MAX_LENGTH) {
@@ -61,6 +65,75 @@ export async function POST(req: NextRequest) {
     // every one of them is checked, not just the first.
     if (recipients.length === 0) {
       return NextResponse.json({ error: "Who is this going to?" }, { status: 400 });
+    }
+
+    // ── A colleague, by extension ──
+    if (recipients.some(isExtension)) {
+      if (recipients.length > 1) {
+        return NextResponse.json(
+          {
+            error:
+              "A colleague can't be added to a group text — a group is addressed to phone numbers. " +
+              "Message them on their own, or add their mobile number instead.",
+          },
+          { status: 400 },
+        );
+      }
+      const extension = recipients[0];
+      const sessions = ((await getMessageSessions(domain, "*")) ?? []) as RawMessageSession[];
+      const subscribers = (await getSubscribers(domain).catch(() => [])) as Array<
+        { user?: string; first_name?: string; last_name?: string }
+      >;
+      if (!subscribers.some((x) => (x.user ?? "").trim() === extension)) {
+        return NextResponse.json(
+          { error: `Extension ${extension} isn't one of ours.` },
+          { status: 400 },
+        );
+      }
+
+      // An internal chat has a sender as well as a recipient, and the
+      // sender is an extension - so we have to know which one is yours.
+      // Matched on name, since that is the only thing the ERP and the PBX
+      // both hold; failing that, an extension already talking to them.
+      const mine = (actor.name ?? "").trim().toLowerCase();
+      const byName = subscribers.find(
+        (x) => `${x.first_name ?? ""} ${x.last_name ?? ""}`.replace(/\s+/g, " ").trim().toLowerCase() === mine,
+      )?.user;
+      const existingChat = sessions.find((x) => extensionOf(x.remote) === extension)?.user;
+      const sender = (byName ?? existingChat ?? "").trim();
+      if (!sender) {
+        return NextResponse.json(
+          {
+            error:
+              "We couldn't work out which extension is yours, so this can't be sent as you. " +
+              "Text their mobile instead, or ask an administrator to match your name to your extension.",
+          },
+          { status: 400 },
+        );
+      }
+
+      // No from_num: that is what makes it an internal chat rather than
+      // a text, and an internal chat is how colleagues message each other
+      // here and in Teams.
+      const chat = (await sendMessage({ domain, user: sender, destination: extension, message: text })) as
+        | { id?: string; session_id?: string }
+        | null;
+      const already = sessions.find((x) => extensionOf(x.remote) === extension);
+      const chatSession = chat?.session_id ?? already?.session_id ?? "";
+      await recordSender({
+        messageId: chat?.id ?? "",
+        sessionId: chatSession,
+        name: actor.name || actor.email,
+        email: actor.email,
+      });
+      console.log(`[sms] ${actor.email} messaged extension ${extension}`);
+      return NextResponse.json({
+        ok: true,
+        destination: extension,
+        sessionId: chatSession,
+        internal: true,
+        joinedExisting: Boolean(already),
+      });
     }
     if (recipients.length > 10) {
       return NextResponse.json(
