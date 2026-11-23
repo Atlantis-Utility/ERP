@@ -27,11 +27,10 @@ import {
   UserCircle,
   Laptop,
   Headphones,
-  Video,
   Mic,
+  Voicemail,
   BookUser,
   Building,
-  AlarmClock,
   GitBranch,
   Cpu,
   KeyRound,
@@ -71,25 +70,36 @@ const navSections: { label: string; items: NavItem[] }[] = [
       { label: "Quick Access", href: "/quick-access", icon: Zap        },
     ],
   },
-  // RingLogix section: temporarily disabled
-  // {
-  //   label: "RingLogix",
-  //   items: [
-  //     { label: "Subscribers",   href: "/subscribers",   icon: UserCircle  },
-  //     { label: "Phone Numbers", href: "/phone-numbers", icon: Phone       },
-  //     { label: "Call Records",  href: "/call-records",  icon: PhoneCall   },
-  //     { label: "Recordings",    href: "/recordings",    icon: Mic         },
-  //     { label: "Devices",       href: "/devices",       icon: Laptop      },
-  //     { label: "Queues",        href: "/queues",        icon: Headphones  },
-  //     { label: "Conferences",   href: "/conferences",   icon: Video       },
-  //     { label: "Billing",       href: "/billing",       icon: DollarSign  },
-  //     { label: "Contacts",      href: "/contacts",      icon: BookUser   },
-  //     { label: "Departments",   href: "/departments",   icon: Building   },
-  //     { label: "Wake-Up Calls", href: "/wake-up-calls", icon: AlarmClock },
-  //     { label: "Dial Rules",    href: "/dial-rules",    icon: GitBranch  },
-  //     { label: "Device Models", href: "/device-models", icon: Cpu        },
-  //   ],
-  // },
+  // Back after being switched off for the two months the API user had no
+  // scope, when every page in here could only say "Invalid Scope". All of
+  // these were verified against live data on 2026-11-23.
+  //
+  // Note this list is the menu and lib/nav-pages.ts is the permission
+  // surface - they are separate, and a page added only to NAV_PAGES is
+  // reachable by URL but has no link. Add to both.
+  //
+  // Conferences and Wake-Up Calls are deliberately absent. `conference/read`
+  // is refused outright for this account (403), and wake-up calls can only
+  // be read one extension at a time, which the page does not ask for. Both
+  // pages still exist and still explain themselves if visited directly;
+  // they go back in the menu when they can answer.
+  {
+    label: "RingLogix",
+    items: [
+      { label: "Subscribers",   href: "/subscribers",   icon: UserCircle  },
+      { label: "Phone Numbers", href: "/phone-numbers", icon: Phone       },
+      { label: "Call Records",  href: "/call-records",  icon: PhoneCall   },
+      { label: "Recordings",    href: "/recordings",    icon: Mic         },
+      { label: "Voicemail",     href: "/voicemail",     icon: Voicemail   },
+      { label: "Devices",       href: "/devices",       icon: Laptop      },
+      { label: "Queues",        href: "/queues",        icon: Headphones  },
+      { label: "Billing",       href: "/billing",       icon: DollarSign  },
+      { label: "Contacts",      href: "/contacts",      icon: BookUser    },
+      { label: "Departments",   href: "/departments",   icon: Building    },
+      { label: "Dial Rules",    href: "/dial-rules",    icon: GitBranch   },
+      { label: "Device Models", href: "/device-models", icon: Cpu         },
+    ],
+  },
   {
     label: "UniFi",
     items: [
