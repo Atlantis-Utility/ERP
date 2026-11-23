@@ -244,7 +244,108 @@ export async function getDIDs(domain?: string) {
   return rows.filter((r) => String(r.domain_owner) === domain);
 }
 
-// Call records (CDRs)
+/**
+ * The call history for a domain.
+ *
+ * The date fields are `start_date`/`end_date`, not `start_time`/`end_time`.
+ * That is not a pedantic difference: an unrecognised parameter is dropped
+ * in silence rather than refused, so asking for the last 24 hours with the
+ * wrong name returned 500 rows spanning 26 days and looked like it had
+ * worked. Measured, on our own domain: `start_time` -> 500 rows,
+ * 2026-10-29 to 2026-11-23; `start_date` -> 4 rows, all of 2026-11-23.
+ *
+ * Dates are always sent, defaulting to the last 30 days, because the other
+ * cdr2 actions (count, report) refuse outright without them and a read
+ * without them silently means "whatever the server felt like".
+ */
+export function cdrDate(d: Date): string {
+  // Y-m-d H:i:s, which is what the API asks for by name in its refusal.
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+/**
+ * The most CDRs you can ask for and still be told anything useful.
+ *
+ * At limit=100 every row carries its nested `CdrR`, which is where the SIP
+ * call-ids live. At limit=101 the rows still arrive - all of them - but
+ * `CdrR` is gone from every single one. Not truncated, not an error:
+ * silently a thinner row. Measured on our own domain, which had 102 calls
+ * in the window:
+ *
+ *   limit=99  -> 99 rows,  99 with CdrR
+ *   limit=100 -> 100 rows, 100 with CdrR
+ *   limit=101 -> 101 rows, 0 with CdrR
+ *   limit=200 -> 102 rows, 0 with CdrR
+ *
+ * Anything that needs a call-id - recordings, above all - therefore has to
+ * ask in hundreds. There is no offset or page parameter on cdr2/read, so
+ * `getCDRsPaged` walks backwards through time instead.
+ */
+export const CDR_DETAIL_LIMIT = 100;
+
+/**
+ * Call records with their nested detail intact, however many there are.
+ *
+ * Pages by time rather than by offset, because cdr2/read has no offset:
+ * each round asks for the hundred calls ending at the cursor, then moves
+ * the cursor to just before the oldest one it got. A round that comes back
+ * short has reached the end of the range.
+ *
+ * Rows are de-duplicated on `cdr_id`: the cursor is a timestamp with
+ * one-second resolution, so a second holding two calls would otherwise
+ * repeat one of them across the boundary.
+ */
+export async function getCDRsPaged(opts: {
+  domain: string;
+  startDate: Date;
+  endDate: Date;
+  /** Stop once this many records are in hand. */
+  max?: number;
+}): Promise<Array<Record<string, unknown>>> {
+  const max = Math.max(1, opts.max ?? 500);
+  const out: Array<Record<string, unknown>> = [];
+  const seen = new Set<string>();
+  let cursor = opts.endDate;
+
+  // Bounded so a server that keeps answering a full page can never spin
+  // forever; each round covers at most CDR_DETAIL_LIMIT calls.
+  const maxRounds = Math.ceil(max / CDR_DETAIL_LIMIT) + 2;
+
+  for (let round = 0; round < maxRounds; round++) {
+    if (out.length >= max || cursor <= opts.startDate) break;
+
+    const rows = ((await pbxApi("cdr2", "read", {
+      domain: opts.domain,
+      limit: String(CDR_DETAIL_LIMIT),
+      start_date: cdrDate(opts.startDate),
+      end_date: cdrDate(cursor),
+    })) ?? []) as Array<Record<string, unknown>>;
+
+    if (rows.length === 0) break;
+
+    let oldest = Infinity;
+    for (const row of rows) {
+      const id = String(row.cdr_id ?? "");
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        out.push(row);
+      }
+      const started = Number(row.time_start);
+      if (Number.isFinite(started) && started > 0) oldest = Math.min(oldest, started);
+    }
+
+    // A short page means the range is exhausted, not that the cursor needs
+    // moving - moving it anyway would ask the same question again.
+    if (rows.length < CDR_DETAIL_LIMIT || !Number.isFinite(oldest)) break;
+
+    // One second before the oldest call in this page. Anything sharing
+    // that second is caught by the de-duplication above.
+    cursor = new Date((oldest - 1) * 1000);
+  }
+
+  return out.slice(0, max);
+}
+
 export async function getCDRs(opts?: {
   domain?: string;
   limit?: string;
@@ -252,10 +353,10 @@ export async function getCDRs(opts?: {
   endDate?: string;
 }) {
   const params: Record<string, string> = {};
-  if (opts?.domain)    params.domain     = opts.domain;
-  if (opts?.limit)     params.limit      = opts.limit;
-  if (opts?.startDate) params.start_time = opts.startDate;
-  if (opts?.endDate)   params.end_time   = opts.endDate;
+  if (opts?.domain) params.domain = opts.domain;
+  if (opts?.limit)  params.limit  = opts.limit;
+  params.start_date = opts?.startDate || cdrDate(new Date(Date.now() - 30 * 86_400_000));
+  params.end_date   = opts?.endDate   || cdrDate(new Date());
   return pbxApi("cdr2", "read", params);
 }
 
@@ -372,10 +473,26 @@ export async function setMessageSessionName(opts: {
 }
 
 // Reseller client billing
-export async function getBilling(domain?: string) {
-  const params: Record<string, string> = {};
-  if (domain) params.domain = domain;
-  return pbxApi("reseller_client", "read", params);
+/**
+ * Billing is not available through this API, and asking says so.
+ *
+ * `reseller_client` is answered "Bad request. Unknown object." - it is not
+ * a permission the Reseller scope is missing, the object does not exist.
+ * RingLogix's own overview lists billing under the RingOS API and marks
+ * that "Currently Unavailable", so there is nothing to point this at: no
+ * balances, no invoices, no commissions. The portal scrape in
+ * lib/ringlogix-portal.ts is the only source we have for a balance.
+ *
+ * Thrown rather than returned empty so the page says why instead of
+ * showing an empty table that looks like a customer with no charges.
+ */
+export const BILLING_UNAVAILABLE =
+  "RingLogix has no billing API. Billing and invoices are part of their RingOS API, " +
+  "which they list as unavailable; the only figures we can get are the balance and " +
+  "credit limit scraped from the portal.";
+
+export async function getBilling(): Promise<never> {
+  throw new Error(BILLING_UNAVAILABLE);
 }
 
 // Subscribers / extensions
@@ -426,17 +543,81 @@ export async function getConferences(domain?: string) {
   return pbxApi("conference", "read", params);
 }
 
-// Call recordings
-export async function getRecordings(opts?: { domain?: string; limit?: string }) {
-  const params: Record<string, string> = {};
-  if (opts?.domain) params.domain = opts.domain;
-  if (opts?.limit)  params.limit  = opts.limit;
-  return pbxApi("recording", "read", params);
+/**
+ * The recordings of one call.
+ *
+ * There is no "list every recording" call, which is what this used to try:
+ * `recording/read` with a domain and a limit is answered "Missing request
+ * parameters", so the Recordings page has never shown anything. The object
+ * is keyed on the call, and takes all four of domain, orig_callid,
+ * term_callid and callid.
+ *
+ * Those call-ids are not on the CDR row itself - the top level carries
+ * `cdr_id` and nothing else usable. They are inside the nested `CdrR`
+ * object, which is why this takes them separately rather than a CDR.
+ *
+ * A 404 means that call was not recorded, which is the normal answer for
+ * most calls and for every domain that has recording switched off. It is
+ * not a permission problem, so it comes back as an empty list rather than
+ * as an error.
+ */
+export async function getRecording(opts: {
+  domain: string;
+  origCallid: string;
+  termCallid: string;
+}) {
+  if (!opts.domain || (!opts.origCallid && !opts.termCallid)) return [];
+  try {
+    return await pbxApi("recording", "read", {
+      domain: opts.domain,
+      orig_callid: opts.origCallid,
+      term_callid: opts.termCallid,
+      callid: opts.termCallid || opts.origCallid,
+    });
+  } catch (err) {
+    if (err instanceof RingLogixError && err.status === 404) return [];
+    throw err;
+  }
 }
 
-// Territories (reseller regions)
-export async function getTerritories() {
-  return pbxApi("territory", "read");
+/**
+ * The agents on one queue.
+ *
+ * Per queue rather than per domain: `agent/read` refuses without a
+ * `queue_name`. The parameter is `queue_name` for read and `queue` for
+ * count, which is the API's inconsistency rather than a typo here.
+ */
+export async function getQueueAgents(domain: string, queueName: string) {
+  return pbxApi("agent", "read", { domain, queue_name: queueName });
+}
+
+/**
+ * Live queue figures: callers waiting, longest wait, agents available.
+ *
+ * One row per queue, as of the moment it is asked - these are gauges, not
+ * history, so they are not worth caching for the usual three minutes.
+ */
+export async function getQueueStats(domain: string) {
+  return pbxApiRaw("callqueuestat", "read", { domain });
+}
+
+/**
+ * Territories are not readable either: "Bad request. Unknown object."
+ *
+ * Our territory id (277202) is in the token, and the one place it matters
+ * - reading CDRs across the whole reseller - takes it as a parameter, so
+ * nothing is lost by not being able to list them.
+ */
+export const TERRITORIES_UNAVAILABLE =
+  "RingLogix has no territory object; the only territory we belong to is the one in our own token.";
+
+export async function getTerritories(): Promise<never> {
+  throw new Error(TERRITORIES_UNAVAILABLE);
+}
+
+/** Our reseller territory, from the API user's own client id. */
+export function ourTerritory(): string {
+  return (API_ID ?? "").match(/-r(\d+)/)?.[1] ?? "";
 }
 
 // Dial plans
@@ -482,27 +663,55 @@ export async function getDeviceModels(opts?: { brand?: string; model?: string })
   return pbxApi("devicemodel", "read", params);
 }
 
-// Call Requests / Wake-Up Calls
-export async function getCallRequests(opts?: { domain?: string; user?: string }) {
-  const params: Record<string, string> = {};
-  if (opts?.domain) params.domain = opts.domain;
-  if (opts?.user)   params.user   = opts.user;
-  return pbxApi("callrequest", "read", params);
+/**
+ * Wake-up calls, per subscriber.
+ *
+ * `callrequest/read` refuses a domain on its own - "Missing parameter
+ * 'orig_address'" - because a call request belongs to the extension it will
+ * ring, not to the domain. `orig_address` is that extension; the API also
+ * wants `user` and `domain` alongside it, which are the same extension said
+ * two more ways.
+ *
+ * So there is no "every wake-up call on this domain" read, any more than
+ * there is one for recordings. A caller walks the subscribers it cares
+ * about.
+ */
+export async function getCallRequests(opts: { domain: string; user: string }) {
+  return pbxApi("callrequest", "read", {
+    domain: opts.domain,
+    user: opts.user,
+    orig_address: opts.user,
+  });
 }
 
-export async function addWakeUpCall(uid: string, opts: { timeToCall?: string; dDay?: string; dHour?: string; dMin?: string }) {
+/**
+ * Books a wake-up call.
+ *
+ * The actions are `add` and `del`. They were `addWakeUp` and `delWakeUp`
+ * here, which are not actions this API has - so every wake-up call this
+ * app ever tried to book was refused. Corrected against the published
+ * spec rather than against a live write: booking a real call on a real
+ * extension is not a thing to try out.
+ *
+ * Either an absolute `timeToCall` in GMT, or an offset in days/hours/
+ * minutes from now.
+ */
+export async function addWakeUpCall(
+  uid: string,
+  opts: { timeToCall?: string; dDay?: string; dHour?: string; dMin?: string },
+) {
   const params: Record<string, string> = { uid };
   if (opts.timeToCall) params.timeToCall = opts.timeToCall;
   if (opts.dDay)       params.dDay       = opts.dDay;
   if (opts.dHour)      params.dHour      = opts.dHour;
   if (opts.dMin)       params.dMin       = opts.dMin;
-  return pbxApi("callrequest", "addWakeUp", params);
+  return pbxApi("callrequest", "add", params);
 }
 
 export async function deleteWakeUpCall(uid: string, requestId?: string) {
   const params: Record<string, string> = { uid };
   if (requestId) params.requestId = requestId;
-  return pbxApi("callrequest", "delWakeUp", params);
+  return pbxApi("callrequest", "del", params);
 }
 
 // Dial Rules

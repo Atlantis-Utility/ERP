@@ -33,6 +33,17 @@ export interface RawCdr {
   transcription_job_id?: string;
   top_topics?: string;
   ending_sentiment?: string;
+  /**
+   * The nested record, which is where the SIP call-ids live. The flat row
+   * carries `cdr_id`, which `recording/read` does not accept; it wants
+   * `orig_callid` and `term_callid`, and those are only in here.
+   */
+  CdrR?: {
+    orig_callid?: string;
+    term_callid?: string;
+    release_text?: string;
+    codec?: string;
+  };
 }
 
 export type CallDirection = "inbound" | "outbound" | "internal";
@@ -59,7 +70,23 @@ export interface CallRecord {
   voicemail: boolean;
   /** Nobody took it and it left no message. */
   missed: boolean;
-  hasRecording: boolean;
+  /**
+   * Whether a transcript was requested for this call - NOT whether audio
+   * exists. This used to be called `hasRecording` and was read off
+   * `transcription_job_id`, which answers a different question: a recorded
+   * call with transcription switched off has no job id, and the page
+   * reported it as having no recording.
+   *
+   * Whether a recording exists can only be learned by asking
+   * `recording/read` about the call, which is what
+   * /api/ringlogix/recordings does.
+   */
+  transcribed: boolean;
+  /** What a recording lookup needs. Empty when the CDR omitted them. */
+  origCallid: string;
+  termCallid: string;
+  /** "Orig: Bye", "Term: Cancel" - why the call ended, when given. */
+  releaseText: string;
 }
 
 /** The user part of a SIP URI: "sip:18056582329@host" -> "18056582329". */
@@ -149,7 +176,10 @@ export function normalizeCdr(row: RawCdr): CallRecord {
     answered,
     voicemail,
     missed: !answered && !voicemail,
-    hasRecording: Boolean(row.transcription_job_id),
+    transcribed: Boolean(row.transcription_job_id),
+    origCallid: (row.CdrR?.orig_callid ?? "").trim(),
+    termCallid: (row.CdrR?.term_callid ?? "").trim(),
+    releaseText: (row.CdrR?.release_text ?? "").trim(),
   };
 }
 
