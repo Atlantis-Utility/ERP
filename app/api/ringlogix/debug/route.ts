@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
+import { denyUnlessEmployee } from "@/lib/ringlogix-guard";
 
 export async function GET() {
+  const denied = await denyUnlessEmployee();
+  if (denied) return denied;
+
   const client_id     = process.env.RINGLOGIX_API_ID!;
   const client_secret = process.env.RINGLOGIX_API_SECRET!;
   const username      = process.env.RINGLOGIX_USERNAME!;

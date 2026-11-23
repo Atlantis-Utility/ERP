@@ -5,6 +5,7 @@ import {
   normalizeSession, sortConversations, dedupeConversations, namesByExtension,
   type RawMessageSession, type SmsConversation,
 } from "@/lib/ringlogix-messages";
+import { denyUnlessEmployee } from "@/lib/ringlogix-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,9 @@ async function everyExtension(domain: string): Promise<RawMessageSession[]> {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = await denyUnlessEmployee();
+  if (denied) return denied;
+
   if (!isConfigured()) {
     return NextResponse.json({ error: "not_configured" }, { status: 503 });
   }
