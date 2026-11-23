@@ -650,6 +650,37 @@ export async function deleteContact(domain: string, user: string, firstName: str
   return pbxApi("contact", "delete", { domain, user, first_name: firstName, last_name: lastName, contact_id: contactId });
 }
 
+/**
+ * The UC Inbox for one extension: chat sessions and voicemail together.
+ *
+ * Documented as returning vmail, call, message and fax. On this tenant it
+ * returns exactly two kinds - `chat` (the same sessions messagesession/read
+ * gives) and `vmail` (voicemail, which nothing else exposes at all).
+ * Measured across every real extension on two domains: 91 chat, 18 vmail on
+ * ours; 8 vmail on Salzer. No `call` and no `fax` rows exist.
+ *
+ * Per extension only. The `user=*` wildcard that makes messagesession cheap
+ * is refused here - "Please include domain and user fields" - so a whole
+ * domain costs one request per extension.
+ */
+export async function getConversations(domain: string, user: string) {
+  return pbxApi("conversation", "read", { domain, user });
+}
+
+/**
+ * The extensions that are actually people.
+ *
+ * `srv_code` separates them: `system-queue` is a call queue (ring groups
+ * included - this PBX has no separate object for those), `system-aa` an
+ * auto attendant, `system-inbound-route` a routing entry. Only a blank
+ * srv_code is somebody with a mailbox, which is why the Extensions tab
+ * showing 25 "users" for a customer with 11 staff was never wrong so much
+ * as unfiltered.
+ */
+export function isPersonExtension(row: { srv_code?: string }): boolean {
+  return !String(row.srv_code ?? "").startsWith("system-");
+}
+
 // Departments
 export async function getDepartments(domain: string) {
   return pbxApi("department", "list", { domain });

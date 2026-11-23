@@ -46,6 +46,7 @@ export const NAV_PAGES: NavPage[] = [
   { href: "/phone-numbers", label: "Phone Numbers", section: "RingLogix"   },
   { href: "/call-records",  label: "Call Records",  section: "RingLogix"   },
   { href: "/recordings",    label: "Recordings",    section: "RingLogix"   },
+  { href: "/voicemail",     label: "Voicemail",     section: "RingLogix"   },
   { href: "/devices",       label: "Devices",       section: "RingLogix"   },
   { href: "/device-models", label: "Device Models", section: "RingLogix"   },
   { href: "/queues",        label: "Queues",        section: "RingLogix"   },
